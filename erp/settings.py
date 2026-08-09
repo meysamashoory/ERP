@@ -127,12 +127,16 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# Manifest hashing is only used in production; dev/tests use a plain backend so
-# templates render without requiring a prior collectstatic run.
+# Dev/tests use a plain backend so templates render without a prior
+# collectstatic run. Production uses WhiteNoise's compressed storage (gzip),
+# which serves static efficiently without manifest hashing. We avoid the
+# *Manifest* variant because some bundled third-party admin CSS (e.g.
+# django-jalali's datepicker) references image files that are not shipped,
+# which makes the strict manifest post-processing abort collectstatic.
 _staticfiles_backend = (
     "django.contrib.staticfiles.storage.StaticFilesStorage"
     if DEBUG
-    else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    else "whitenoise.storage.CompressedStaticFilesStorage"
 )
 
 STORAGES = {

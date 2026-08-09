@@ -55,6 +55,54 @@ python manage.py runserver 0.0.0.0:8000
 | `clerk` | کارمند برنامه‌ریزی |
 | `viewer` | مشاهده‌گر |
 
+## راه‌اندازی روی ویندوز ۱۰ (سرور)
+
+پیش‌نیاز: نصب **Python 3.12** از [python.org](https://www.python.org/downloads/) (هنگام نصب گزینهٔ
+«Add python.exe to PATH» را تیک بزنید). سپس در پوشهٔ پروژه:
+
+```bat
+REM ۱) نصب و آماده‌سازی (یک‌بار)
+scripts\windows_setup.bat
+
+REM ۲) اجرا برای توسعه/تست
+scripts\windows_run.bat
+
+REM ۳) اجرا برای بهره‌برداری (پروداکشن) با Waitress
+scripts\windows_serve.bat
+```
+
+> نکته: روی ویندوز از **Waitress** استفاده می‌شود؛ `gunicorn` روی ویندوز اجرا نمی‌شود
+> (به‌همین دلیل در `requirements.txt` با مارکر `sys_platform` فقط روی لینوکس/مک نصب می‌شود).
+
+پس از اجرا، از سایر سیستم‌های شبکه با آدرس زیر وارد شوید:
+
+```
+http://<آی‌پیِ-سرور>:8000/
+```
+
+### دسترسی از شبکه (فایروال و هاست‌ها)
+1. **باز کردن پورت در فایروال ویندوز** (یک‌بار، در PowerShell با دسترسی Administrator):
+   ```powershell
+   New-NetFirewallRule -DisplayName "ERP 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow
+   ```
+2. **تعیین هاست‌های مجاز** برای حالت پروداکشن (به‌جای `*` بهتر است آی‌پی سرور را بگذارید):
+   ```bat
+   set DJANGO_ALLOWED_HOSTS=192.168.1.50,localhost
+   set DJANGO_SECRET_KEY=یک-کلید-تصادفی-و-طولانی
+   scripts\windows_serve.bat
+   ```
+
+### اجرای دائمی به‌صورت سرویس (اختیاری)
+برای این‌که برنامه با روشن‌شدن ویندوز به‌صورت خودکار بالا بیاید، دو راه ساده هست:
+- **Task Scheduler**: یک Task با تریگر «At startup» بسازید که `scripts\windows_serve.bat` را اجرا کند.
+- **NSSM** (پیشنهادی برای سرویس واقعی): با [nssm](https://nssm.cc/) دستور
+  `.venv\Scripts\waitress-serve.exe --listen=0.0.0.0:8000 erp.wsgi:application` را به‌عنوان یک سرویس ویندوزی ثبت کنید
+  (و متغیرهای محیطی `DJANGO_DEBUG=False`، `DJANGO_SECRET_KEY` و `DJANGO_ALLOWED_HOSTS` را در تنظیمات سرویس قرار دهید).
+
+### پایگاه‌داده روی ویندوز
+پیش‌فرض **SQLite** است و فایل `db.sqlite3` کنار پروژه (روی همان سرور مدیر) ذخیره می‌شود — بدون نیاز به نصب دیتابیس جداگانه.
+برای حجم داده/کاربر بالاتر می‌توانید بعداً به **PostgreSQL** مهاجرت کنید.
+
 ## پیکربندی (متغیرهای محیطی)
 
 | متغیر | پیش‌فرض |

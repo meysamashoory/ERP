@@ -1,0 +1,35 @@
+@echo off
+REM ============================================================
+REM  اجرای سرور پروداکشن روی ویندوز با Waitress
+REM  Production server on Windows using Waitress (gunicorn does
+REM  NOT run on Windows). Serves the app on port 8000.
+REM ============================================================
+setlocal
+cd /d "%~dp0.."
+call ".venv\Scripts\activate.bat"
+
+REM --- Production settings ---------------------------------
+set DJANGO_DEBUG=False
+
+REM Set a strong, secret key. Change this value for real deployments!
+if "%DJANGO_SECRET_KEY%"=="" (
+  echo [WARNING] DJANGO_SECRET_KEY is not set. Using an insecure default.
+  echo           Set it before real use:  set DJANGO_SECRET_KEY=your-long-random-value
+  set DJANGO_SECRET_KEY=change-me-please-set-a-real-secret-key
+)
+
+REM Hosts allowed to reach the server. Best practice: set your server IP,
+REM e.g.  set DJANGO_ALLOWED_HOSTS=192.168.1.50,localhost
+if "%DJANGO_ALLOWED_HOSTS%"=="" set DJANGO_ALLOWED_HOSTS=*
+
+echo [1/3] Applying migrations ...
+python manage.py migrate --noinput
+if errorlevel 1 exit /b 1
+
+echo [2/3] Collecting static files ...
+python manage.py collectstatic --noinput
+if errorlevel 1 exit /b 1
+
+echo [3/3] Starting Waitress on http://0.0.0.0:8000/ ...
+waitress-serve --listen=0.0.0.0:8000 erp.wsgi:application
+endlocal
