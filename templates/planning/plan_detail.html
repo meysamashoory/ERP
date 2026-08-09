@@ -9,33 +9,58 @@
     <h2>شماره {{ plan.program_number }} — {{ plan.date }} ({{ plan.weekday_name }})</h2>
     <span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span>
   </div>
-  <div class="panel-body">
-    {% if plan.alarms %}<div class="alarm">⚠ {{ plan.alarms }}</div>{% endif %}
-    <div class="form-actions">
-      {% if profile.can_approve_plans %}
-        <form method="post" action="{% url 'plan_approve' plan.pk %}" class="inline-form">{% csrf_token %}
-          <button class="btn btn-ok" name="decision" value="approve" type="submit">تأیید برنامه</button>
-        </form>
-        <form method="post" action="{% url 'plan_approve' plan.pk %}" class="inline-form">{% csrf_token %}
-          <button class="btn btn-danger" name="decision" value="reject" type="submit">رد برنامه</button>
-        </form>
-      {% elif profile.can_create_plans and plan.status == 'draft' %}
-        <form method="post" action="{% url 'plan_submit' plan.pk %}" class="inline-form">{% csrf_token %}
-          <button class="btn" type="submit">ارسال برای تأیید مدیر</button>
-        </form>
-      {% endif %}
-    </div>
-  </div>
+  {% if plan.alarms %}<div class="panel-body"><div class="alarm">⚠ {{ plan.alarms }}</div></div>{% endif %}
 </div>
 
+{% if editable %}
 <div class="panel">
-  <div class="panel-head"><h2>اقلام برنامه</h2></div>
+  <div class="panel-head">
+    <h2>{% if editing_item %}ویرایش کالا{% else %}افزودن کالا{% endif %}</h2>
+    {% if editing_item %}<a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}">افزودن کالای جدید</a>{% endif %}
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{% url 'plan_item_save' plan.pk %}">
+      {% csrf_token %}
+      {% if editing_item %}<input type="hidden" name="item_id" value="{{ editing_item.pk }}">{% endif %}
+      <div class="form-grid">
+        {% include "partials/form_fields.html" with form=item_form %}
+      </div>
+
+      <h3 style="margin:18px 0 8px;font-size:15px">ردیف‌های تولید (نوع تولید / مقدار / سیکل)</h3>
+      {{ line_formset.management_form }}
+      <div data-formset="lines">
+        {% for lform in line_formset %}
+        <div class="repeat-row" data-formset-row>
+          {{ lform.id }}
+          {% for field in lform.visible_fields %}{% if field.name != 'id' %}
+          <div class="field"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>
+          {% endif %}{% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+      <div style="margin:10px 0">
+        <button type="button" class="btn btn-sm btn-ghost" data-formset-add="lines">+ افزودن ردیف تولید</button>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn" type="submit">{% if editing_item %}ذخیره تغییرات کالا{% else %}افزودن کالا{% endif %}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="panel"><div class="panel-body muted">این برنامه در وضعیت «{{ plan.get_status_display }}» است و تنها قابل مشاهده می‌باشد. برای ویرایش، وضعیت را از فهرست برنامه‌ها به «موقت» تغییر دهید.</div></div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-head"><h2>کالاهای برنامه</h2></div>
   {% if plan.items.all %}
   <table class="table">
-    <thead><tr><th>قطعه</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th></tr></thead>
+    <thead><tr><th>کد کالا</th><th>نام محصول</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th>{% if editable %}<th></th>{% endif %}</tr></thead>
     <tbody>
       {% for item in plan.items.all %}
-      <tr>
+      <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
+        <td>{{ item.product.code }}</td>
         <td>{{ item.product.name }}{% if item.history_alarm %} <span class="badge badge-rejected">بدون سابقه</span>{% endif %}</td>
         <td>واحد {{ item.unit.number }}</td>
         <td>{{ item.machine.number }}</td>
@@ -47,63 +72,55 @@
             <div>{{ line.production_type }} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
           {% empty %}—{% endfor %}
         </td>
+        {% if editable %}
+        <td class="row-actions"><a class="link-edit" href="{% url 'plan_detail' plan.pk %}?edit={{ item.pk }}">ویرایش</a></td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="empty">هنوز قلمی اضافه نشده است.</p>{% endif %}
+  {% else %}<p class="empty">هنوز کالایی اضافه نشده است.</p>{% endif %}
 </div>
-
-{% if profile.can_create_plans %}
-<div class="panel">
-  <div class="panel-head"><h2>افزودن قلم به برنامه</h2></div>
-  <div class="panel-body">
-    <form method="post" action="{% url 'plan_item_add' plan.pk %}">
-      {% csrf_token %}
-      <div class="form-grid">
-        {% include "partials/form_fields.html" with form=item_form %}
-      </div>
-
-      <h3 style="margin:18px 0 8px;font-size:15px">ردیف‌های تولید (نوع تولید / مقدار / سیکل)</h3>
-      {{ line_formset.management_form }}
-      {% for lform in line_formset %}
-      <div class="repeat-row">
-        {% for field in lform.visible_fields %}
-        <div class="field"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>
-        {% endfor %}
-      </div>
-      {% endfor %}
-
-      <div class="form-actions">
-        <button class="btn" type="submit">افزودن قلم</button>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  // Dynamic تاریخ تعویض قالب based on the chosen weekday (plan-specific).
   var weekday = document.getElementById("id_mold_change_weekday");
   var dateSel = document.getElementById("id_mold_change_date");
   if (!weekday || !dateSel) return;
-  function refresh() {
-    if (weekday.value === "") { dateSel.innerHTML = ""; return; }
-    fetch("{% url 'mold_change_dates' %}?plan={{ plan.pk }}&weekday=" + encodeURIComponent(weekday.value))
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        dateSel.innerHTML = "";
-        (data.dates || []).forEach(function (d) {
-          var opt = document.createElement("option");
-          opt.value = d; opt.textContent = d;
-          dateSel.appendChild(opt);
-        });
+
+  function setDates(dates, keep) {
+    var ts = dateSel.tomselect;
+    if (ts) {
+      var prev = ts.getValue();
+      ts.clearOptions();
+      dates.forEach(function (d) { ts.addOption({ value: d, text: d }); });
+      ts.refreshOptions(false);
+      if (keep && prev && dates.indexOf(prev) !== -1) ts.setValue(prev, true);
+      else ts.clear(true);
+    } else {
+      dateSel.innerHTML = "";
+      dates.forEach(function (d) {
+        var o = document.createElement("option"); o.value = d; o.textContent = d; dateSel.appendChild(o);
       });
+    }
   }
-  weekday.addEventListener("change", refresh);
-  refresh();
+
+  function refresh(keep) {
+    var wd = weekday.tomselect ? weekday.tomselect.getValue() : weekday.value;
+    if (wd === "" || wd == null) { setDates([], false); return; }
+    fetch("{% url 'mold_change_dates' %}?plan={{ plan.pk }}&weekday=" + encodeURIComponent(wd))
+      .then(function (r) { return r.json(); })
+      .then(function (data) { setDates(data.dates || [], keep); });
+  }
+
+  var wts = weekday.tomselect;
+  if (wts) wts.on("change", function () { refresh(false); });
+  else weekday.addEventListener("change", function () { refresh(false); });
+  // On load (edit), keep the current mold-change date option.
+  refresh(true);
 })();
 </script>
 {% endblock %}

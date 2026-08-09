@@ -14,7 +14,7 @@
 <div class="panel">
   {% if plans %}
   <table class="table">
-    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th></th></tr></thead>
+    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th>عملیات</th><th>تغییر وضعیت</th></tr></thead>
     <tbody>
       {% for plan in plans %}
       <tr>
@@ -23,7 +23,23 @@
         <td>{{ plan.weekday_name }}</td>
         <td><span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
         <td>{{ plan.created_by.username|default:'—' }}</td>
-        <td><a href="{% url 'plan_detail' plan.pk %}">مشاهده</a></td>
+        <td>
+          <a class="link-edit" href="{% url 'plan_detail' plan.pk %}">
+            {% if plan.status == 'draft' and profile.can_create_plans %}ویرایش{% else %}مشاهده{% endif %}
+          </a>
+        </td>
+        <td>
+          {% if profile.can_create_plans %}
+          <form method="post" action="{% url 'plan_set_status' plan.pk %}" class="inline-form">
+            {% csrf_token %}
+            {% if plan.status == 'approved' %}
+              <button class="btn btn-sm btn-ghost" name="status" value="draft" type="submit">تغییر به موقت</button>
+            {% else %}
+              <button class="btn btn-sm btn-ok" name="status" value="approved" type="submit">تأیید (تأییدشده)</button>
+            {% endif %}
+          </form>
+          {% else %}—{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

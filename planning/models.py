@@ -38,10 +38,8 @@ class Weekday(models.IntegerChoices):
 
 class WeeklyPlan(models.Model):
     class Status(models.TextChoices):
-        DRAFT = "draft", "پیش‌نویس"
-        PENDING = "pending", "در انتظار تأیید"
+        DRAFT = "draft", "موقت"
         APPROVED = "approved", "تأییدشده"
-        REJECTED = "rejected", "ردشده"
 
     program_number = models.CharField("شماره برنامه", max_length=30, unique=True)
     date = jmodels.jDateField("تاریخ برنامه‌ریزی")
@@ -84,11 +82,17 @@ class WeeklyPlanItem(models.Model):
         WeeklyPlan, on_delete=models.CASCADE, related_name="items"
     )
     subgroup = models.ForeignKey(
-        ProductSubGroup, on_delete=models.PROTECT, related_name="+"
+        ProductSubGroup, on_delete=models.PROTECT, related_name="+", verbose_name="زیرگروه"
     )
-    unit = models.ForeignKey(ProductionUnit, on_delete=models.PROTECT, related_name="+")
-    machine = models.ForeignKey(Machine, on_delete=models.PROTECT, related_name="+")
-    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="+")
+    unit = models.ForeignKey(
+        ProductionUnit, on_delete=models.PROTECT, related_name="+", verbose_name="واحد تولیدی"
+    )
+    machine = models.ForeignKey(
+        Machine, on_delete=models.PROTECT, related_name="+", verbose_name="دستگاه"
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.PROTECT, related_name="+", verbose_name="نام محصول"
+    )
 
     mold_change_weekday = models.IntegerField(
         "روز تعویض قالب", choices=Weekday.choices
@@ -99,8 +103,8 @@ class WeeklyPlanItem(models.Model):
     history_alarm = models.BooleanField(default=False)
 
     class Meta:
-        verbose_name = "قلم برنامه"
-        verbose_name_plural = "اقلام برنامه"
+        verbose_name = "کالای برنامه"
+        verbose_name_plural = "کالاهای برنامه"
 
     def __str__(self) -> str:
         return f"{self.product.name} @ {self.machine}"
@@ -113,12 +117,10 @@ class WeeklyPlanLine(models.Model):
         WeeklyPlanItem, on_delete=models.CASCADE, related_name="lines"
     )
     production_type = models.ForeignKey(
-        ProductionTypeOption, on_delete=models.PROTECT, related_name="+"
+        ProductionTypeOption, on_delete=models.PROTECT, related_name="+", verbose_name="نوع تولید"
     )
     quantity = models.PositiveIntegerField("مقدار تولید", default=0)
-    cycle = models.DecimalField(
-        "سیکل تولید (ثانیه)", max_digits=8, decimal_places=2, default=0
-    )
+    cycle = models.PositiveIntegerField("سیکل تولید (ثانیه)", default=0)
 
     class Meta:
         verbose_name = "ردیف تولید"

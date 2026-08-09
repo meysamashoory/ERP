@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}ثبت تولید اتصالات{% endblock %}
-{% block heading %}ثبت تولید اتصالات{% endblock %}
+{% block title %}{% if mode == 'edit' %}ویرایش{% else %}ثبت{% endif %} تولید اتصالات{% endblock %}
+{% block heading %}{% if mode == 'edit' %}ویرایش{% else %}ثبت{% endif %} تولید اتصالات{% endblock %}
 {% block nav_production %}active{% endblock %}
 
 {% block content %}
@@ -30,7 +30,7 @@
   </div>
 
   <div class="form-actions">
-    <button class="btn" type="submit">ثبت تولید</button>
+    <button class="btn" type="submit">{% if mode == 'edit' %}ذخیره تغییرات{% else %}ثبت تولید{% endif %}</button>
     <a class="btn btn-ghost" href="{% url 'production_list' %}">انصراف</a>
   </div>
 </form>

@@ -11,15 +11,17 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from catalog.models import (
+    CountingUnit,
+    DeviationReason,
     Machine,
     MachineType,
     Product,
     ProductGroup,
+    ProductKind,
     ProductSubGroup,
     ProductionTypeOption,
     ProductionUnit,
     StoppageReason,
-    CountingUnit,
 )
 from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, Weekday
 from production.models import FittingProduction, PipeProduction, ProductionStoppage
@@ -38,10 +40,16 @@ STOPPAGE_REASONS = [
     "سایر موارد",
 ]
 
+DEVIATION_REASONS = [
+    "تعویض قالب", "راه‌اندازی قالب", "کمبود مواد", "برنامه‌ریزی مجدد",
+    "توقف اضطراری", "افزایش حفره فعال", "کاهش حفره فعال", "سایر موارد",
+]
+
+# group name -> (kind, [subgroups])
 GROUPS = {
-    "اتصالات پیچی (آبرسانی)": ["پیچی استاندارد", "فلنچدار", "کمربند و مغزی", "آبیاری قطره‌ای"],
-    "اتصالات فاضلابی": ["جوشی ۶+", "جوشی فشار قوی", "پوش‌فیت پروتکت", "پوش‌فیت جنرال", "پوش‌فیت سایلنت"],
-    "لوله‌ها": ["پوش‌فیت", "جنرال", "سایلنت", "فاضلابی", "آبرسانی", "خرطومی", "راند دریپردار", "راند بدون دریپر", "فلت دریپردار", "نوار آبیاری (تیپ)"],
+    "اتصالات پیچی (آبرسانی)": (ProductKind.FITTING, ["پیچی استاندارد", "فلنچدار", "کمربند و مغزی", "آبیاری قطره‌ای"]),
+    "اتصالات فاضلابی": (ProductKind.FITTING, ["جوشی ۶+", "جوشی فشار قوی", "پوش‌فیت پروتکت", "پوش‌فیت جنرال", "پوش‌فیت سایلنت"]),
+    "لوله‌ها": (ProductKind.PIPE, ["پوش‌فیت", "جنرال", "سایلنت", "فاضلابی", "آبرسانی", "خرطومی", "راند دریپردار", "راند بدون دریپر", "فلت دریپردار", "نوار آبیاری (تیپ)"]),
 }
 
 
@@ -82,6 +90,8 @@ class Command(BaseCommand):
             ProductionTypeOption.objects.get_or_create(label=label, defaults={"order": i})
         for i, label in enumerate(STOPPAGE_REASONS):
             StoppageReason.objects.get_or_create(label=label, defaults={"order": i})
+        for i, label in enumerate(DEVIATION_REASONS):
+            DeviationReason.objects.get_or_create(label=label, defaults={"order": i})
 
     def _seed_units_and_machines(self):
         specs = {
@@ -108,8 +118,13 @@ class Command(BaseCommand):
 
     def _seed_groups(self):
         subgroups = {}
-        for gi, (gname, subs) in enumerate(GROUPS.items()):
-            group, _ = ProductGroup.objects.get_or_create(name=gname, defaults={"order": gi})
+        for gi, (gname, (kind, subs)) in enumerate(GROUPS.items()):
+            group, _ = ProductGroup.objects.get_or_create(
+                name=gname, defaults={"order": gi, "kind": kind}
+            )
+            if group.kind != kind:
+                group.kind = kind
+                group.save(update_fields=["kind"])
             for si, sname in enumerate(subs):
                 sg, _ = ProductSubGroup.objects.get_or_create(
                     group=group, name=sname, defaults={"order": si}
@@ -120,21 +135,21 @@ class Command(BaseCommand):
     def _seed_products(self, subgroups):
         specs = [
             ("F-0900", "سرپیچ ۹۰", ("اتصالات پیچی (آبرسانی)", "پیچی استاندارد"),
-             CountingUnit.COUNT, dict(needs_assembly=True, needs_machining=True, per_carton=200, stock_finished=1800, reorder_level=500)),
+             CountingUnit.COUNT, dict(needs_assembly=True, needs_machining=True, per_carton=200, stock_finished=1800, reorder_level=500, unit_weight_grams=Decimal("165.00"))),
             ("F-1100", "سرپیچ ۱۱۰", ("اتصالات پیچی (آبرسانی)", "پیچی استاندارد"),
-             CountingUnit.COUNT, dict(needs_assembly=True, needs_machining=True, per_carton=150, stock_finished=300, reorder_level=400)),
+             CountingUnit.COUNT, dict(needs_assembly=True, needs_machining=True, per_carton=150, stock_finished=300, reorder_level=400, unit_weight_grams=Decimal("240.00"))),
             ("F-FLN6", "فلنچ ۶ بار", ("اتصالات فاضلابی", "جوشی فشار قوی"),
-             CountingUnit.COUNT, dict(needs_machining=True, per_carton=80, stock_finished=640, reorder_level=200)),
+             CountingUnit.COUNT, dict(needs_machining=True, per_carton=80, stock_finished=640, reorder_level=200, unit_weight_grams=Decimal("310.00"))),
             ("F-PRT110", "زانو پروتکت ۱۱۰", ("اتصالات فاضلابی", "پوش‌فیت پروتکت"),
-             CountingUnit.COUNT, dict(needs_assembly=False, per_carton=120, stock_finished=2600, reorder_level=600)),
+             CountingUnit.COUNT, dict(needs_assembly=False, per_carton=120, stock_finished=2600, reorder_level=600, unit_weight_grams=Decimal("190.00"))),
             ("F-SLNT75", "بوشن سایلنت ۷۵", ("اتصالات فاضلابی", "پوش‌فیت سایلنت"),
-             CountingUnit.COUNT, dict(per_carton=140, stock_finished=180, reorder_level=300)),
+             CountingUnit.COUNT, dict(per_carton=140, stock_finished=180, reorder_level=300, unit_weight_grams=Decimal("95.00"))),
             ("P-PRT110", "لوله پروتکت ۱۱۰", ("لوله‌ها", "پوش‌فیت"),
-             CountingUnit.BRANCH, dict(stock_finished=900, reorder_level=250)),
+             CountingUnit.BRANCH, dict(stock_finished=900, reorder_level=250, unit_weight_grams=Decimal("2500.00"))),
             ("P-WAT63", "لوله آبرسانی ۶۳", ("لوله‌ها", "آبرسانی"),
-             CountingUnit.BRANCH, dict(stock_finished=430, reorder_level=150)),
+             CountingUnit.BRANCH, dict(stock_finished=430, reorder_level=150, unit_weight_grams=Decimal("1800.00"))),
             ("P-TAPE16", "نوار آبیاری تیپ ۱۶", ("لوله‌ها", "نوار آبیاری (تیپ)"),
-             CountingUnit.COIL, dict(stock_finished=75, reorder_level=120)),
+             CountingUnit.COIL, dict(stock_finished=75, reorder_level=120, unit_weight_grams=Decimal("5200.00"))),
         ]
         products = {}
         for code, name, key, unit, extra in specs:
@@ -175,37 +190,37 @@ class Command(BaseCommand):
             return
         admin = User.objects.filter(username="admin").first()
         reason = StoppageReason.objects.first()
+        dev_reason = DeviationReason.objects.filter(label="تعویض قالب").first()
         today = jdatetime.date.today()
 
-        injection_u1 = Machine.objects.filter(unit=units[1], machine_type="injection").order_by("number")
+        injection_u1 = Machine.objects.filter(unit=units[1], machine_type="injection").order_by("id")
         m1, m2 = injection_u1[0], injection_u1[1]
 
         f1 = FittingProduction.objects.create(
             unit=units[1], date=today - jdatetime.timedelta(days=2), machine=m1,
-            product=products["F-0900"], shot_cycle=Decimal("28.50"), active_cavities=4,
+            product=products["F-0900"], shot_cycle=29, active_cavities=4,
             planned_quantity=4000, produced_quantity=3720, scrap_quantity=110,
-            material_used=Decimal("640.00"), material_scrap=Decimal("18.50"),
-            deviation_reason="توقف به دلیل تعویض قالب", created_by=admin,
+            deviation_reason=dev_reason, created_by=admin,
         )
         ProductionStoppage.objects.create(fitting=f1, reason=reason, minutes=45, note="راه‌اندازی قالب")
 
         f2 = FittingProduction.objects.create(
             unit=units[1], date=today - jdatetime.timedelta(days=1), machine=m2,
-            product=products["F-1100"], shot_cycle=Decimal("34.00"), active_cavities=2,
+            product=products["F-1100"], shot_cycle=34, active_cavities=2,
             planned_quantity=2000, produced_quantity=2050, scrap_quantity=40,
-            material_used=Decimal("520.00"), material_scrap=Decimal("9.00"), created_by=admin,
+            created_by=admin,
         )
         ProductionStoppage.objects.create(
             fitting=f2, reason=StoppageReason.objects.all()[3], minutes=20, note="خرابی مواد اولیه"
         )
 
-        extruder_u4 = Machine.objects.filter(unit=units[4], machine_type="extruder").order_by("number").first()
+        extruder_u4 = Machine.objects.filter(unit=units[4], machine_type="extruder").order_by("id").first()
         PipeProduction.objects.create(
             unit=units[4], date=today - jdatetime.timedelta(days=1), line=extruder_u4,
-            product=products["P-WAT63"], pipe_type="آبرسانی", size="۶۳",
-            nominal_pressure="۱۰ بار", thickness=Decimal("5.80"), material_grade="PE100",
+            product=products["P-WAT63"], nominal_pressure="۱۰ بار",
+            thickness=Decimal("5.80"), material_grade="PE100",
             planned_quantity=300, produced_quantity=280, scrap_quantity=6,
-            material_used=Decimal("1200.00"), created_by=admin,
+            created_by=admin,
         )
 
     def _seed_plan(self, units, subgroups, products):
@@ -224,4 +239,4 @@ class Command(BaseCommand):
             mold_change_date=today + jdatetime.timedelta(days=3), active_cavities=4,
         )
         ptype = ProductionTypeOption.objects.filter(label="پروتکت").first()
-        WeeklyPlanLine.objects.create(item=item, production_type=ptype, quantity=5000, cycle=Decimal("30.00"))
+        WeeklyPlanLine.objects.create(item=item, production_type=ptype, quantity=5000, cycle=30)

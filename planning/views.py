@@ -33,12 +33,17 @@ def plan_create(request):
         if form.is_valid():
             plan = form.save(commit=False)
             plan.created_by = request.user
+            plan.status = WeeklyPlan.Status.DRAFT
             plan.save()
-            messages.success(request, "برنامه ایجاد شد. اکنون اقلام را اضافه کنید.")
+            messages.success(request, "برنامه ایجاد شد. اکنون کالاها را اضافه کنید.")
             return redirect("plan_detail", pk=plan.pk)
     else:
         form = WeeklyPlanForm()
     return render(request, "planning/plan_form.html", {"form": form})
+
+
+def _can_edit_plan(profile, plan):
+    return bool(profile and profile.can_create_plans and plan.status == WeeklyPlan.Status.DRAFT)
 
 
 @login_required
@@ -47,38 +52,51 @@ def plan_detail(request, pk):
         WeeklyPlan.objects.prefetch_related("items__lines", "items__product"), pk=pk
     )
     profile = get_profile(request.user)
-    item_form = WeeklyPlanItemForm(plan_date=plan.date)
-    line_formset = WeeklyPlanLineFormSet()
+    editable = _can_edit_plan(profile, plan)
+
+    editing_item = None
+    edit_id = request.GET.get("edit")
+    if editable and edit_id:
+        editing_item = plan.items.filter(pk=edit_id).first()
+
+    item_form = WeeklyPlanItemForm(plan_date=plan.date, instance=editing_item)
+    line_formset = WeeklyPlanLineFormSet(instance=editing_item, prefix="lines")
+
     return render(
         request,
         "planning/plan_detail.html",
         {
             "plan": plan,
             "profile": profile,
+            "editable": editable,
             "item_form": item_form,
             "line_formset": line_formset,
+            "editing_item": editing_item,
         },
     )
 
 
 @login_required
-def item_add(request, pk):
+def item_save(request, pk):
+    """Create a new کالا, or update an existing one (with its production rows)."""
     plan = get_object_or_404(WeeklyPlan, pk=pk)
     profile = get_profile(request.user)
-    if not profile or not profile.can_create_plans:
-        raise PermissionDenied("شما اجازه ویرایش برنامه ندارید.")
+    if not _can_edit_plan(profile, plan):
+        raise PermissionDenied("برنامه در حالت موقت نیست یا اجازه ویرایش ندارید.")
     if request.method != "POST":
         return redirect("plan_detail", pk=pk)
 
-    form = WeeklyPlanItemForm(request.POST, plan_date=plan.date)
+    item_id = request.POST.get("item_id") or None
+    instance = plan.items.filter(pk=item_id).first() if item_id else None
+
+    form = WeeklyPlanItemForm(request.POST, plan_date=plan.date, instance=instance)
     if form.is_valid():
         item = form.save(commit=False)
         item.plan = plan
-        # Machine-history alarm (does not block saving).
         has_history = FittingProduction.objects.filter(machine=item.machine).exists()
         item.history_alarm = not has_history
         item.save()
-        formset = WeeklyPlanLineFormSet(request.POST, instance=item)
+        formset = WeeklyPlanLineFormSet(request.POST, instance=item, prefix="lines")
         if formset.is_valid():
             formset.save()
         if item.history_alarm:
@@ -86,55 +104,52 @@ def item_add(request, pk):
             plan.alarms = (plan.alarms + "\n" + note).strip() if plan.alarms else note
             plan.save(update_fields=["alarms"])
             messages.warning(request, note)
-        messages.success(request, "قلم برنامه اضافه شد.")
-    else:
-        messages.error(request, "خطا در ثبت قلم برنامه. مقادیر را بررسی کنید.")
-    return redirect("plan_detail", pk=pk)
+        messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
+        return redirect("plan_detail", pk=pk)
+
+    messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
+    line_formset = WeeklyPlanLineFormSet(request.POST, instance=instance, prefix="lines")
+    return render(
+        request,
+        "planning/plan_detail.html",
+        {
+            "plan": plan,
+            "profile": profile,
+            "editable": True,
+            "item_form": form,
+            "line_formset": line_formset,
+            "editing_item": instance,
+        },
+    )
 
 
 @login_required
-def plan_submit(request, pk):
+def plan_set_status(request, pk):
+    """Toggle a plan between «موقت» (draft) and «تأییدشده» (approved)."""
     plan = get_object_or_404(WeeklyPlan, pk=pk)
     profile = get_profile(request.user)
     if not profile or not profile.can_create_plans:
-        raise PermissionDenied()
-    # Managers approve directly; experts submit for approval.
-    if profile.can_approve_plans:
+        raise PermissionDenied("اجازه تغییر وضعیت ندارید.")
+    if request.method != "POST":
+        return redirect("plan_list")
+    target = request.POST.get("status")
+    if target == WeeklyPlan.Status.APPROVED:
         plan.status = WeeklyPlan.Status.APPROVED
         plan.approved_by = request.user
         plan.approved_at = timezone.now()
-        messages.success(request, "برنامه تأیید شد.")
+        messages.success(request, f"برنامه {plan.program_number} تأیید شد.")
     else:
-        plan.status = WeeklyPlan.Status.PENDING
-        messages.success(request, "برنامه برای تأیید مدیر ارسال شد.")
+        plan.status = WeeklyPlan.Status.DRAFT
+        plan.approved_by = None
+        plan.approved_at = None
+        messages.info(request, f"برنامه {plan.program_number} به حالت موقت درآمد.")
     plan.save()
-    return redirect("plan_detail", pk=pk)
-
-
-@login_required
-def plan_approve(request, pk):
-    plan = get_object_or_404(WeeklyPlan, pk=pk)
-    profile = get_profile(request.user)
-    if not profile or not profile.can_approve_plans:
-        raise PermissionDenied("فقط مدیر می‌تواند تأیید کند.")
-    decision = request.POST.get("decision", "approve")
-    if decision == "reject":
-        plan.status = WeeklyPlan.Status.REJECTED
-        messages.info(request, "برنامه رد شد.")
-    else:
-        plan.status = WeeklyPlan.Status.APPROVED
-        plan.approved_by = request.user
-        plan.approved_at = timezone.now()
-        messages.success(request, "برنامه تأیید شد.")
-    plan.save()
-    return redirect("plan_detail", pk=pk)
+    return redirect(request.POST.get("next") or "plan_list")
 
 
 @login_required
 def mold_change_dates(request):
     """JSON endpoint powering the dynamic تاریخ تعویض قالب dropdown."""
-    import jdatetime
-
     plan_id = request.GET.get("plan")
     weekday = request.GET.get("weekday")
     plan = get_object_or_404(WeeklyPlan, pk=plan_id)

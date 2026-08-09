@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    DeviationReason,
     Machine,
     Product,
     ProductGroup,
@@ -37,7 +38,9 @@ class ProductSubGroupInline(admin.TabularInline):
 
 @admin.register(ProductGroup)
 class ProductGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "order")
+    list_display = ("name", "kind", "order")
+    list_filter = ("kind",)
+    list_editable = ("kind", "order")
     inlines = [ProductSubGroupInline]
 
 
@@ -55,6 +58,7 @@ class ProductAdmin(admin.ModelAdmin):
         "name",
         "subgroup",
         "counting_unit",
+        "unit_weight_grams",
         "needs_assembly",
         "needs_machining",
         "needs_facing",
@@ -71,7 +75,7 @@ class ProductAdmin(admin.ModelAdmin):
         "is_active",
     )
     search_fields = ("code", "name")
-    list_editable = ("stock_finished",)
+    list_editable = ("unit_weight_grams", "stock_finished")
 
     @admin.display(boolean=True, description="سفارش مجدد؟")
     def needs_reorder(self, obj: Product) -> bool:
@@ -86,5 +90,11 @@ class ProductionTypeOptionAdmin(admin.ModelAdmin):
 
 @admin.register(StoppageReason)
 class StoppageReasonAdmin(admin.ModelAdmin):
+    list_display = ("label", "order", "is_active")
+    list_editable = ("order", "is_active")
+
+
+@admin.register(DeviationReason)
+class DeviationReasonAdmin(admin.ModelAdmin):
     list_display = ("label", "order", "is_active")
     list_editable = ("order", "is_active")

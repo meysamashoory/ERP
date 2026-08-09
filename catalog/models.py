@@ -1,5 +1,7 @@
 """Master data: production units, machines, product hierarchy, option lists."""
 
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -23,7 +25,7 @@ class ProductionUnit(models.Model):
         verbose_name_plural = "واحدهای تولیدی"
 
     def __str__(self) -> str:
-        return f"واحد {self.number} — {self.name}"
+        return f"واحد {self.number}"
 
 
 class MachineType(models.TextChoices):
@@ -38,13 +40,14 @@ class Machine(models.Model):
     """An injection machine, extruder line, bling unit, etc."""
 
     unit = models.ForeignKey(
-        ProductionUnit, on_delete=models.CASCADE, related_name="machines"
+        ProductionUnit, on_delete=models.CASCADE, related_name="machines",
+        verbose_name="واحد تولیدی",
     )
     machine_type = models.CharField(
-        max_length=20, choices=MachineType.choices, default=MachineType.INJECTION
+        "نوع", max_length=20, choices=MachineType.choices, default=MachineType.INJECTION
     )
-    number = models.CharField(max_length=20, help_text="شماره دستگاه یا خط")
-    is_active = models.BooleanField(default=True)
+    number = models.CharField("شماره", max_length=20, help_text="شماره دستگاه یا خط")
+    is_active = models.BooleanField("فعال", default=True)
 
     class Meta:
         ordering = ["unit__number", "machine_type", "number"]
@@ -56,11 +59,19 @@ class Machine(models.Model):
         return f"واحد {self.unit.number} - {self.get_machine_type_display()} {self.number}"
 
 
+class ProductKind(models.TextChoices):
+    FITTING = "fitting", "اتصالات"
+    PIPE = "pipe", "لوله"
+
+
 class ProductGroup(models.Model):
     """Top-level product group, e.g. اتصالات پیچی، اتصالات فاضلابی، لوله‌ها."""
 
-    name = models.CharField(max_length=120, unique=True)
-    order = models.PositiveSmallIntegerField(default=0)
+    name = models.CharField("نام", max_length=120, unique=True)
+    kind = models.CharField(
+        "دسته", max_length=10, choices=ProductKind.choices, default=ProductKind.FITTING
+    )
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
 
     class Meta:
         ordering = ["order", "name"]
@@ -75,10 +86,11 @@ class ProductSubGroup(models.Model):
     """Sub-group such as پوش‌فیت پروتکت، جوشی فشار قوی، لوله سایلنت."""
 
     group = models.ForeignKey(
-        ProductGroup, on_delete=models.CASCADE, related_name="subgroups"
+        ProductGroup, on_delete=models.CASCADE, related_name="subgroups",
+        verbose_name="گروه",
     )
-    name = models.CharField(max_length=120)
-    order = models.PositiveSmallIntegerField(default=0)
+    name = models.CharField("نام", max_length=120)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
 
     class Meta:
         ordering = ["group__order", "order", "name"]
@@ -96,10 +108,11 @@ class Product(models.Model):
     code = models.CharField("کد", max_length=40, unique=True)
     name = models.CharField("نام قطعه", max_length=200)
     subgroup = models.ForeignKey(
-        ProductSubGroup, on_delete=models.PROTECT, related_name="products"
+        ProductSubGroup, on_delete=models.PROTECT, related_name="products",
+        verbose_name="زیرگروه",
     )
     counting_unit = models.CharField(
-        max_length=10, choices=CountingUnit.choices, default=CountingUnit.COUNT
+        "واحد شمارش", max_length=10, choices=CountingUnit.choices, default=CountingUnit.COUNT
     )
 
     # Process routing flags described in the specification.
@@ -112,8 +125,11 @@ class Product(models.Model):
     per_bag = models.PositiveIntegerField("تعداد در کیسه", null=True, blank=True)
     depot_ceiling = models.PositiveIntegerField("سقف دپو", null=True, blank=True)
     main_cavities = models.PositiveIntegerField("حفره اصلی", null=True, blank=True)
-    last_cycle = models.DecimalField(
-        "آخرین سیکل", max_digits=8, decimal_places=2, null=True, blank=True
+    last_cycle = models.PositiveIntegerField("آخرین سیکل", null=True, blank=True)
+
+    # Weight of one produced unit (grams); used to auto-compute material usage.
+    unit_weight_grams = models.DecimalField(
+        "وزن هر واحد (گرم)", max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
 
     # Inventory snapshots (may also be sourced from uploaded Excel data).
@@ -139,9 +155,9 @@ class Product(models.Model):
 class ProductionTypeOption(models.Model):
     """Editable list backing the «نوع تولید» dropdowns."""
 
-    label = models.CharField(max_length=60, unique=True)
-    order = models.PositiveSmallIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
+    label = models.CharField("عنوان", max_length=60, unique=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
 
     class Meta:
         ordering = ["order", "label"]
@@ -155,14 +171,30 @@ class ProductionTypeOption(models.Model):
 class StoppageReason(models.Model):
     """Editable list backing the «دلیل توقف» dropdowns."""
 
-    label = models.CharField(max_length=120, unique=True)
-    order = models.PositiveSmallIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
+    label = models.CharField("عنوان", max_length=120, unique=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
 
     class Meta:
         ordering = ["order", "label"]
         verbose_name = "دلیل توقف"
         verbose_name_plural = "دلایل توقف"
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class DeviationReason(models.Model):
+    """Editable list backing the «دلیل انحراف» dropdowns."""
+
+    label = models.CharField("عنوان", max_length=120, unique=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
+
+    class Meta:
+        ordering = ["order", "label"]
+        verbose_name = "دلیل انحراف"
+        verbose_name_plural = "دلایل انحراف"
 
     def __str__(self) -> str:
         return self.label

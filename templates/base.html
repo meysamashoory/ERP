@@ -5,6 +5,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}سامانه برنامه‌ریزی تولید{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 <body>
@@ -56,6 +58,15 @@
     </main>
   </div>
 </div>
+<script>
+  window.API = {
+    machines: "{% url 'machines_json' %}",
+    products: "{% url 'products_json' %}"
+  };
+</script>
+<script src="{% static 'vendor/tom-select/tom-select.complete.min.js' %}"></script>
+<script src="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.js' %}"></script>
+<script src="{% static 'js/app.js' %}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

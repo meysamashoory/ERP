@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}ثبت تولید لوله{% endblock %}
-{% block heading %}ثبت تولید لوله{% endblock %}
+{% block title %}{% if mode == 'edit' %}ویرایش{% else %}ثبت{% endif %} تولید لوله{% endblock %}
+{% block heading %}{% if mode == 'edit' %}ویرایش{% else %}ثبت{% endif %} تولید لوله{% endblock %}
 {% block nav_production %}active{% endblock %}
 
 {% block content %}
 <form method="post">
   {% csrf_token %}
+  <script type="application/json" id="pipe-field-map">{{ pipe_field_map|safe }}</script>
   <div class="panel">
     <div class="panel-head"><h2>مشخصات تولید لوله</h2></div>
     <div class="panel-body">
-      <p class="muted" style="margin-top:0">پس از انتخاب «نوع محصول»، فیلدهای مرتبط را تکمیل کنید (سوکت برای پوش‌فیت، ضخامت و فشار برای فاضلابی/آبرسانی، مشخصات دریپر برای دریپردار/تیپ).</p>
+      <p class="muted" style="margin-top:0">پس از انتخاب زیرگروه، تنها فیلدهای مرتبط با آن نوع محصول فعال می‌شوند.</p>
       <div class="form-grid">
         {% include "partials/form_fields.html" with form=form %}
       </div>
@@ -31,7 +32,7 @@
   </div>
 
   <div class="form-actions">
-    <button class="btn" type="submit">ثبت تولید</button>
+    <button class="btn" type="submit">{% if mode == 'edit' %}ذخیره تغییرات{% else %}ثبت تولید{% endif %}</button>
     <a class="btn btn-ghost" href="{% url 'production_list' %}">انصراف</a>
   </div>
 </form>
