@@ -56,7 +56,7 @@ class Machine(models.Model):
         verbose_name_plural = "دستگاه‌ها و خطوط"
 
     def __str__(self) -> str:
-        return f"واحد {self.unit.number} - {self.get_machine_type_display()} {self.number}"
+        return f"{self.get_machine_type_display()} {self.number}"
 
 
 class ProductKind(models.TextChoices):

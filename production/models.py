@@ -24,7 +24,7 @@ class BaseProduction(models.Model):
     """Fields shared by every daily production record."""
 
     unit = models.ForeignKey(
-        ProductionUnit, on_delete=models.PROTECT, related_name="+"
+        ProductionUnit, on_delete=models.PROTECT, related_name="+", verbose_name="واحد تولیدی"
     )
     date = jmodels.jDateField("تاریخ")
     planned_quantity = models.PositiveIntegerField("مقدار برنامه‌ریزی‌شده", default=0)
@@ -71,10 +71,10 @@ class FittingProduction(BaseProduction):
     """Daily production of a fitting on an injection machine."""
 
     machine = models.ForeignKey(
-        Machine, on_delete=models.PROTECT, related_name="fitting_records"
+        Machine, on_delete=models.PROTECT, related_name="fitting_records", verbose_name="دستگاه"
     )
     product = models.ForeignKey(
-        Product, on_delete=models.PROTECT, related_name="fitting_records"
+        Product, on_delete=models.PROTECT, related_name="fitting_records", verbose_name="نام محصول"
     )
     shot_cycle = models.PositiveIntegerField("سیکل تولید یک‌ضرب (ثانیه)", default=0)
     active_cavities = models.PositiveSmallIntegerField("تعداد حفره فعال", default=1)
@@ -119,7 +119,7 @@ class PipeProduction(BaseProduction):
         L300_2S = "300cm_2s", "۳ متری دوسر سوکت"
 
     line = models.ForeignKey(
-        Machine, on_delete=models.PROTECT, related_name="pipe_records"
+        Machine, on_delete=models.PROTECT, related_name="pipe_records", verbose_name="خط"
     )
     product = models.ForeignKey(
         Product,
@@ -127,6 +127,7 @@ class PipeProduction(BaseProduction):
         related_name="pipe_records",
         null=True,
         blank=True,
+        verbose_name="نام محصول",
     )
     pipe_type = models.CharField("نوع محصول", max_length=60)
     size = models.CharField("سایز", max_length=40, blank=True)
@@ -142,6 +143,7 @@ class PipeProduction(BaseProduction):
         blank=True,
         related_name="bling_records",
         limit_choices_to={"machine_type": "bling"},
+        verbose_name="دستگاه بلینگ",
     )
 
     # Sewage / water pipe specifics
@@ -150,7 +152,7 @@ class PipeProduction(BaseProduction):
         "ضخامت", max_digits=8, decimal_places=2, null=True, blank=True
     )
     thickness_unit = models.CharField(
-        max_length=10, choices=ThicknessUnit.choices, default=ThicknessUnit.MM
+        "واحد ضخامت", max_length=10, choices=ThicknessUnit.choices, default=ThicknessUnit.MM
     )
     material_grade = models.CharField(
         "نوع مواد", max_length=20, choices=MaterialGrade.choices, blank=True
@@ -187,7 +189,8 @@ class ProductionStoppage(models.Model):
     """A stoppage attached to a fitting or pipe production record."""
 
     reason = models.ForeignKey(
-        "catalog.StoppageReason", on_delete=models.PROTECT, related_name="stoppages"
+        "catalog.StoppageReason", on_delete=models.PROTECT, related_name="stoppages",
+        verbose_name="دلیل توقف",
     )
     minutes = models.PositiveIntegerField("مدت توقف (دقیقه)", default=0)
     note = models.CharField("توضیح تکمیلی", max_length=255, blank=True)
