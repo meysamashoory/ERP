@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}برنامه جدید{% endblock %}
+{% block heading %}ایجاد برنامه هفتگی{% endblock %}
+{% block nav_planning %}active{% endblock %}
+
+{% block content %}
+<div class="panel" style="max-width:560px">
+  <div class="panel-head"><h2>مشخصات برنامه</h2></div>
+  <div class="panel-body">
+    <p class="muted" style="margin-top:0">شماره برنامه و تاریخ شمسی را وارد کنید. روز هفته به‌صورت خودکار محاسبه می‌شود.</p>
+    <form method="post">
+      {% csrf_token %}
+      {% include "partials/form_fields.html" with form=form %}
+      <div class="form-actions">
+        <button class="btn" type="submit">ثبت و ادامه</button>
+        <a class="btn btn-ghost" href="{% url 'plan_list' %}">انصراف</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

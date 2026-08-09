@@ -1,0 +1,227 @@
+"""Seed the database with realistic demo data for the production ERP.
+
+Idempotent: safe to run repeatedly. Pass --flush to reset operational data.
+"""
+
+from decimal import Decimal
+
+import jdatetime
+from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand
+from django.db import transaction
+
+from catalog.models import (
+    Machine,
+    MachineType,
+    Product,
+    ProductGroup,
+    ProductSubGroup,
+    ProductionTypeOption,
+    ProductionUnit,
+    StoppageReason,
+    CountingUnit,
+)
+from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, Weekday
+from production.models import FittingProduction, PipeProduction, ProductionStoppage
+
+User = get_user_model()
+
+PRODUCTION_TYPES = [
+    "پروتکت", "جنرال", "سایلنت", "طوسی", "سرمه‌ای", "مشکی",
+    "قرمز", "کرم", "زرد", "(ق ق)", "(ق ج)",
+]
+
+STOPPAGE_REASONS = [
+    "برق دستگاه", "سیستم خنک کننده", "تست آزمایشگاه", "خرابی مواد",
+    "خرابی قالب", "تست قالب", "توقف کنترل کیفیت", "قطعی برق شهر",
+    "خطای اپراتور", "گرفتگی سر نازل", "بالا رفتن دمای", "خرابی دستگاه",
+    "سایر موارد",
+]
+
+GROUPS = {
+    "اتصالات پیچی (آبرسانی)": ["پیچی استاندارد", "فلنچدار", "کمربند و مغزی", "آبیاری قطره‌ای"],
+    "اتصالات فاضلابی": ["جوشی ۶+", "جوشی فشار قوی", "پوش‌فیت پروتکت", "پوش‌فیت جنرال", "پوش‌فیت سایلنت"],
+    "لوله‌ها": ["پوش‌فیت", "جنرال", "سایلنت", "فاضلابی", "آبرسانی", "خرطومی", "راند دریپردار", "راند بدون دریپر", "فلت دریپردار", "نوار آبیاری (تیپ)"],
+}
+
+
+class Command(BaseCommand):
+    help = "Seed demo master data, users, and sample production records."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--flush", action="store_true", help="Reset operational data first.")
+
+    @transaction.atomic
+    def handle(self, *args, **options):
+        if options["flush"]:
+            ProductionStoppage.objects.all().delete()
+            FittingProduction.objects.all().delete()
+            PipeProduction.objects.all().delete()
+            WeeklyPlanLine.objects.all().delete()
+            WeeklyPlanItem.objects.all().delete()
+            WeeklyPlan.objects.all().delete()
+            self.stdout.write("Operational data flushed.")
+
+        self._seed_options()
+        units = self._seed_units_and_machines()
+        subgroups = self._seed_groups()
+        products = self._seed_products(subgroups)
+        self._seed_users()
+        self._seed_production(units, products)
+        self._seed_plan(units, subgroups, products)
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Seed complete: {ProductionUnit.objects.count()} units, "
+            f"{Machine.objects.count()} machines, {Product.objects.count()} products, "
+            f"{User.objects.count()} users, {FittingProduction.objects.count()} fitting records, "
+            f"{PipeProduction.objects.count()} pipe records, {WeeklyPlan.objects.count()} plans."
+        ))
+
+    def _seed_options(self):
+        for i, label in enumerate(PRODUCTION_TYPES):
+            ProductionTypeOption.objects.get_or_create(label=label, defaults={"order": i})
+        for i, label in enumerate(STOPPAGE_REASONS):
+            StoppageReason.objects.get_or_create(label=label, defaults={"order": i})
+
+    def _seed_units_and_machines(self):
+        specs = {
+            1: ("واحد ۱", "۳۴ تزریق + کفتراش، تراشکاری، جوش، مونتاژ و بسته‌بندی", {MachineType.INJECTION: 34}),
+            2: ("واحد ۲", "۱۶ تزریق + ۳ اکسترودر + ۲ بلینگ + جوش و بسته‌بندی",
+                {MachineType.INJECTION: 16, MachineType.EXTRUDER: 3, MachineType.BLING: 2}),
+            3: ("واحد ۳", "کوره روکش بست فلزی، پانچ و پرینت، مونتاژ و بسته‌بندی",
+                {MachineType.FURNACE: 1, MachineType.PUNCH_PRINT: 2}),
+            4: ("واحد ۴", "۷ تزریق + ۷ اکسترودر + جوش، مونتاژ و بسته‌بندی",
+                {MachineType.INJECTION: 7, MachineType.EXTRUDER: 7}),
+        }
+        units = {}
+        for number, (name, desc, machines) in specs.items():
+            unit, _ = ProductionUnit.objects.get_or_create(
+                number=number, defaults={"name": name, "description": desc}
+            )
+            units[number] = unit
+            for mtype, count in machines.items():
+                for n in range(1, count + 1):
+                    Machine.objects.get_or_create(
+                        unit=unit, machine_type=mtype, number=str(n)
+                    )
+        return units
+
+    def _seed_groups(self):
+        subgroups = {}
+        for gi, (gname, subs) in enumerate(GROUPS.items()):
+            group, _ = ProductGroup.objects.get_or_create(name=gname, defaults={"order": gi})
+            for si, sname in enumerate(subs):
+                sg, _ = ProductSubGroup.objects.get_or_create(
+                    group=group, name=sname, defaults={"order": si}
+                )
+                subgroups[(gname, sname)] = sg
+        return subgroups
+
+    def _seed_products(self, subgroups):
+        specs = [
+            ("F-0900", "سرپیچ ۹۰", ("اتصالات پیچی (آبرسانی)", "پیچی استاندارد"),
+             CountingUnit.COUNT, dict(needs_assembly=True, needs_machining=True, per_carton=200, stock_finished=1800, reorder_level=500)),
+            ("F-1100", "سرپیچ ۱۱۰", ("اتصالات پیچی (آبرسانی)", "پیچی استاندارد"),
+             CountingUnit.COUNT, dict(needs_assembly=True, needs_machining=True, per_carton=150, stock_finished=300, reorder_level=400)),
+            ("F-FLN6", "فلنچ ۶ بار", ("اتصالات فاضلابی", "جوشی فشار قوی"),
+             CountingUnit.COUNT, dict(needs_machining=True, per_carton=80, stock_finished=640, reorder_level=200)),
+            ("F-PRT110", "زانو پروتکت ۱۱۰", ("اتصالات فاضلابی", "پوش‌فیت پروتکت"),
+             CountingUnit.COUNT, dict(needs_assembly=False, per_carton=120, stock_finished=2600, reorder_level=600)),
+            ("F-SLNT75", "بوشن سایلنت ۷۵", ("اتصالات فاضلابی", "پوش‌فیت سایلنت"),
+             CountingUnit.COUNT, dict(per_carton=140, stock_finished=180, reorder_level=300)),
+            ("P-PRT110", "لوله پروتکت ۱۱۰", ("لوله‌ها", "پوش‌فیت"),
+             CountingUnit.BRANCH, dict(stock_finished=900, reorder_level=250)),
+            ("P-WAT63", "لوله آبرسانی ۶۳", ("لوله‌ها", "آبرسانی"),
+             CountingUnit.BRANCH, dict(stock_finished=430, reorder_level=150)),
+            ("P-TAPE16", "نوار آبیاری تیپ ۱۶", ("لوله‌ها", "نوار آبیاری (تیپ)"),
+             CountingUnit.COIL, dict(stock_finished=75, reorder_level=120)),
+        ]
+        products = {}
+        for code, name, key, unit, extra in specs:
+            product, _ = Product.objects.get_or_create(
+                code=code,
+                defaults=dict(name=name, subgroup=subgroups[key], counting_unit=unit, **extra),
+            )
+            products[code] = product
+        return products
+
+    def _seed_users(self):
+        admin, created = User.objects.get_or_create(
+            username="admin",
+            defaults={"is_staff": True, "is_superuser": True, "first_name": "مدیر", "last_name": "سامانه"},
+        )
+        if created:
+            admin.set_password("erp12345")
+            admin.save()
+        roles = [
+            ("expert", "کارشناس", "planning_expert", False),
+            ("clerk", "کارمند", "planning_clerk", False),
+            ("viewer", "ناظر", "viewer", False),
+        ]
+        for username, first, role, can_edit in roles:
+            user, created = User.objects.get_or_create(
+                username=username, defaults={"first_name": first, "is_staff": True}
+            )
+            if created:
+                user.set_password("erp12345")
+                user.save()
+            profile = user.profile
+            profile.role = role
+            profile.can_edit_others = can_edit
+            profile.save()
+
+    def _seed_production(self, units, products):
+        if FittingProduction.objects.exists():
+            return
+        admin = User.objects.filter(username="admin").first()
+        reason = StoppageReason.objects.first()
+        today = jdatetime.date.today()
+
+        injection_u1 = Machine.objects.filter(unit=units[1], machine_type="injection").order_by("number")
+        m1, m2 = injection_u1[0], injection_u1[1]
+
+        f1 = FittingProduction.objects.create(
+            unit=units[1], date=today - jdatetime.timedelta(days=2), machine=m1,
+            product=products["F-0900"], shot_cycle=Decimal("28.50"), active_cavities=4,
+            planned_quantity=4000, produced_quantity=3720, scrap_quantity=110,
+            material_used=Decimal("640.00"), material_scrap=Decimal("18.50"),
+            deviation_reason="توقف به دلیل تعویض قالب", created_by=admin,
+        )
+        ProductionStoppage.objects.create(fitting=f1, reason=reason, minutes=45, note="راه‌اندازی قالب")
+
+        f2 = FittingProduction.objects.create(
+            unit=units[1], date=today - jdatetime.timedelta(days=1), machine=m2,
+            product=products["F-1100"], shot_cycle=Decimal("34.00"), active_cavities=2,
+            planned_quantity=2000, produced_quantity=2050, scrap_quantity=40,
+            material_used=Decimal("520.00"), material_scrap=Decimal("9.00"), created_by=admin,
+        )
+        ProductionStoppage.objects.create(
+            fitting=f2, reason=StoppageReason.objects.all()[3], minutes=20, note="خرابی مواد اولیه"
+        )
+
+        extruder_u4 = Machine.objects.filter(unit=units[4], machine_type="extruder").order_by("number").first()
+        PipeProduction.objects.create(
+            unit=units[4], date=today - jdatetime.timedelta(days=1), line=extruder_u4,
+            product=products["P-WAT63"], pipe_type="آبرسانی", size="۶۳",
+            nominal_pressure="۱۰ بار", thickness=Decimal("5.80"), material_grade="PE100",
+            planned_quantity=300, produced_quantity=280, scrap_quantity=6,
+            material_used=Decimal("1200.00"), created_by=admin,
+        )
+
+    def _seed_plan(self, units, subgroups, products):
+        if WeeklyPlan.objects.exists():
+            return
+        admin = User.objects.filter(username="admin").first()
+        today = jdatetime.date.today()
+        plan = WeeklyPlan.objects.create(
+            program_number="BP-1001", date=today, status=WeeklyPlan.Status.DRAFT, created_by=admin,
+        )
+        machine = Machine.objects.filter(unit=units[1], machine_type="injection").first()
+        item = WeeklyPlanItem.objects.create(
+            plan=plan, subgroup=subgroups[("اتصالات فاضلابی", "پوش‌فیت پروتکت")],
+            unit=units[1], machine=machine, product=products["F-PRT110"],
+            mold_change_weekday=Weekday.CHAHARSHANBE,
+            mold_change_date=today + jdatetime.timedelta(days=3), active_cavities=4,
+        )
+        ptype = ProductionTypeOption.objects.filter(label="پروتکت").first()
+        WeeklyPlanLine.objects.create(item=item, production_type=ptype, quantity=5000, cycle=Decimal("30.00"))

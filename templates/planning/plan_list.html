@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}برنامه‌ریزی هفتگی{% endblock %}
+{% block heading %}برنامه‌ریزی هفتگی تولید{% endblock %}
+{% block nav_planning %}active{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>برنامه‌های هفتگی</h1>
+  {% if profile.can_create_plans %}
+  <a class="btn" href="{% url 'plan_create' %}">+ برنامه جدید</a>
+  {% endif %}
+</div>
+
+<div class="panel">
+  {% if plans %}
+  <table class="table">
+    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th></th></tr></thead>
+    <tbody>
+      {% for plan in plans %}
+      <tr>
+        <td>{{ plan.program_number }}</td>
+        <td class="num">{{ plan.date }}</td>
+        <td>{{ plan.weekday_name }}</td>
+        <td><span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
+        <td>{{ plan.created_by.username|default:'—' }}</td>
+        <td><a href="{% url 'plan_detail' plan.pk %}">مشاهده</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">هنوز برنامه‌ای ثبت نشده است.</p>{% endif %}
+</div>
+{% endblock %}

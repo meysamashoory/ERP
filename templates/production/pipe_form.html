@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}ثبت تولید لوله{% endblock %}
+{% block heading %}ثبت تولید لوله{% endblock %}
+{% block nav_production %}active{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+  <div class="panel">
+    <div class="panel-head"><h2>مشخصات تولید لوله</h2></div>
+    <div class="panel-body">
+      <p class="muted" style="margin-top:0">پس از انتخاب «نوع محصول»، فیلدهای مرتبط را تکمیل کنید (سوکت برای پوش‌فیت، ضخامت و فشار برای فاضلابی/آبرسانی، مشخصات دریپر برای دریپردار/تیپ).</p>
+      <div class="form-grid">
+        {% include "partials/form_fields.html" with form=form %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>توقفات شیفت</h2></div>
+    <div class="panel-body">
+      {{ formset.management_form }}
+      {% for sform in formset %}
+      <div class="repeat-row">
+        {% for field in sform.visible_fields %}
+        <div class="field"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn" type="submit">ثبت تولید</button>
+    <a class="btn btn-ghost" href="{% url 'production_list' %}">انصراف</a>
+  </div>
+</form>
+{% endblock %}

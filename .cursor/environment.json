@@ -1,0 +1,14 @@
+{
+  "name": "ERP — سامانه برنامه‌ریزی و کنترل تولید",
+  "install": "sudo apt-get update && sudo apt-get install -y python3.12-venv python3-dev build-essential && bash scripts/install.sh",
+  "terminals": [
+    {
+      "name": "django",
+      "command": "bash scripts/start.sh",
+      "description": "Django dev server for the production-planning ERP on http://localhost:8000"
+    }
+  ],
+  "ports": [
+    { "port": 8000 }
+  ]
+}

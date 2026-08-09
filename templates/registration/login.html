@@ -1,0 +1,38 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ورود به سامانه</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <h1>سامانه برنامه‌ریزی و کنترل تولید</h1>
+    <p class="muted">برای ادامه وارد شوید</p>
+    {% if form.errors %}
+      <div class="alert alert-error">نام کاربری یا گذرواژه نادرست است.</div>
+    {% endif %}
+    <form method="post" action="{% url 'login' %}">
+      {% csrf_token %}
+      <div class="field">
+        <label for="id_username">نام کاربری</label>
+        <input class="input" type="text" name="username" id="id_username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="id_password">گذرواژه</label>
+        <input class="input" type="password" name="password" id="id_password" required>
+      </div>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="btn" type="submit" style="width:100%">ورود</button>
+    </form>
+    <div class="creds-hint">
+      حساب‌های نمونه: <b>admin</b> (مدیر) · <b>expert</b> (کارشناس) · <b>clerk</b> (کارمند) · <b>viewer</b> (مشاهده‌گر)
+      — گذرواژه همه: <b>erp12345</b>
+    </div>
+  </div>
+</div>
+</body>
+</html>

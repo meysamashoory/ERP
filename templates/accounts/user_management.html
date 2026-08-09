@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}مدیریت کاربران{% endblock %}
+{% block heading %}مدیریت کاربران{% endblock %}
+{% block nav_users %}active{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-head"><h2>کاربران سامانه</h2></div>
+    <table class="table">
+      <thead><tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>ویرایش داده دیگران</th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ u.get_full_name|default:'—' }}</td>
+          <td><span class="badge role">{{ u.profile.get_role_display }}</span></td>
+          <td>{% if u.profile.can_edit_others %}بله{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>افزودن کاربر</h2></div>
+    <div class="panel-body">
+      <form method="post">
+        {% csrf_token %}
+        {% include "partials/form_fields.html" with form=form %}
+        <div class="form-actions"><button class="btn" type="submit">ایجاد کاربر</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
