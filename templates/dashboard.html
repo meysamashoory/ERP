@@ -78,15 +78,15 @@
     <div class="panel-head"><h2>آخرین تولیدات اتصالات</h2></div>
     {% if recent_fittings %}
     <table class="table">
-      <thead><tr><th>تاریخ</th><th>واحد</th><th>دستگاه</th><th>قطعه</th><th>تولید</th><th>انحراف</th></tr></thead>
+      <thead><tr><th>تاریخ</th><th>دستگاه/واحد</th><th>قطعه</th><th>تولید</th><th>برنامه</th><th>انحراف</th></tr></thead>
       <tbody>
         {% for r in recent_fittings %}
         <tr>
           <td class="num">{{ r.date }}</td>
-          <td>واحد {{ r.unit.number }}</td>
-          <td>{{ r.machine.number }}</td>
-          <td>{{ r.product.name }}</td>
+          <td>{{ r.program.machine_label }}</td>
+          <td>{{ r.program.item.product.name }}</td>
           <td class="num">{{ r.produced_quantity }}</td>
+          <td class="num">{{ r.planned_quantity }}</td>
           <td class="num">{{ r.deviation }}</td>
         </tr>
         {% endfor %}

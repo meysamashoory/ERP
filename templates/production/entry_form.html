@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}ثبت آمار تولید{% endblock %}
+{% block heading %}ثبت آمار تولید روزانه{% endblock %}
+{% block nav_production %}active{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>{{ program.machine_label }} — {{ program.item.product.name }} (کد {{ program.item.product.code }})</h2>
+    <span class="badge status-{{ program.status }}">{{ program.get_status_display }}</span>
+  </div>
+  <div class="panel-body">
+    <p class="muted" style="margin-top:0">
+      شناسه برنامه: <b>{{ program.item.uid }}</b> ·
+      راه‌اندازی: <b>{{ program.start_date }} — {{ program.start_time }}</b> ·
+      نوع تولید: <b>{{ program.production_type }}</b>
+    </p>
+    <form method="post" action="{% if mode == 'edit' %}{% url 'entry_edit' form.instance.pk %}{% else %}{% url 'entry_create' program.pk %}{% endif %}">
+      {% csrf_token %}
+      <div class="form-grid">
+        {% include "partials/form_fields.html" with form=form %}
+      </div>
+      <div class="form-actions"><button class="btn" type="submit">{% if mode == 'edit' %}ذخیره تغییرات{% else %}ثبت آمار{% endif %}</button>
+        <a class="btn btn-ghost" href="{% url 'production_list' %}">بازگشت</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>آمار ثبت‌شده این برنامه</h2></div>
+  {% if entries %}
+  <table class="table">
+    <thead><tr><th>تاریخ</th><th>سیکل</th><th>حفره فعال</th><th>تولید (ضرب)</th><th>برنامه (ضرب)</th><th>ضایعات</th><th>انحراف</th><th>دلیل انحراف</th><th></th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td class="num">{{ e.date }}</td>
+        <td class="num">{{ e.cycle }}</td>
+        <td class="num">{{ e.active_cavities }}</td>
+        <td class="num">{{ e.produced_quantity }}</td>
+        <td class="num">{{ e.planned_quantity }}</td>
+        <td class="num">{{ e.scrap_quantity }}</td>
+        <td class="num">{{ e.deviation }}</td>
+        <td>{{ e.deviation_reason.label|default:'—' }}</td>
+        <td class="row-actions"><a class="link-edit" href="{% url 'entry_edit' e.pk %}">ویرایش</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">هنوز آماری ثبت نشده است.</p>{% endif %}
+  <div class="panel-body">
+    <div class="cards">
+      <article class="card"><p class="card-label">مجموع تولید</p><p class="card-value num">{{ totals.produced }}</p><p class="card-sub">ضرب</p></article>
+      <article class="card"><p class="card-label">مجموع برنامه</p><p class="card-value num">{{ totals.planned }}</p><p class="card-sub">ضرب مورد انتظار</p></article>
+      <article class="card {% if totals.deviation > 0 %}card-warn{% endif %}"><p class="card-label">انحراف (عقب/جلو)</p><p class="card-value num">{{ totals.deviation }}</p><p class="card-sub">{% if totals.deviation > 0 %}عقب از برنامه{% elif totals.deviation < 0 %}جلوتر از برنامه{% else %}مطابق برنامه{% endif %}</p></article>
+      <article class="card"><p class="card-label">زمان صرف‌شده</p><p class="card-value num">{{ totals.hours }}</p><p class="card-sub">ساعت</p></article>
+    </div>
+  </div>
+</div>
+{% endblock %}

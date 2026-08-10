@@ -7,7 +7,11 @@ from django.shortcuts import render
 
 from catalog.models import Machine, Product, ProductionUnit, StoppageReason
 from planning.models import WeeklyPlan
-from production.models import FittingProduction, PipeProduction, ProductionStoppage
+from production.models import (
+    PipeProduction,
+    ProductionDayEntry,
+    ProductionStoppage,
+)
 
 from .exports import export_excel, export_pdf
 
@@ -61,7 +65,7 @@ def _parse_jdate(value: str):
 
 @login_required
 def dashboard(request):
-    fitting_qs = FittingProduction.objects.all()
+    fitting_qs = ProductionDayEntry.objects.all()
     pipe_qs = PipeProduction.objects.all()
 
     fitting_produced = fitting_qs.aggregate(t=Sum("produced_quantity"))["t"] or 0
@@ -78,14 +82,14 @@ def dashboard(request):
 
     # Production by unit (fittings) for a simple bar chart.
     by_unit = (
-        fitting_qs.values("unit__number")
+        fitting_qs.values("program__item__machine__unit__number")
         .annotate(total=Sum("produced_quantity"))
-        .order_by("unit__number")
+        .order_by("program__item__machine__unit__number")
     )
     unit_max = max((row["total"] or 0 for row in by_unit), default=0)
     unit_bars = [
         {
-            "label": f"واحد {row['unit__number']}",
+            "label": f"واحد {row['program__item__machine__unit__number']}",
             "value": row["total"] or 0,
             "pct": round((row["total"] or 0) / unit_max * 100) if unit_max else 0,
         }
@@ -122,7 +126,9 @@ def dashboard(request):
         ).count(),
         "unit_bars": unit_bars,
         "reason_bars": reason_bars,
-        "recent_fittings": fitting_qs.select_related("unit", "machine", "product")[:6],
+        "recent_fittings": fitting_qs.select_related(
+            "program__item__product", "program__item__machine__unit"
+        )[:6],
     }
     return render(request, "dashboard.html", context)
 
@@ -131,19 +137,30 @@ def _dev_reason(r):
     return r.deviation_reason.label if r.deviation_reason_id else ""
 
 
-# Report columns: (key, label, getter). Users pick which to display.
+def _fit_material_used(r):
+    w = r.program.item.product.unit_weight_grams or 0
+    return round(float(w) * r.produced_quantity * r.active_cavities / 1000, 2)
+
+
+def _fit_material_scrap(r):
+    w = r.program.item.product.unit_weight_grams or 0
+    return round(float(w) * r.scrap_quantity * r.active_cavities / 1000, 2)
+
+
+# Fitting report reads plan-driven day entries. (key, label, getter)
 FITTING_COLUMNS = [
+    ("uid", "شناسه برنامه", lambda r: r.program.item.uid),
     ("date", "تاریخ", lambda r: str(r.date)),
-    ("unit", "واحد", lambda r: f"واحد {r.unit.number}"),
-    ("machine", "دستگاه", lambda r: str(r.machine.number)),
-    ("code", "کد کالا", lambda r: r.product.code),
-    ("product", "نام محصول", lambda r: r.product.name),
-    ("shot_cycle", "سیکل یک‌ضرب", lambda r: r.shot_cycle),
-    ("produced", "تولیدشده", lambda r: r.produced_quantity),
-    ("planned", "برنامه‌ریزی‌شده", lambda r: r.planned_quantity),
+    ("machine", "دستگاه/واحد", lambda r: r.program.machine_label),
+    ("code", "کد کالا", lambda r: r.program.item.product.code),
+    ("product", "نام محصول", lambda r: r.program.item.product.name),
+    ("cycle", "سیکل یک‌ضرب", lambda r: r.cycle),
+    ("cavities", "حفره فعال", lambda r: r.active_cavities),
+    ("produced", "تولیدشده (ضرب)", lambda r: r.produced_quantity),
+    ("planned", "برنامه‌ریزی‌شده (ضرب)", lambda r: r.planned_quantity),
     ("scrap", "ضایعات", lambda r: r.scrap_quantity),
-    ("material_used", "مواد مصرفی (kg)", lambda r: r.material_used),
-    ("material_scrap", "مواد ضایعاتی (kg)", lambda r: r.material_scrap),
+    ("material_used", "مواد مصرفی (kg)", _fit_material_used),
+    ("material_scrap", "مواد ضایعاتی (kg)", _fit_material_scrap),
     ("deviation", "انحراف", lambda r: r.deviation),
     ("deviation_reason", "دلیل انحراف", _dev_reason),
 ]
@@ -177,18 +194,20 @@ def reports(request):
         qs = PipeProduction.objects.select_related("unit", "line", "product", "deviation_reason").all()
         if keyword:
             qs = qs.filter(pipe_type__icontains=keyword)
+        if unit_id:
+            qs = qs.filter(unit_id=unit_id)
         columns = PIPE_COLUMNS
     else:
         report_type = "fitting"
-        qs = FittingProduction.objects.select_related(
-            "unit", "machine", "product", "deviation_reason"
+        qs = ProductionDayEntry.objects.select_related(
+            "program__item__product", "program__item__machine__unit", "deviation_reason"
         ).all()
         if keyword:
-            qs = qs.filter(product__name__icontains=keyword)
+            qs = qs.filter(program__item__product__name__icontains=keyword)
+        if unit_id:
+            qs = qs.filter(program__item__machine__unit_id=unit_id)
         columns = FITTING_COLUMNS
 
-    if unit_id:
-        qs = qs.filter(unit_id=unit_id)
     if date_from:
         qs = qs.filter(date__gte=date_from)
     if date_to:

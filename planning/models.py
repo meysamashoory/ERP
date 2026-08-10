@@ -1,10 +1,17 @@
 """Weekly production planning for fittings, with a manager-approval workflow."""
 
+import secrets
+
 from django.conf import settings
 from django.db import models
 from django_jalali.db import models as jmodels
 
 from catalog.models import Machine, Product, ProductionTypeOption, ProductionUnit, ProductSubGroup
+
+
+def generate_program_uid() -> str:
+    """A short, unique, human-referable id for a production program."""
+    return secrets.token_hex(4).upper()  # e.g. "9F3A2B10"
 
 
 PERSIAN_WEEKDAYS = [
@@ -99,6 +106,13 @@ class WeeklyPlanItem(models.Model):
     )
     mold_change_date = jmodels.jDateField("تاریخ تعویض قالب")
     active_cavities = models.PositiveSmallIntegerField("تعداد حفره فعال", default=1)
+
+    uid = models.CharField(
+        "شناسه برنامه", max_length=16, unique=True, default=generate_program_uid,
+        editable=False, db_index=True,
+    )
+    # Sequence position on the same machine within a plan (1 = تولید اول, ...).
+    sequence = models.PositiveSmallIntegerField("ترتیب روی دستگاه", default=1)
 
     history_alarm = models.BooleanField(default=False)
 

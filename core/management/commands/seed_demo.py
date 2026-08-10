@@ -21,6 +21,7 @@ from catalog.models import (
     ProductSubGroup,
     ProductionTypeOption,
     ProductionUnit,
+    ProgramChangeReason,
     StoppageReason,
 )
 from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, Weekday
@@ -43,6 +44,11 @@ STOPPAGE_REASONS = [
 DEVIATION_REASONS = [
     "تعویض قالب", "راه‌اندازی قالب", "کمبود مواد", "برنامه‌ریزی مجدد",
     "توقف اضطراری", "افزایش حفره فعال", "کاهش حفره فعال", "سایر موارد",
+]
+
+PROGRAM_CHANGE_REASONS = [
+    "تغییر دستگاه", "ایراد فنی", "ایراد کیفی", "کمبود مواد",
+    "اولویت تولید", "سایر موارد",
 ]
 
 # group name -> (kind, [subgroups])
@@ -92,6 +98,8 @@ class Command(BaseCommand):
             StoppageReason.objects.get_or_create(label=label, defaults={"order": i})
         for i, label in enumerate(DEVIATION_REASONS):
             DeviationReason.objects.get_or_create(label=label, defaults={"order": i})
+        for i, label in enumerate(PROGRAM_CHANGE_REASONS):
+            ProgramChangeReason.objects.get_or_create(label=label, defaults={"order": i})
 
     def _seed_units_and_machines(self):
         specs = {
@@ -240,3 +248,32 @@ class Command(BaseCommand):
         )
         ptype = ProductionTypeOption.objects.filter(label="پروتکت").first()
         WeeklyPlanLine.objects.create(item=item, production_type=ptype, quantity=5000, cycle=30)
+
+        # An approved, running demo program with a day of stats (mirrors the
+        # spec example: دستگاه 2 واحد 2، زانو ۱۱۰ پروتکت، سیکل ۴۲).
+        from datetime import time as _time
+
+        from production.models import ProductionDayEntry, ProductionProgram
+
+        unit2 = units[2]
+        m2 = Machine.objects.filter(unit=unit2, machine_type="injection").order_by("id")[1]
+        approved = WeeklyPlan.objects.create(
+            program_number="BP-1000", date=today, status=WeeklyPlan.Status.APPROVED,
+            created_by=admin, approved_by=admin,
+        )
+        item2 = WeeklyPlanItem.objects.create(
+            plan=approved, subgroup=subgroups[("اتصالات فاضلابی", "پوش‌فیت پروتکت")],
+            unit=unit2, machine=m2, product=products["F-PRT110"],
+            mold_change_weekday=Weekday.SHANBE, mold_change_date=today,
+            active_cavities=4, sequence=1,
+        )
+        WeeklyPlanLine.objects.create(item=item2, production_type=ptype, quantity=6000, cycle=42)
+        program = ProductionProgram.objects.create(
+            item=item2, status=ProductionProgram.Status.RUNNING, change_type="setup",
+            production_type=1, start_date=today, start_time=_time(9, 0),
+        )
+        ProductionDayEntry.objects.create(
+            program=program, date=today, produced_quantity=1800, scrap_quantity=40,
+            cycle=42, active_cavities=4,
+            deviation_reason=DeviationReason.objects.filter(label="تعویض قالب").first(),
+        )

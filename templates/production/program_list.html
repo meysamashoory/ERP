@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}برنامه‌های تولید{% endblock %}
+{% block heading %}برنامه‌های تولید — تعیین وضعیت{% endblock %}
+{% block nav_programs %}active{% endblock %}
+
+{% block content %}
+<div class="panel">
+  {% if rows %}
+  <table class="table">
+    <thead><tr>
+      <th>شناسه</th><th>شماره برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
+      <th>ترتیب</th><th>وضعیت</th><th>تولید/برنامه</th><th>تعیین وضعیت</th>
+    </tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.program.item.uid }}</td>
+        <td>{{ row.program.item.plan.program_number }}</td>
+        <td>{{ row.program.machine_label }}</td>
+        <td>{{ row.program.item.product.code }}</td>
+        <td>{{ row.program.item.product.name }}</td>
+        <td class="num">{{ row.program.item.sequence }}{% if row.program.item.sequence == 1 %} (اول){% elif row.program.item.sequence == 2 %} (دوم){% endif %}</td>
+        <td><span class="badge status-{{ row.program.status }}">{{ row.program.get_status_display }}</span></td>
+        <td class="num">{{ row.totals.produced }} / {{ row.totals.planned }}</td>
+        <td class="row-actions">
+          {% if profile.can_enter_data %}
+            {% if row.program.status == 'finished' %}
+              <span class="muted">اتمام تولید</span>
+              {% if profile.is_manager %}
+              <form method="post" action="{% url 'program_status' row.program.pk %}" class="inline-form">
+                {% csrf_token %}<input type="hidden" name="action" value="reopen">
+                <button class="btn btn-sm btn-ghost" type="submit">بازگشایی (مدیر)</button>
+              </form>
+              {% endif %}
+            {% else %}
+              <a class="btn btn-sm" href="{% url 'program_status' row.program.pk %}">تعیین وضعیت</a>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">برنامه‌ای تأیید نشده است. پس از تأیید برنامه هفتگی، کالاها اینجا ظاهر می‌شوند.</p>{% endif %}
+</div>
+{% endblock %}

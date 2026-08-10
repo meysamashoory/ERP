@@ -190,6 +190,114 @@ class PipeProductionForm(_ProductionFormBase):
         return cleaned
 
 
+def time_input(label):
+    return forms.TimeField(
+        label=label,
+        widget=forms.TimeInput(attrs={"type": "time", "class": "input"}, format="%H:%M"),
+        input_formats=["%H:%M", "%H:%M:%S"],
+    )
+
+
+class ProgramStartForm(forms.Form):
+    """«تعیین وضعیت» — initial راه‌اندازی/تغییر برنامه transition."""
+
+    change_type = forms.ChoiceField(
+        label="تغییر برنامه", choices=[
+            ("setup", "راه‌اندازی"), ("change", "تغییر برنامه"),
+        ], widget=combo({"data-role": "change-type"}),
+    )
+    change_reason = forms.ModelChoiceField(
+        queryset=None, required=False, label="دلیل تغییر برنامه",
+        widget=combo({"data-role": "change-reason"}), empty_label="—",
+    )
+    production_type = forms.ChoiceField(label="نوع تولید", choices=[], widget=combo())
+    start_date = jdate_field("تاریخ شروع")
+    start_time = time_input("ساعت شروع")
+
+    def __init__(self, *args, program=None, **kwargs):
+        from catalog.models import ProgramChangeReason
+        super().__init__(*args, **kwargs)
+        self.program = program
+        self.fields["change_reason"].queryset = ProgramChangeReason.objects.filter(is_active=True)
+        choices = []
+        lines = list(program.item.lines.all()) if program else []
+        labels = ["نوع اول", "نوع دوم", "نوع سوم", "نوع چهارم"]
+        for i, ln in enumerate(lines):
+            choices.append((str(i + 1), f"{labels[i] if i < len(labels) else i+1}: {ln.production_type} (سیکل {ln.cycle})"))
+        if not choices:
+            choices = [("1", "نوع اول")]
+        self.fields["production_type"].choices = choices
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("change_type") == "change" and not cleaned.get("change_reason"):
+            self.add_error("change_reason", "برای «تغییر برنامه» انتخاب دلیل الزامی است.")
+        return cleaned
+
+
+class ProgramStopForm(forms.Form):
+    """توقف موقت / اتمام تولید transition."""
+
+    stop_date = jdate_field("تاریخ")
+    stop_time = time_input("ساعت")
+
+
+class DayEntryForm(forms.ModelForm):
+    from .models import ProductionDayEntry as _PDE
+
+    date = jdate_field("تاریخ")
+
+    class Meta:
+        from .models import ProductionDayEntry
+        model = ProductionDayEntry
+        fields = ["date", "produced_quantity", "scrap_quantity", "cycle",
+                  "active_cavities", "deviation_reason", "description"]
+        widgets = {
+            "deviation_reason": combo(),
+            "description": forms.Textarea(attrs={"class": "input", "rows": 2}),
+        }
+
+    def __init__(self, *args, program=None, **kwargs):
+        from catalog.models import DeviationReason
+        super().__init__(*args, **kwargs)
+        self.program = program
+        self.fields["deviation_reason"].queryset = DeviationReason.objects.filter(is_active=True)
+        self.fields["deviation_reason"].required = False
+        self.fields["deviation_reason"].empty_label = "—"
+        if program and not self.instance.pk:
+            self.fields["cycle"].initial = program.default_cycle
+            self.fields["active_cavities"].initial = program.item.active_cavities
+        for f in self.fields.values():
+            f.widget.attrs.setdefault("class", "input")
+
+    def clean_date(self):
+        d = self.cleaned_data["date"]
+        prog = self.program
+        if prog and prog.start_date and d < prog.start_date:
+            raise forms.ValidationError("تاریخ ثبت نمی‌تواند قبل از تاریخ راه‌اندازی باشد.")
+        qs = prog.entries.filter(date=d) if prog else self._meta.model.objects.none()
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError("برای این تاریخ قبلاً آمار ثبت شده است.")
+        return d
+
+    def clean(self):
+        cleaned = super().clean()
+        # If produced differs from the planned (shift-based) amount, require a reason.
+        from .timeutils import day_active_seconds, expected_shots
+        prog = self.program
+        d = cleaned.get("date")
+        cycle = cleaned.get("cycle") or 0
+        produced = cleaned.get("produced_quantity")
+        if prog and d and cycle and produced is not None:
+            secs = day_active_seconds(prog.start_datetime(), prog.stop_datetime(), d)
+            planned = expected_shots(secs, cycle)
+            if planned != produced and not cleaned.get("deviation_reason"):
+                self.add_error("deviation_reason", "به دلیل انحراف از برنامه، انتخاب دلیل الزامی است.")
+        return cleaned
+
+
 def pipe_field_map() -> dict:
     """Map each pipe subgroup id -> list of relevant field names (for the UI).
 

@@ -8,6 +8,7 @@ from .models import (
     ProductSubGroup,
     ProductionTypeOption,
     ProductionUnit,
+    ProgramChangeReason,
     StoppageReason,
 )
 
@@ -96,5 +97,11 @@ class StoppageReasonAdmin(admin.ModelAdmin):
 
 @admin.register(DeviationReason)
 class DeviationReasonAdmin(admin.ModelAdmin):
+    list_display = ("label", "order", "is_active")
+    list_editable = ("order", "is_active")
+
+
+@admin.register(ProgramChangeReason)
+class ProgramChangeReasonAdmin(admin.ModelAdmin):
     list_display = ("label", "order", "is_active")
     list_editable = ("order", "is_active")

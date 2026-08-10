@@ -4,44 +4,44 @@
 {% block nav_production %}active{% endblock %}
 
 {% block content %}
-<div class="page-head">
-  <h1>تولیدات ثبت‌شده</h1>
-  {% if profile.can_enter_data %}
-  <div>
-    <a class="btn" href="{% url 'fitting_create' %}">+ ثبت تولید اتصالات</a>
-    <a class="btn" href="{% url 'pipe_create' %}">+ ثبت تولید لوله</a>
-  </div>
-  {% endif %}
-</div>
-
 <div class="panel">
-  <div class="panel-head"><h2>اتصالات (عددی)</h2></div>
-  {% if fittings %}
+  <div class="panel-head"><h2>کالاهای در حال تولید (از برنامه‌های تأییدشده)</h2></div>
+  {% if programs %}
   <table class="table">
-    <thead><tr><th>تاریخ</th><th>واحد</th><th>دستگاه</th><th>کد کالا</th><th>نام محصول</th><th>سیکل یک‌ضرب</th><th>تولید</th><th>برنامه</th><th>ضایعات</th><th>انحراف</th><th></th></tr></thead>
+    <thead><tr>
+      <th>شناسه برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
+      <th>وضعیت</th><th>تولید</th><th>برنامه</th><th>انحراف</th><th>عملیات</th>
+    </tr></thead>
     <tbody>
-      {% for r in fittings %}
+      {% for row in programs %}
       <tr>
-        <td class="num">{{ r.date }}</td>
-        <td>واحد {{ r.unit.number }}</td>
-        <td>{{ r.machine.number }}</td>
-        <td>{{ r.product.code }}</td>
-        <td>{{ r.product.name }}</td>
-        <td class="num">{{ r.shot_cycle }}</td>
-        <td class="num">{{ r.produced_quantity }}</td>
-        <td class="num">{{ r.planned_quantity }}</td>
-        <td class="num">{{ r.scrap_quantity }}</td>
-        <td class="num">{{ r.deviation }}</td>
-        <td class="row-actions">{% if r.can_edit %}<a class="link-edit" href="{% url 'fitting_edit' r.pk %}">ویرایش</a>{% endif %}</td>
+        <td>{{ row.program.item.uid }}</td>
+        <td>{{ row.program.machine_label }}</td>
+        <td>{{ row.program.item.product.code }}</td>
+        <td>{{ row.program.item.product.name }}</td>
+        <td><span class="badge status-{{ row.program.status }}">{{ row.program.get_status_display }}</span></td>
+        <td class="num">{{ row.totals.produced }}</td>
+        <td class="num">{{ row.totals.planned }}</td>
+        <td class="num">{{ row.totals.deviation }}</td>
+        <td class="row-actions">
+          {% if row.program.status == 'running' and profile.can_enter_data %}
+            <a class="link-edit" href="{% url 'entry_create' row.program.pk %}">ثبت آمار روز</a>
+          {% elif row.program.status == 'temp_stop' %}
+            <span class="muted">توقف موقت</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="empty">تولید اتصالاتی ثبت نشده است.</p>{% endif %}
+  {% else %}<p class="empty">کالای در حال تولیدی وجود ندارد. ابتدا در «برنامه‌های تولید»، وضعیت را راه‌اندازی کنید.</p>{% endif %}
 </div>
 
 <div class="panel">
-  <div class="panel-head"><h2>لوله‌ها (شاخه/کلاف/متر)</h2></div>
+  <div class="panel-head">
+    <h2>تولید لوله‌ها</h2>
+    {% if profile.can_enter_data %}<a class="btn btn-sm" href="{% url 'pipe_create' %}">+ ثبت تولید لوله</a>{% endif %}
+  </div>
   {% if pipes %}
   <table class="table">
     <thead><tr><th>تاریخ</th><th>واحد</th><th>خط</th><th>نوع</th><th>کد کالا</th><th>نام محصول</th><th>تولید</th><th>برنامه</th><th>انحراف</th><th></th></tr></thead>

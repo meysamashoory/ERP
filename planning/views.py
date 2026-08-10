@@ -95,6 +95,9 @@ def item_save(request, pk):
         item.plan = plan
         has_history = FittingProduction.objects.filter(machine=item.machine).exists()
         item.history_alarm = not has_history
+        if instance is None:
+            # Sequence position among items on the same machine in this plan.
+            item.sequence = plan.items.filter(machine=item.machine).count() + 1
         item.save()
         formset = WeeklyPlanLineFormSet(request.POST, instance=item, prefix="lines")
         if formset.is_valid():
@@ -137,6 +140,10 @@ def plan_set_status(request, pk):
         plan.status = WeeklyPlan.Status.APPROVED
         plan.approved_by = request.user
         plan.approved_at = timezone.now()
+        # Create an execution program (وضعیت: در انتظار تولید) for each کالا.
+        from production.models import ProductionProgram
+        for item in plan.items.all():
+            ProductionProgram.objects.get_or_create(item=item)
         messages.success(request, f"برنامه {plan.program_number} تأیید شد.")
     else:
         plan.status = WeeklyPlan.Status.DRAFT

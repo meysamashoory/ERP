@@ -198,3 +198,19 @@ class DeviationReason(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+
+class ProgramChangeReason(models.Model):
+    """Editable list backing the «دلیل تغییر برنامه» dropdowns."""
+
+    label = models.CharField("عنوان", max_length=120, unique=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
+
+    class Meta:
+        ordering = ["order", "label"]
+        verbose_name = "دلیل تغییر برنامه"
+        verbose_name_plural = "دلایل تغییر برنامه"
+
+    def __str__(self) -> str:
+        return self.label

@@ -185,6 +185,139 @@ class PipeProduction(BaseProduction):
         super().save(*args, **kwargs)
 
 
+class ProductionProgram(models.Model):
+    """Execution state of one approved weekly-plan item (a mold-change program).
+
+    Created when its plan is approved; driven through its lifecycle by the
+    «تعیین وضعیت» control.
+    """
+
+    class Status(models.TextChoices):
+        AWAITING = "awaiting", "در انتظار تولید"
+        RUNNING = "running", "در حال تولید"
+        TEMP_STOP = "temp_stop", "توقف موقت"
+        FINISHED = "finished", "اتمام تولید"
+
+    class ChangeType(models.TextChoices):
+        SETUP = "setup", "راه‌اندازی"
+        CHANGE = "change", "تغییر برنامه"
+
+    item = models.OneToOneField(
+        "planning.WeeklyPlanItem", on_delete=models.CASCADE, related_name="program"
+    )
+    status = models.CharField(
+        "وضعیت", max_length=12, choices=Status.choices, default=Status.AWAITING
+    )
+    change_type = models.CharField(
+        "نوع شروع", max_length=8, choices=ChangeType.choices, blank=True
+    )
+    change_reason = models.ForeignKey(
+        "catalog.ProgramChangeReason", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="دلیل تغییر برنامه",
+    )
+    # Which production line (نوع تولید) is being run: 1 = نوع اول, 2 = نوع دوم.
+    production_type = models.PositiveSmallIntegerField("نوع تولید", default=1)
+
+    start_date = jmodels.jDateField("تاریخ شروع", null=True, blank=True)
+    start_time = models.TimeField("ساعت شروع", null=True, blank=True)
+    stop_date = jmodels.jDateField("تاریخ پایان/توقف", null=True, blank=True)
+    stop_time = models.TimeField("ساعت پایان/توقف", null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "برنامه تولید"
+        verbose_name_plural = "برنامه‌های تولید"
+
+    def __str__(self) -> str:
+        return f"{self.item.uid} — {self.item.product.name}"
+
+    # --- helpers -------------------------------------------------------
+    @property
+    def line(self):
+        """The WeeklyPlanLine for the selected production_type (1-based)."""
+        lines = list(self.item.lines.all())
+        idx = (self.production_type or 1) - 1
+        return lines[idx] if 0 <= idx < len(lines) else (lines[0] if lines else None)
+
+    @property
+    def default_cycle(self) -> int:
+        line = self.line
+        return int(line.cycle) if line and line.cycle else int(self.item.product.last_cycle or 0)
+
+    @property
+    def machine_label(self) -> str:
+        m = self.item.machine
+        return f"دستگاه {m.number} واحد {m.unit.number}"
+
+    def start_datetime(self):
+        if self.start_date and self.start_time:
+            from .timeutils import to_gregorian
+            return to_gregorian(self.start_date, self.start_time)
+        return None
+
+    def stop_datetime(self):
+        if self.stop_date and self.stop_time:
+            from .timeutils import to_gregorian
+            return to_gregorian(self.stop_date, self.stop_time)
+        return None
+
+
+class ProductionDayEntry(models.Model):
+    """Recorded production statistics for one full work-day of a program."""
+
+    program = models.ForeignKey(
+        ProductionProgram, on_delete=models.CASCADE, related_name="entries",
+        verbose_name="برنامه تولید",
+    )
+    date = jmodels.jDateField("تاریخ")
+    produced_quantity = models.PositiveIntegerField("مقدار تولیدشده (ضرب)", default=0)
+    scrap_quantity = models.PositiveIntegerField("مقدار ضایعات", default=0)
+    cycle = models.PositiveIntegerField("سیکل یک‌ضرب (ثانیه)", default=0)
+    active_cavities = models.PositiveSmallIntegerField("تعداد حفره فعال", default=1)
+
+    # Denormalised, computed on save from the shift/time model.
+    planned_quantity = models.PositiveIntegerField("مقدار برنامه‌ریزی‌شده (ضرب)", default=0)
+    active_seconds = models.PositiveIntegerField("زمان فعال (ثانیه)", default=0)
+
+    deviation_reason = models.ForeignKey(
+        "catalog.DeviationReason", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="دلیل انحراف",
+    )
+    description = models.TextField("توضیحات", blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date"]
+        unique_together = ("program", "date")
+        verbose_name = "آمار تولید روزانه"
+        verbose_name_plural = "آمار تولید روزانه"
+
+    def __str__(self) -> str:
+        return f"{self.program.item.uid} — {self.date}"
+
+    @property
+    def deviation(self) -> int:
+        """Planned minus produced (positive means production is behind plan)."""
+        return self.planned_quantity - self.produced_quantity
+
+    def recompute(self):
+        from .timeutils import day_active_seconds, expected_shots
+        start = self.program.start_datetime()
+        stop = self.program.stop_datetime()
+        self.active_seconds = day_active_seconds(start, stop, self.date)
+        self.planned_quantity = expected_shots(self.active_seconds, self.cycle)
+
+    def save(self, *args, **kwargs):
+        self.recompute()
+        super().save(*args, **kwargs)
+
+
 class ProductionStoppage(models.Model):
     """A stoppage attached to a fitting or pipe production record."""
 

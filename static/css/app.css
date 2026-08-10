@@ -71,7 +71,7 @@ a { color: var(--brand); }
 .user-name { font-weight: 600; }
 .inline-form { display: inline; margin: 0; }
 
-.content { padding: 26px; max-width: 1200px; width: 100%; }
+.content { padding: 26px; max-width: 1500px; width: 100%; }
 
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
 .page-head h1 { margin: 0; font-size: 22px; }
@@ -126,6 +126,10 @@ a { color: var(--brand); }
 .badge-pending, .badge.status-pending { background: #fef3c7; color: #b45309; }
 .badge-draft, .badge.status-draft { background: #f1f5f9; color: #475569; }
 .badge-rejected, .badge.status-rejected { background: #fee2e2; color: #b91c1c; }
+.badge.status-awaiting { background: #e2e8f0; color: #334155; }
+.badge.status-running { background: #dbeafe; color: #1d4ed8; }
+.badge.status-temp_stop { background: #fef3c7; color: #b45309; }
+.badge.status-finished { background: #dcfce7; color: #15803d; }
 
 .alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; }
 .alert-success { background: #dcfce7; color: #166534; }
@@ -133,8 +137,14 @@ a { color: var(--brand); }
 .alert-warning { background: var(--warn-bg); color: var(--warn); }
 .alert-info { background: #dbeafe; color: #1e40af; }
 
-form .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 18px; }
+form .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 18px; }
+@media (max-width: 1100px) { form .form-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 800px) { form .form-grid { grid-template-columns: 1fr 1fr; } }
+
+/* Manual number entry: hide the up/down spinner arrows */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .field label { font-size: 13px; font-weight: 600; color: #334155; }
 .field .helptext { font-size: 12px; color: var(--muted); }
@@ -172,6 +182,11 @@ form .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 1
 .ts-dropdown { border: 1px solid var(--line); border-radius: 9px; font-size: 14px; }
 .ts-dropdown .active { background: #eef2ff; color: var(--ink); }
 .no-results { padding: 8px 12px; color: var(--muted); }
+/* Keep the combobox on a single line: caret must not wrap under the value
+   (which would widen the field and shift others). */
+.ts-wrapper.single .ts-control { flex-wrap: nowrap; overflow: hidden; }
+.ts-wrapper.single .ts-control > .item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ts-control > input { flex: 1 1 auto; min-width: 4ch !important; }
 
 /* Jalali datepicker above sticky bars */
 .jdp-container { z-index: 50 !important; }
