@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     DeviationReason,
     Machine,
+    MoldOption,
     Product,
     ProductGroup,
     ProductSubGroup,
@@ -103,5 +104,11 @@ class DeviationReasonAdmin(admin.ModelAdmin):
 
 @admin.register(ProgramChangeReason)
 class ProgramChangeReasonAdmin(admin.ModelAdmin):
+    list_display = ("label", "order", "is_active")
+    list_editable = ("order", "is_active")
+
+
+@admin.register(MoldOption)
+class MoldOptionAdmin(admin.ModelAdmin):
     list_display = ("label", "order", "is_active")
     list_editable = ("order", "is_active")

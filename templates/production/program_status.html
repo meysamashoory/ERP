@@ -1,71 +1,12 @@
 {% extends "base.html" %}
 {% block title %}تعیین وضعیت{% endblock %}
-{% block heading %}تعیین وضعیت — {{ program.item.product.name }}{% endblock %}
+{% block heading %}تعیین وضعیت{% endblock %}
 {% block nav_programs %}active{% endblock %}
 
 {% block content %}
 <div class="panel" style="max-width:720px">
-  <div class="panel-head">
-    <h2>{{ program.machine_label }} — کد {{ program.item.product.code }} (شناسه {{ program.item.uid }})</h2>
-    <span class="badge status-{{ program.status }}">{{ program.get_status_display }}</span>
-  </div>
   <div class="panel-body">
-
-    {% if phase == 'start' %}
-    <p class="muted" style="margin-top:0">برای آغاز تولید، نوع شروع و زمان را مشخص کنید.</p>
-    <form method="post" action="{% url 'program_status' program.pk %}">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="start">
-      <div class="form-grid">
-        {% include "partials/form_fields.html" with form=form %}
-      </div>
-      <div class="form-actions"><button class="btn" type="submit">ثبت</button>
-        <a class="btn btn-ghost" href="{% url 'program_list' %}">انصراف</a></div>
-    </form>
-
-    {% elif phase == 'stop' %}
-    <p class="muted" style="margin-top:0">
-      تاریخ و ساعت را مشخص کنید. «توقف موقت» یعنی اتمام آمار فعلی (بعداً قابل ازسرگیری)، و
-      «اتمام تولید» یعنی توقف کامل و تعویض قالب (بستن پرونده).
-    </p>
-    <form method="post" action="{% url 'program_status' program.pk %}">
-      {% csrf_token %}
-      <div class="form-grid">
-        {% include "partials/form_fields.html" with form=form %}
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-ghost" type="submit" name="action" value="temp_stop">توقف موقت</button>
-        <button class="btn btn-danger" type="submit" name="action" value="finish">اتمام تولید</button>
-        {% if program.status == 'temp_stop' %}
-        <button class="btn btn-ok" type="submit" name="action" value="resume">ازسرگیری تولید</button>
-        {% endif %}
-        <a class="btn btn-ghost" href="{% url 'program_list' %}">انصراف</a>
-      </div>
-    </form>
-
-    {% else %}
-    <p class="muted">این برنامه به «اتمام تولید» رسیده و بسته شده است. تنها مدیر می‌تواند آن را بازگشایی کند.</p>
-    <a class="btn btn-ghost" href="{% url 'program_list' %}">بازگشت</a>
-    {% endif %}
+    {% include "production/_status_dialog.html" %}
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function () {
-  // Show «دلیل تغییر برنامه» only when «تغییر برنامه» is selected.
-  var ct = document.querySelector('[data-role="change-type"]');
-  var cr = document.querySelector('[data-role="change-reason"]');
-  if (!ct || !cr) return;
-  var wrap = cr.closest('.field');
-  function sync() {
-    var v = ct.tomselect ? ct.tomselect.getValue() : ct.value;
-    if (wrap) wrap.style.display = (v === 'change') ? '' : 'none';
-  }
-  var ts = ct.tomselect;
-  if (ts) ts.on('change', sync); else ct.addEventListener('change', sync);
-  sync();
-})();
-</script>
 {% endblock %}

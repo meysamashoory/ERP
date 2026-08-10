@@ -47,6 +47,23 @@ def _can_edit_plan(profile, plan):
 
 
 @login_required
+def plan_edit(request, pk):
+    """Inline edit of a plan's program number and date."""
+    plan = get_object_or_404(WeeklyPlan, pk=pk)
+    profile = get_profile(request.user)
+    if not profile or not profile.can_create_plans:
+        raise PermissionDenied("اجازه ویرایش برنامه ندارید.")
+    if request.method == "POST":
+        form = WeeklyPlanForm(request.POST, instance=plan)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "شماره و تاریخ برنامه به‌روزرسانی شد.")
+        else:
+            messages.error(request, "مقادیر واردشده معتبر نیست.")
+    return redirect("plan_detail", pk=pk)
+
+
+@login_required
 def plan_detail(request, pk):
     plan = get_object_or_404(
         WeeklyPlan.objects.prefetch_related("items__lines", "items__product"), pk=pk
@@ -61,6 +78,7 @@ def plan_detail(request, pk):
 
     item_form = WeeklyPlanItemForm(plan_date=plan.date, instance=editing_item)
     line_formset = WeeklyPlanLineFormSet(instance=editing_item, prefix="lines")
+    edit_form = WeeklyPlanForm(instance=plan)
 
     return render(
         request,
@@ -72,6 +90,7 @@ def plan_detail(request, pk):
             "item_form": item_form,
             "line_formset": line_formset,
             "editing_item": editing_item,
+            "edit_form": edit_form,
         },
     )
 
@@ -102,11 +121,9 @@ def item_save(request, pk):
         formset = WeeklyPlanLineFormSet(request.POST, instance=item, prefix="lines")
         if formset.is_valid():
             formset.save()
+        # Transient warning only (not stored permanently).
         if item.history_alarm:
-            note = f"دستگاه {item.machine} در سوابق تولید ثبت نشده است."
-            plan.alarms = (plan.alarms + "\n" + note).strip() if plan.alarms else note
-            plan.save(update_fields=["alarms"])
-            messages.warning(request, note)
+            messages.warning(request, f"دستگاه {item.machine} در سوابق تولید ثبت نشده است.")
         messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
         return redirect("plan_detail", pk=pk)
 

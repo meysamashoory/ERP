@@ -1,0 +1,37 @@
+{% load static %}
+<div class="dialog-head">
+  <h3>تعیین وضعیت — {{ program.item.product.name }}</h3>
+  <span class="badge status-{{ program.status }}">{{ program.get_status_display }}</span>
+</div>
+<p class="muted">{{ program.machine_label }} · کد {{ program.item.product.code }} · شناسه {{ program.item.uid }}</p>
+
+{% if phase == 'start' %}
+<form method="post" action="{% url 'program_status' program.pk %}">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="start">
+  <div class="form-grid form-grid-2">
+    {% include "partials/form_fields.html" with form=form %}
+  </div>
+  <div class="form-actions">
+    <button class="btn" type="submit">ثبت</button>
+    <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+  </div>
+</form>
+
+{% elif phase == 'status' %}
+<p class="muted">وضعیت جدید را انتخاب کنید؛ «توقف موقت» = اتمام آمار فعلی (قابل ازسرگیری)، «اتمام تولید» = توقف کامل و تعویض قالب.</p>
+<form method="post" action="{% url 'program_status' program.pk %}">
+  {% csrf_token %}
+  <div class="form-grid form-grid-2">
+    {% include "partials/form_fields.html" with form=form %}
+  </div>
+  <div class="form-actions">
+    <button class="btn" type="submit">ثبت تغییرات</button>
+    <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+  </div>
+</form>
+
+{% else %}
+<p class="muted">این برنامه به «اتمام تولید» رسیده و بسته شده است. تنها مدیر می‌تواند آن را بازگشایی کند.</p>
+<div class="form-actions"><button class="btn btn-ghost" type="button" data-dialog-close>بستن</button></div>
+{% endif %}

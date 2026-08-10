@@ -22,6 +22,7 @@ from catalog.models import (
     ProductionTypeOption,
     ProductionUnit,
     ProgramChangeReason,
+    MoldOption,
     StoppageReason,
 )
 from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, Weekday
@@ -50,6 +51,8 @@ PROGRAM_CHANGE_REASONS = [
     "تغییر دستگاه", "ایراد فنی", "ایراد کیفی", "کمبود مواد",
     "اولویت تولید", "سایر موارد",
 ]
+
+MOLD_OPTIONS = ["قالب اصلی", "قالب دوم", "قالب کمکی"]
 
 # group name -> (kind, [subgroups])
 GROUPS = {
@@ -100,6 +103,8 @@ class Command(BaseCommand):
             DeviationReason.objects.get_or_create(label=label, defaults={"order": i})
         for i, label in enumerate(PROGRAM_CHANGE_REASONS):
             ProgramChangeReason.objects.get_or_create(label=label, defaults={"order": i})
+        for i, label in enumerate(MOLD_OPTIONS):
+            MoldOption.objects.get_or_create(label=label, defaults={"order": i})
 
     def _seed_units_and_machines(self):
         specs = {

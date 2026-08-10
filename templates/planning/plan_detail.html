@@ -1,16 +1,33 @@
 {% extends "base.html" %}
 {% block title %}برنامه {{ plan.program_number }}{% endblock %}
-{% block heading %}برنامه هفتگی {{ plan.program_number }}{% endblock %}
+{% block heading %}شماره {{ plan.program_number }} — {{ plan.date }} ({{ plan.weekday_name }}){% endblock %}
 {% block nav_planning %}active{% endblock %}
 
-{% block content %}
-<div class="panel">
-  <div class="panel-head">
-    <h2>شماره {{ plan.program_number }} — {{ plan.date }} ({{ plan.weekday_name }})</h2>
-    <span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span>
-  </div>
-  {% if plan.alarms %}<div class="panel-body"><div class="alarm">⚠ {{ plan.alarms }}</div></div>{% endif %}
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'dashboard' %}">صفحه اصلی</a>
+  {% if profile.can_create_plans %}
+  <button type="button" class="btn btn-sm" id="toggle-plan-edit">ویرایش شماره و تاریخ</button>
+  {% endif %}
+  <span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span>
 </div>
+{% endblock %}
+
+{% block content %}
+{% if profile.can_create_plans %}
+<div class="panel" id="plan-edit-panel" style="display:none">
+  <div class="panel-body">
+    <form method="post" action="{% url 'plan_edit' plan.pk %}" class="inline-edit-form">
+      {% csrf_token %}
+      {% for field in edit_form %}
+      <div class="field"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>
+      {% endfor %}
+      <button class="btn" type="submit">ذخیره</button>
+      <button class="btn btn-ghost" type="button" id="cancel-plan-edit">انصراف</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 {% if editable %}
 <div class="panel">
@@ -85,6 +102,19 @@
 
 {% block scripts %}
 <script>
+(function () {
+  // Inline edit of program number / date.
+  var toggle = document.getElementById("toggle-plan-edit");
+  var panel = document.getElementById("plan-edit-panel");
+  var cancel = document.getElementById("cancel-plan-edit");
+  if (toggle && panel) {
+    toggle.addEventListener("click", function () {
+      panel.style.display = (panel.style.display === "none") ? "" : "none";
+      if (window.ERP) window.ERP.enhance(panel);
+    });
+  }
+  if (cancel && panel) cancel.addEventListener("click", function () { panel.style.display = "none"; });
+})();
 (function () {
   // Dynamic تاریخ تعویض قالب based on the chosen weekday (plan-specific).
   var weekday = document.getElementById("id_mold_change_weekday");

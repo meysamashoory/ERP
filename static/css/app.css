@@ -194,3 +194,23 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Row action links */
 .row-actions a { margin-inline-start: 8px; font-size: 13px; }
 .link-edit { color: var(--brand); text-decoration: none; font-weight: 600; }
+
+/* Tabs (folder-option style) */
+.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.tab { padding: 10px 20px; border: none; background: transparent; cursor: pointer; font-family: inherit; font-size: 14px; color: var(--muted); border-bottom: 3px solid transparent; }
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+
+/* In-page dialog (تعیین وضعیت) */
+dialog.dialog { border: none; border-radius: 14px; padding: 0; width: min(760px, 94vw); box-shadow: 0 24px 64px rgba(0,0,0,.32); }
+dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
+.dialog [data-dialog-body] { padding: 22px; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.dialog-head h3 { margin: 0; font-size: 17px; }
+.form-grid-2 { grid-template-columns: 1fr 1fr !important; }
+@media (max-width: 700px) { .form-grid-2 { grid-template-columns: 1fr !important; } }
+
+/* Inline edit (planning header) */
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.inline-edit-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
+.inline-edit-form .field { margin-bottom: 0; }

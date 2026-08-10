@@ -12,7 +12,7 @@ from .forms import (
     DayEntryForm,
     PipeProductionForm,
     ProgramStartForm,
-    ProgramStopForm,
+    ProgramStatusForm,
     StoppageFormSetPipe,
     pipe_field_map,
 )
@@ -57,24 +57,8 @@ def program_totals(program):
 
 @login_required
 def production_list(request):
-    profile = _profile(request)
-    active = (
-        ProductionProgram.objects.filter(
-            status__in=[ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]
-        )
-        .select_related("item__product", "item__machine__unit")
-        .order_by("item__machine__unit__number", "item__machine__number", "item__sequence")
-    )
-    programs = []
-    for p in active:
-        programs.append({"program": p, "totals": program_totals(p)})
-
-    pipes = PipeProduction.objects.select_related("unit", "line", "product", "created_by")[:50]
-    for rec in pipes:
-        rec.can_edit = bool(profile and profile.can_edit_record(rec))
-
-    return render(request, "production/list.html",
-                  {"programs": programs, "pipes": pipes, "profile": profile})
+    # Daily production is merged into the برنامه‌های تولید hub.
+    return redirect("program_list")
 
 
 @login_required
@@ -138,26 +122,57 @@ def entry_edit(request, pk):
 
 @login_required
 def program_list(request):
+    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes)."""
     profile = _profile(request)
     programs = (
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
         )
-        .order_by("-item__plan__date", "item__machine__unit__number", "item__machine__number", "item__sequence")
+        .order_by("-item__plan__date", "item__machine__unit__number",
+                  "item__machine__number", "item__sequence")
     )
     rows = [{"program": p, "totals": program_totals(p)} for p in programs]
-    return render(request, "production/program_list.html", {"rows": rows, "profile": profile})
+
+    pipes = PipeProduction.objects.select_related("unit", "line", "product", "created_by")[:50]
+    for rec in pipes:
+        rec.can_edit = bool(profile and profile.can_edit_record(rec))
+
+    active_tab = request.GET.get("tab", "injection")
+    return render(request, "production/hub.html",
+                  {"rows": rows, "pipes": pipes, "profile": profile, "active_tab": active_tab})
 
 
-def _earlier_incomplete_on_machine(program):
-    """Return an earlier-sequence program on the same machine that isn't finished."""
-    item = program.item
-    earlier_items = item.plan.items.filter(
-        machine=item.machine, sequence__lt=item.sequence
+ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]
+
+
+def machine_running_conflict(program):
+    """Another program currently RUNNING on the same machine (only one mold at a time)."""
+    return (
+        ProductionProgram.objects.filter(
+            item__machine=program.item.machine, status=ProductionProgram.Status.RUNNING
+        )
+        .exclude(pk=program.pk)
+        .select_related("item__product")
+        .first()
     )
-    return ProductionProgram.objects.filter(
-        item__in=earlier_items
-    ).exclude(status=ProductionProgram.Status.FINISHED).select_related("item").first()
+
+
+def product_mold_conflict(program, mold):
+    """Another active program for the same product with the same mold.
+
+    A product may run on two machines at once only with *different* molds.
+    """
+    qs = (
+        ProductionProgram.objects.filter(
+            item__product=program.item.product, status__in=ACTIVE_STATUSES
+        )
+        .exclude(pk=program.pk)
+        .select_related("item__machine__unit")
+    )
+    for other in qs:
+        if other.mold_id == (mold.id if mold else None):
+            return other
+    return None
 
 
 @login_required
@@ -171,6 +186,8 @@ def program_status(request, pk):
 
     action = request.POST.get("action") or request.GET.get("action") or "auto"
     status = program.status
+    partial = request.GET.get("partial") == "1"
+    base_template = "production/_status_dialog.html" if partial else "production/program_status.html"
 
     # Manager-only re-open of a finished program (ignores the last status).
     if action == "reopen":
@@ -188,17 +205,28 @@ def program_status(request, pk):
         if request.method == "POST":
             form = ProgramStartForm(request.POST, program=program)
             if form.is_valid():
-                blocker = _earlier_incomplete_on_machine(program)
-                if blocker:
+                cd = form.cleaned_data
+                mold = cd.get("mold")
+                machine_conflict = machine_running_conflict(program)
+                if machine_conflict:
                     messages.error(
                         request,
-                        f"ابتدا باید تولید «{blocker.item.product.name}» روی همین دستگاه به «اتمام تولید» برسد.",
+                        f"روی «{program.machine_label}» قالب «{machine_conflict.item.product.name}» "
+                        f"در حال تولید است؛ تا زمان تعیین وضعیت (اتمام آمار) آن، راه‌اندازی قالب جدید ممکن نیست.",
                     )
                     return redirect("program_status", pk=pk)
-                cd = form.cleaned_data
+                prod_conflict = product_mold_conflict(program, mold)
+                if prod_conflict:
+                    messages.error(
+                        request,
+                        f"محصول «{program.item.product.name}» هم‌اکنون روی «{prod_conflict.machine_label}» "
+                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی انتخاب کنید.",
+                    )
+                    return redirect("program_status", pk=pk)
                 program.change_type = cd["change_type"]
                 program.change_reason = cd.get("change_reason")
                 program.production_type = int(cd["production_type"])
+                program.mold = mold
                 program.start_date = cd["start_date"]
                 program.start_time = cd["start_time"]
                 program.status = ProductionProgram.Status.RUNNING
@@ -214,46 +242,47 @@ def program_status(request, pk):
                 "change_type": "setup",
                 "production_type": "1",
             })
-        return render(request, "production/program_status.html",
+        return render(request, base_template,
                       {"program": program, "form": form, "phase": "start"})
 
-    # RUNNING or TEMP_STOP -> can توقف موقت / اتمام تولید (and resume)
+    # RUNNING or TEMP_STOP -> status dropdown (ادامه / توقف موقت / اتمام تولید)
     if status in (ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP):
-        if action == "resume" and status == ProductionProgram.Status.TEMP_STOP and request.method == "POST":
-            program.status = ProductionProgram.Status.RUNNING
-            program.stop_date = None
-            program.stop_time = None
-            program.save()
-            messages.success(request, "تولید از سر گرفته شد.")
-            return redirect("program_list")
-
-        if request.method == "POST" and action in ("temp_stop", "finish"):
-            form = ProgramStopForm(request.POST)
+        if request.method == "POST":
+            form = ProgramStatusForm(request.POST, current=status)
             if form.is_valid():
-                program.stop_date = form.cleaned_data["stop_date"]
-                program.stop_time = form.cleaned_data["stop_time"]
-                program.status = (
-                    ProductionProgram.Status.TEMP_STOP if action == "temp_stop"
-                    else ProductionProgram.Status.FINISHED
-                )
+                new_status = form.cleaned_data["new_status"]
+                if new_status == ProductionProgram.Status.RUNNING:
+                    conflict = machine_running_conflict(program)
+                    if conflict and status == ProductionProgram.Status.TEMP_STOP:
+                        messages.error(
+                            request,
+                            f"روی «{program.machine_label}» قالب دیگری در حال تولید است؛ ازسرگیری ممکن نیست.",
+                        )
+                        return redirect("program_status", pk=pk)
+                    program.status = ProductionProgram.Status.RUNNING
+                    program.stop_date = None
+                    program.stop_time = None
+                else:
+                    program.stop_date = form.cleaned_data["stop_date"]
+                    program.stop_time = form.cleaned_data["stop_time"]
+                    program.status = new_status
                 program.save()
-                # Recompute entries (stop time affects the day windows).
-                for e in program.entries.all():
+                for e in program.entries.all():  # stop time affects day windows
                     e.save()
                 messages.success(request, "وضعیت به‌روزرسانی شد.")
                 return redirect("program_list")
         else:
             import datetime
             import jdatetime
-            form = ProgramStopForm(initial={
+            form = ProgramStatusForm(current=status, initial={
                 "stop_date": jdatetime.date.today(),
                 "stop_time": datetime.datetime.now().strftime("%H:%M"),
             })
-        return render(request, "production/program_status.html",
-                      {"program": program, "form": form, "phase": "stop"})
+        return render(request, base_template,
+                      {"program": program, "form": form, "phase": "status"})
 
     # FINISHED
-    return render(request, "production/program_status.html",
+    return render(request, base_template,
                   {"program": program, "form": None, "phase": "finished"})
 
 

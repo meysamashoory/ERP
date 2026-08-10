@@ -217,6 +217,10 @@ class ProductionProgram(models.Model):
     )
     # Which production line (نوع تولید) is being run: 1 = نوع اول, 2 = نوع دوم.
     production_type = models.PositiveSmallIntegerField("نوع تولید", default=1)
+    mold = models.ForeignKey(
+        "catalog.MoldOption", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="انتخاب قالب",
+    )
 
     start_date = jmodels.jDateField("تاریخ شروع", null=True, blank=True)
     start_time = models.TimeField("ساعت شروع", null=True, blank=True)

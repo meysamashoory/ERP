@@ -214,3 +214,22 @@ class ProgramChangeReason(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+
+class MoldOption(models.Model):
+    """Editable list of mold identifiers («نوع قالب»).
+
+    Lets the same product run on two machines at once with *different* molds.
+    """
+
+    label = models.CharField("عنوان", max_length=120, unique=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("فعال", default=True)
+
+    class Meta:
+        ordering = ["order", "label"]
+        verbose_name = "نوع قالب"
+        verbose_name_plural = "انواع قالب"
+
+    def __str__(self) -> str:
+        return self.label

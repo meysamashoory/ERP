@@ -19,9 +19,8 @@
     {% if user.is_authenticated %}
     <nav class="nav">
       <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">داشبورد</a>
-      <a href="{% url 'production_list' %}" class="{% block nav_production %}{% endblock %}">ثبت تولید روزانه</a>
+      <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">برنامه‌ها و ثبت تولید</a>
       <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
-      <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">برنامه‌های تولید</a>
       <a href="{% url 'reports' %}" class="{% block nav_reports %}{% endblock %}">گزارش‌گیری</a>
       {% if profile.can_manage_users or user.is_superuser %}
       <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
@@ -35,6 +34,7 @@
     <header class="topbar">
       <div class="topbar-title">{% block heading %}{% endblock %}</div>
       <div class="topbar-user">
+        {% block topbar_actions %}
         {% if user.is_authenticated %}
           <span class="user-name">{{ user.get_full_name|default:user.username }}</span>
           {% if profile %}<span class="badge role">{{ profile.get_role_display }}</span>{% endif %}
@@ -44,6 +44,7 @@
         {% else %}
           <a class="btn btn-sm" href="{% url 'login' %}">ورود</a>
         {% endif %}
+        {% endblock %}
       </div>
     </header>
 

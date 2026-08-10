@@ -211,14 +211,19 @@ class ProgramStartForm(forms.Form):
         widget=combo({"data-role": "change-reason"}), empty_label="—",
     )
     production_type = forms.ChoiceField(label="نوع تولید", choices=[], widget=combo())
+    mold = forms.ModelChoiceField(
+        queryset=None, required=False, label="انتخاب قالب",
+        widget=combo(), empty_label="—",
+    )
     start_date = jdate_field("تاریخ شروع")
     start_time = time_input("ساعت شروع")
 
     def __init__(self, *args, program=None, **kwargs):
-        from catalog.models import ProgramChangeReason
+        from catalog.models import MoldOption, ProgramChangeReason
         super().__init__(*args, **kwargs)
         self.program = program
         self.fields["change_reason"].queryset = ProgramChangeReason.objects.filter(is_active=True)
+        self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
         choices = []
         lines = list(program.item.lines.all()) if program else []
         labels = ["نوع اول", "نوع دوم", "نوع سوم", "نوع چهارم"]
@@ -235,11 +240,23 @@ class ProgramStartForm(forms.Form):
         return cleaned
 
 
-class ProgramStopForm(forms.Form):
-    """توقف موقت / اتمام تولید transition."""
+class ProgramStatusForm(forms.Form):
+    """وضعیت (ادامه/توقف موقت/اتمام تولید) as a dropdown, applied on submit."""
 
+    new_status = forms.ChoiceField(label="وضعیت جدید", choices=[], widget=combo())
     stop_date = jdate_field("تاریخ")
     stop_time = time_input("ساعت")
+
+    def __init__(self, *args, current=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if current == "temp_stop":
+            choices = [("running", "ازسرگیری تولید"),
+                       ("finished", "اتمام تولید")]
+        else:  # running
+            choices = [("running", "ادامه تولید"),
+                       ("temp_stop", "توقف موقت"),
+                       ("finished", "اتمام تولید")]
+        self.fields["new_status"].choices = choices
 
 
 class DayEntryForm(forms.ModelForm):
