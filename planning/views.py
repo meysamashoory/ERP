@@ -139,6 +139,7 @@ def item_save(request, pk):
             "item_form": form,
             "line_formset": line_formset,
             "editing_item": instance,
+            "edit_form": WeeklyPlanForm(instance=plan),
         },
     )
 

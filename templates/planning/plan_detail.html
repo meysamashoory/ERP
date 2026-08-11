@@ -5,16 +5,23 @@
 
 {% block topbar_actions %}
 <div class="topbar-actions">
-  <a class="btn btn-sm btn-ghost" href="{% url 'dashboard' %}">صفحه اصلی</a>
-  {% if profile.can_create_plans %}
-  <button type="button" class="btn btn-sm" id="toggle-plan-edit">ویرایش شماره و تاریخ</button>
+  {% if editable %}
+    {% if profile.can_create_plans %}
+    <button type="button" class="btn btn-sm" id="toggle-plan-edit">ویرایش شماره و تاریخ</button>
+    {% endif %}
+    <form method="post" action="{% url 'plan_set_status' plan.pk %}" class="inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="status" value="approved">
+      <input type="hidden" name="next" value="{% url 'plan_list' %}">
+      <button class="btn btn-sm btn-ok" type="submit">ثبت نهایی</button>
+    </form>
   {% endif %}
   <span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span>
 </div>
 {% endblock %}
 
 {% block content %}
-{% if profile.can_create_plans %}
+{% if editable and profile.can_create_plans %}
 <div class="panel" id="plan-edit-panel" style="display:none">
   <div class="panel-body">
     <form method="post" action="{% url 'plan_edit' plan.pk %}" class="inline-edit-form">
@@ -43,7 +50,7 @@
         {% include "partials/form_fields.html" with form=item_form %}
       </div>
 
-      <h3 style="margin:18px 0 8px;font-size:15px">ردیف‌های تولید (نوع تولید / مقدار / سیکل)</h3>
+      <h3 style="margin:18px 0 8px;font-size:15px">ردیف‌های تولید (نوع تولید / قالب / مقدار / سیکل)</h3>
       {{ line_formset.management_form }}
       <div data-formset="lines">
         {% for lform in line_formset %}
@@ -86,7 +93,7 @@
         <td class="num">{{ item.active_cavities }}</td>
         <td>
           {% for line in item.lines.all %}
-            <div>{{ line.production_type }} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
+            <div>{{ line.production_type }}{% if line.mold %} · قالب {{ line.mold }}{% endif %} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
           {% empty %}—{% endfor %}
         </td>
         {% if editable %}

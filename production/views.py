@@ -206,7 +206,11 @@ def program_status(request, pk):
             form = ProgramStartForm(request.POST, program=program)
             if form.is_valid():
                 cd = form.cleaned_data
-                mold = cd.get("mold")
+                production_type = int(cd["production_type"])
+                lines = list(program.item.lines.all())
+                line_idx = production_type - 1
+                line = lines[line_idx] if 0 <= line_idx < len(lines) else None
+                mold = line.mold if line else None
                 machine_conflict = machine_running_conflict(program)
                 if machine_conflict:
                     messages.error(
@@ -220,12 +224,12 @@ def program_status(request, pk):
                     messages.error(
                         request,
                         f"محصول «{program.item.product.name}» هم‌اکنون روی «{prod_conflict.machine_label}» "
-                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی انتخاب کنید.",
+                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی در برنامه‌ریزی انتخاب کنید.",
                     )
                     return redirect("program_status", pk=pk)
                 program.change_type = cd["change_type"]
                 program.change_reason = cd.get("change_reason")
-                program.production_type = int(cd["production_type"])
+                program.production_type = production_type
                 program.mold = mold
                 program.start_date = cd["start_date"]
                 program.start_time = cd["start_time"]

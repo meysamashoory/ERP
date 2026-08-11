@@ -40,9 +40,16 @@ a { color: var(--brand); }
   overflow-y: auto;
   z-index: 30;
 }
-.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; padding: 0 8px; }
-.brand-mark { color: #818cf8; font-size: 22px; }
-.brand-name { font-weight: 700; font-size: 16px; color: #fff; }
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 0 8px; }
+.brand-mark { color: #818cf8; font-size: 22px; flex-shrink: 0; }
+.brand-name { font-weight: 700; font-size: 14px; color: #fff; line-height: 1.45; }
+.sidebar-user {
+  padding: 0 14px 14px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
 .nav { display: flex; flex-direction: column; gap: 4px; }
 .nav a {
   color: #cbd5e1;
@@ -54,6 +61,14 @@ a { color: var(--brand); }
 }
 .nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
 .nav a.active { background: var(--brand); color: #fff; }
+.nav-logout { margin-top: 8px; }
+.nav-logout-btn {
+  display: block; width: 100%; text-align: right;
+  color: #cbd5e1; background: transparent; border: none;
+  padding: 10px 14px; border-radius: 9px;
+  font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer;
+}
+.nav-logout-btn:hover { background: rgba(255,255,255,.06); color: #fff; }
 
 .main { margin-right: 250px; display: flex; flex-direction: column; min-width: 0; min-height: 100vh; }
 .topbar {
@@ -102,7 +117,7 @@ a { color: var(--brand); }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } .sidebar { width: 200px; } }
 
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 20px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: visible; margin-bottom: 20px; }
 .panel-head { padding: 15px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
 .panel-head h2 { margin: 0; font-size: 16px; }
 .panel-body { padding: 18px 20px; }
@@ -169,27 +184,78 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .col-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .chk { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
 .chk input { width: auto; }
-.repeat-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: center; }
+.repeat-row { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr 1fr; gap: 12px; align-items: end; }
+@media (max-width: 900px) {
+  .repeat-row { grid-template-columns: 1fr 1fr; }
+}
 .alarm { background: var(--warn-bg); color: var(--warn); border: 1px solid #fcd34d; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; white-space: pre-line; font-size: 13px; }
 
 /* Row being edited (planning) */
 .row-edit, tr.row-edit td { background: #fef9c3 !important; }
 
-/* Tom Select combobox tweaks (RTL friendly) */
-.ts-wrapper { font-family: inherit; }
-.ts-control { border: 1px solid var(--line) !important; border-radius: 9px !important; min-height: 40px; padding: 6px 12px !important; font-size: 14px; }
-.ts-control:focus-within { border-color: var(--brand) !important; box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
-.ts-dropdown { border: 1px solid var(--line); border-radius: 9px; font-size: 14px; }
+/* Tom Select: match native field size/border; full selected label when idle */
+.ts-wrapper { font-family: inherit; width: 100%; }
+.ts-wrapper.single .ts-control {
+  border: 1px solid var(--line) !important;
+  border-radius: 9px !important;
+  padding: 9px 12px !important;
+  min-height: 0 !important;
+  font-size: 14px;
+  line-height: 1.7;
+  box-shadow: none !important;
+  background: #fff !important;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+}
+.ts-wrapper.single .ts-control:focus-within {
+  border-color: var(--brand) !important;
+  box-shadow: 0 0 0 3px rgba(79,70,229,.12) !important;
+}
+.ts-wrapper.single .ts-control > .item {
+  flex: 1 1 auto;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  max-width: none !important;
+  width: auto !important;
+  line-height: inherit;
+}
+.ts-wrapper.single.focus .ts-control > .item,
+.ts-wrapper.single.input-active .ts-control > .item {
+  display: none;
+}
+.ts-wrapper.single .ts-control > input {
+  flex: 0 0 0 !important;
+  min-width: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0;
+}
+.ts-wrapper.single.focus .ts-control > input,
+.ts-wrapper.single.input-active .ts-control > input {
+  flex: 1 1 auto !important;
+  min-width: 4ch !important;
+  width: auto !important;
+  opacity: 1;
+}
+.ts-dropdown {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 14px;
+  z-index: 100001 !important;
+}
 .ts-dropdown .active { background: #eef2ff; color: var(--ink); }
 .no-results { padding: 8px 12px; color: var(--muted); }
-/* Keep the combobox on a single line: caret must not wrap under the value
-   (which would widen the field and shift others). */
-.ts-wrapper.single .ts-control { flex-wrap: nowrap; overflow: hidden; }
-.ts-wrapper.single .ts-control > .item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ts-control > input { flex: 1 1 auto; min-width: 4ch !important; }
 
-/* Jalali datepicker above sticky bars */
-.jdp-container { z-index: 50 !important; }
+/* Jalali datepicker above sticky bars / inside dialogs */
+jdp-container, .jdp-container { z-index: 100000 !important; }
+jdp-overlay, .jdp-overlay { z-index: 99999 !important; }
+dialog.dialog jdp-container,
+dialog.dialog .jdp-container { z-index: 100000 !important; }
 
 /* Row action links */
 .row-actions a { margin-inline-start: 8px; font-size: 13px; }
@@ -202,9 +268,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
 
 /* In-page dialog (تعیین وضعیت) */
-dialog.dialog { border: none; border-radius: 14px; padding: 0; width: min(760px, 94vw); box-shadow: 0 24px 64px rgba(0,0,0,.32); }
+dialog.dialog { border: none; border-radius: 14px; padding: 0; width: min(760px, 94vw); box-shadow: 0 24px 64px rgba(0,0,0,.32); overflow: visible; }
 dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
-.dialog [data-dialog-body] { padding: 22px; }
+.dialog [data-dialog-body] { padding: 22px; overflow: visible; }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .dialog-head h3 { margin: 0; font-size: 17px; }
 .form-grid-2 { grid-template-columns: 1fr 1fr !important; }

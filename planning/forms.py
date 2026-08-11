@@ -3,7 +3,7 @@ from django import forms
 from django.forms import inlineformset_factory
 from django_jalali import forms as jforms
 
-from catalog.models import DeviationReason, Machine, Product, ProductKind, ProductSubGroup
+from catalog.models import Machine, MoldOption, Product, ProductKind, ProductSubGroup
 
 from .models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
 from .utils import mold_change_date_candidates
@@ -114,11 +114,29 @@ class WeeklyPlanItemForm(forms.ModelForm):
         return obj
 
 
+class WeeklyPlanLineForm(forms.ModelForm):
+    class Meta:
+        model = WeeklyPlanLine
+        fields = ["production_type", "mold", "quantity", "cycle"]
+        widgets = {
+            "production_type": combo(),
+            "mold": combo(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
+        self.fields["mold"].required = False
+        self.fields["mold"].empty_label = "—"
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "input")
+
+
 WeeklyPlanLineFormSet = inlineformset_factory(
     WeeklyPlanItem,
     WeeklyPlanLine,
-    fields=["production_type", "quantity", "cycle"],
+    form=WeeklyPlanLineForm,
+    fields=["production_type", "mold", "quantity", "cycle"],
     extra=1,
     can_delete=False,
-    widgets={"production_type": combo()},
 )

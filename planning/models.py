@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db import models
 from django_jalali.db import models as jmodels
 
-from catalog.models import Machine, Product, ProductionTypeOption, ProductionUnit, ProductSubGroup
+from catalog.models import Machine, MoldOption, Product, ProductionTypeOption, ProductionUnit, ProductSubGroup
 
 
 def generate_program_uid() -> str:
@@ -125,13 +125,17 @@ class WeeklyPlanItem(models.Model):
 
 
 class WeeklyPlanLine(models.Model):
-    """A repeatable (نوع تولید، مقدار تولید، سیکل تولید) row on a plan item."""
+    """A repeatable (نوع تولید، قالب، مقدار تولید، سیکل تولید) row on a plan item."""
 
     item = models.ForeignKey(
         WeeklyPlanItem, on_delete=models.CASCADE, related_name="lines"
     )
     production_type = models.ForeignKey(
         ProductionTypeOption, on_delete=models.PROTECT, related_name="+", verbose_name="نوع تولید"
+    )
+    mold = models.ForeignKey(
+        MoldOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="انتخاب قالب",
     )
     quantity = models.PositiveIntegerField("مقدار تولید", default=0)
     cycle = models.PositiveIntegerField("سیکل تولید (ثانیه)", default=0)

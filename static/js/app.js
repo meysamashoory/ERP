@@ -11,25 +11,60 @@
   function tsOf(el) { return el ? el.tomselect : null; }
   function valOf(el) { var ts = tsOf(el); return ts ? ts.getValue() : (el ? el.value : ""); }
 
+  function dropdownHost(sel) {
+    // Keep Tom Select / datepicker menus inside open dialogs (top layer).
+    return sel.closest("dialog[open], dialog") || document.body;
+  }
+
   function initCombos(root) {
     if (!window.TomSelect) return;
     root.querySelectorAll("select[data-combo]").forEach(function (sel) {
       if (sel.tomselect) return;
       new TomSelect(sel, {
-        create: false, allowEmptyOption: true, maxOptions: 2000,
-        placeholder: sel.getAttribute("placeholder") || "انتخاب یا جستجو...",
+        create: false,
+        allowEmptyOption: true,
+        maxOptions: 2000,
+        // Search stays available; selected value keeps full visible text when idle.
+        placeholder: sel.getAttribute("placeholder") || "انتخاب...",
+        dropdownParent: dropdownHost(sel),
         render: { no_results: function () { return '<div class="no-results">موردی یافت نشد</div>'; } },
       });
     });
   }
 
   function initDatepicker() {
-    if (window.jalaliDatepicker) {
+    if (!window.jalaliDatepicker) return;
+    if (!window.__jdpStarted) {
       window.jalaliDatepicker.startWatch({
-        time: false, persianDigit: false, separatorChars: { date: "/" },
-        autoHide: true, hideAfterChange: true,
+        time: false,
+        persianDigit: false,
+        separatorChars: { date: "/" },
+        autoHide: true,
+        hideAfterChange: true,
+        zIndex: 100000,
+        container: "body",
       });
+      window.__jdpStarted = true;
     }
+  }
+
+  function reparentDatepicker(input) {
+    // HTML <dialog> uses the top layer; body-appended pickers sit behind it.
+    var dialog = input && input.closest("dialog");
+    var container = document.querySelector("jdp-container") || document.querySelector(".jdp-container");
+    var overlay = document.querySelector("jdp-overlay") || document.querySelector(".jdp-overlay");
+    var host = dialog || document.body;
+    if (container && container.parentElement !== host) host.appendChild(container);
+    if (overlay && overlay.parentElement !== host) host.appendChild(overlay);
+  }
+
+  function wireDatepickerHost(root) {
+    root.querySelectorAll("input[data-jdp]").forEach(function (inp) {
+      if (inp.dataset.jdpHostWired) return;
+      inp.dataset.jdpHostWired = "1";
+      inp.addEventListener("focus", function () { reparentDatepicker(inp); });
+      inp.addEventListener("click", function () { reparentDatepicker(inp); });
+    });
   }
 
   function repopulate(sel, items, opts) {
@@ -111,6 +146,7 @@
     root = root || document;
     initCombos(root);
     initDatepicker();
+    wireDatepickerHost(root);
     wireUnitMachine(root);
     wireSubgroupProduct(root);
     wireChangeType(root);
@@ -120,6 +156,16 @@
 
   ready(function () {
     enhance(document);
+
+    // --- Logout confirmation ------------------------------------------
+    var logoutForm = document.getElementById("logout-form");
+    if (logoutForm) {
+      logoutForm.addEventListener("submit", function (e) {
+        if (!window.confirm("آیا برای خروج از سامانه اطمینان دارید؟")) {
+          e.preventDefault();
+        }
+      });
+    }
 
     // --- Auto-dismiss transient alerts ---------------------------------
     document.querySelectorAll(".messages .alert").forEach(function (el) {
@@ -177,10 +223,13 @@
         clone.innerHTML = clone.innerHTML.replace(new RegExp(prefix + "-(\\d+)-", "g"), prefix + "-" + idx + "-");
         clone.querySelectorAll(".ts-wrapper").forEach(function (w) { w.remove(); });
         clone.querySelectorAll("input, select, textarea").forEach(function (inp) {
-          inp.style.display = ""; if (inp.type !== "hidden") inp.value = ""; inp.removeAttribute("data-combo");
+          inp.style.display = ""; if (inp.type !== "hidden") inp.value = "";
+          // Keep data-combo so enhance() can re-init Tom Select on the clone.
+          inp.removeAttribute("data-wired");
         });
         container.appendChild(clone);
         totalEl.value = idx + 1;
+        enhance(clone);
       });
     });
 

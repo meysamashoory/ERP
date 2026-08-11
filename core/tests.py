@@ -119,3 +119,45 @@ class ProgramFlowTests(TestCase):
     def test_product_needs_reorder(self):
         self.assertTrue(Product.objects.get(code="F-1100").needs_reorder)
         self.assertFalse(Product.objects.get(code="F-0900").needs_reorder)
+
+    def test_start_form_has_no_mold_field(self):
+        from production.forms import ProgramStartForm
+        program = self._make_program()
+        program.status = ProductionProgram.Status.AWAITING
+        program.save()
+        form = ProgramStartForm(program=program)
+        self.assertNotIn("mold", form.fields)
+        self.assertIn("production_type", form.fields)
+
+
+class PlanningUiTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+
+    def test_view_mode_hides_header_edit(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1000")  # approved
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "ویرایش شماره و تاریخ")
+        self.assertNotContains(resp, "صفحه اصلی")
+        self.assertNotContains(resp, "ثبت نهایی")
+
+    def test_edit_mode_shows_finalize(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1001")  # draft
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "ویرایش شماره و تاریخ")
+        self.assertContains(resp, "ثبت نهایی")
+        self.assertNotContains(resp, "صفحه اصلی")
+        self.assertContains(resp, "انتخاب قالب")
+
+    def test_sidebar_branding_and_logout(self):
+        self.client.login(username="admin", password="erp12345")
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "سامانه برنامه‌ریزی و کنترل تولید")
+        self.assertContains(resp, "خروج از سامانه")
+        self.assertNotContains(resp, "مدیر سامانه")
+        self.assertContains(resp, "(admin)")

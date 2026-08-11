@@ -211,24 +211,24 @@ class ProgramStartForm(forms.Form):
         widget=combo({"data-role": "change-reason"}), empty_label="—",
     )
     production_type = forms.ChoiceField(label="نوع تولید", choices=[], widget=combo())
-    mold = forms.ModelChoiceField(
-        queryset=None, required=False, label="انتخاب قالب",
-        widget=combo(), empty_label="—",
-    )
     start_date = jdate_field("تاریخ شروع")
     start_time = time_input("ساعت شروع")
 
     def __init__(self, *args, program=None, **kwargs):
-        from catalog.models import MoldOption, ProgramChangeReason
+        from catalog.models import ProgramChangeReason
         super().__init__(*args, **kwargs)
         self.program = program
         self.fields["change_reason"].queryset = ProgramChangeReason.objects.filter(is_active=True)
-        self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
         choices = []
         lines = list(program.item.lines.all()) if program else []
         labels = ["نوع اول", "نوع دوم", "نوع سوم", "نوع چهارم"]
         for i, ln in enumerate(lines):
-            choices.append((str(i + 1), f"{labels[i] if i < len(labels) else i+1}: {ln.production_type} (سیکل {ln.cycle})"))
+            mold_lbl = f" · قالب {ln.mold}" if ln.mold_id else ""
+            choices.append((
+                str(i + 1),
+                f"{labels[i] if i < len(labels) else i+1}: {ln.production_type} "
+                f"(سیکل {ln.cycle}){mold_lbl}",
+            ))
         if not choices:
             choices = [("1", "نوع اول")]
         self.fields["production_type"].choices = choices
