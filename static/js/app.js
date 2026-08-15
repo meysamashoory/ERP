@@ -11,25 +11,52 @@
   function tsOf(el) { return el ? el.tomselect : null; }
   function valOf(el) { var ts = tsOf(el); return ts ? ts.getValue() : (el ? el.value : ""); }
 
-  function dropdownHost(sel) {
-    // Keep Tom Select / datepicker menus inside open dialogs (top layer).
-    return sel.closest("dialog[open], dialog") || document.body;
-  }
-
   function initCombos(root) {
     if (!window.TomSelect) return;
     root.querySelectorAll("select[data-combo]").forEach(function (sel) {
       if (sel.tomselect) return;
+      // Keep dropdown attached to the field (default). Setting dropdownParent to
+      // body/dialog breaks positioning and dumps the menu at the window bottom.
+      // controlInput:null => single-border select look (no nested search box).
       new TomSelect(sel, {
         create: false,
         allowEmptyOption: true,
         maxOptions: 2000,
-        // Search stays available; selected value keeps full visible text when idle.
+        controlInput: null,
         placeholder: sel.getAttribute("placeholder") || "انتخاب...",
-        dropdownParent: dropdownHost(sel),
         render: { no_results: function () { return '<div class="no-results">موردی یافت نشد</div>'; } },
       });
     });
+  }
+
+  function jdpEls() {
+    return {
+      container: document.querySelector("jdp-container") || document.querySelector(".jdp-container"),
+      overlay: document.querySelector("jdp-overlay") || document.querySelector(".jdp-overlay"),
+    };
+  }
+
+  function placeDatepicker(input) {
+    var els = jdpEls();
+    var container = els.container;
+    if (!input || !container) return;
+    var dialog = input.closest("dialog");
+    var host = dialog || document.body;
+    if (container.parentElement !== host) host.appendChild(container);
+    if (els.overlay && els.overlay.parentElement !== host) host.appendChild(els.overlay);
+
+    // Library uses absolute coords that break inside <dialog>; pin under the input.
+    var rect = input.getBoundingClientRect();
+    var width = container.offsetWidth || 308;
+    var left = rect.right - width;
+    if (left < 8) left = 8;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+    container.style.position = "fixed";
+    container.style.top = Math.round(rect.bottom + 4) + "px";
+    container.style.left = Math.round(left) + "px";
+    container.style.right = "auto";
+    container.style.bottom = "auto";
+    container.style.zIndex = "100000";
   }
 
   function initDatepicker() {
@@ -48,23 +75,42 @@
     }
   }
 
-  function reparentDatepicker(input) {
-    // HTML <dialog> uses the top layer; body-appended pickers sit behind it.
-    var dialog = input && input.closest("dialog");
-    var container = document.querySelector("jdp-container") || document.querySelector(".jdp-container");
-    var overlay = document.querySelector("jdp-overlay") || document.querySelector(".jdp-overlay");
-    var host = dialog || document.body;
-    if (container && container.parentElement !== host) host.appendChild(container);
-    if (overlay && overlay.parentElement !== host) host.appendChild(overlay);
-  }
-
   function wireDatepickerHost(root) {
     root.querySelectorAll("input[data-jdp]").forEach(function (inp) {
       if (inp.dataset.jdpHostWired) return;
       inp.dataset.jdpHostWired = "1";
-      inp.addEventListener("focus", function () { reparentDatepicker(inp); });
-      inp.addEventListener("click", function () { reparentDatepicker(inp); });
+      function fix() {
+        // Run after the library shows/positions the calendar.
+        placeDatepicker(inp);
+        requestAnimationFrame(function () {
+          placeDatepicker(inp);
+          setTimeout(function () { placeDatepicker(inp); }, 30);
+        });
+      }
+      inp.addEventListener("focus", fix);
+      inp.addEventListener("click", fix);
     });
+
+    // If the library repositions later, keep the calendar under the active input.
+    if (!window.__jdpPlaceObserver && typeof MutationObserver !== "undefined") {
+      window.__jdpPlaceObserver = new MutationObserver(function () {
+        var active = document.activeElement;
+        if (active && active.matches && active.matches("input[data-jdp]")) {
+          placeDatepicker(active);
+        }
+      });
+      var watch = function () {
+        var els = jdpEls();
+        if (els.container) {
+          window.__jdpPlaceObserver.observe(els.container, {
+            attributes: true, attributeFilter: ["style", "class"],
+          });
+        } else {
+          setTimeout(watch, 200);
+        }
+      };
+      watch();
+    }
   }
 
   function repopulate(sel, items, opts) {

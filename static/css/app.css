@@ -193,9 +193,25 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Row being edited (planning) */
 .row-edit, tr.row-edit td { background: #fef9c3 !important; }
 
-/* Tom Select: match native field size/border; full selected label when idle */
-.ts-wrapper { font-family: inherit; width: 100%; }
-.ts-wrapper.single .ts-control {
+/* Tom Select: one border, same size as native .input — no nested search box */
+.ts-wrapper,
+.ts-wrapper.single,
+.ts-wrapper.single.focus,
+.ts-wrapper.single.input-active {
+  font-family: inherit;
+  width: 100%;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  position: relative;
+}
+.ts-wrapper .ts-control,
+.ts-wrapper.single .ts-control,
+.ts-wrapper.single.focus .ts-control,
+.ts-wrapper.single.input-active .ts-control {
   border: 1px solid var(--line) !important;
   border-radius: 9px !important;
   padding: 9px 12px !important;
@@ -203,12 +219,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   font-size: 14px;
   line-height: 1.7;
   box-shadow: none !important;
+  outline: none !important;
   background: #fff !important;
-  flex-wrap: nowrap;
+  flex-wrap: nowrap !important;
   align-items: center;
-  gap: 0;
+  overflow: hidden;
+  cursor: pointer;
 }
-.ts-wrapper.single .ts-control:focus-within {
+.ts-wrapper.single.focus .ts-control,
+.ts-wrapper.single.input-active .ts-control,
+.ts-wrapper.dropdown-active .ts-control {
   border-color: var(--brand) !important;
   box-shadow: 0 0 0 3px rgba(79,70,229,.12) !important;
 }
@@ -216,46 +236,42 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   flex: 1 1 auto;
   margin: 0 !important;
   padding: 0 !important;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  max-width: none !important;
-  width: auto !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100% !important;
   line-height: inherit;
+  background: transparent !important;
+  border: 0 !important;
 }
-.ts-wrapper.single.focus .ts-control > .item,
-.ts-wrapper.single.input-active .ts-control > .item {
-  display: none;
-}
-.ts-wrapper.single .ts-control > input {
-  flex: 0 0 0 !important;
-  min-width: 0 !important;
-  width: 0 !important;
-  padding: 0 !important;
+.ts-wrapper .ts-control > input {
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
   margin: 0 !important;
-  opacity: 0;
+  padding: 0 !important;
 }
-.ts-wrapper.single.focus .ts-control > input,
-.ts-wrapper.single.input-active .ts-control > input {
-  flex: 1 1 auto !important;
-  min-width: 4ch !important;
-  width: auto !important;
-  opacity: 1;
-}
+/* Dropdown anchored under the field (default Tom Select: top:100%) */
+.ts-wrapper .ts-dropdown,
 .ts-dropdown {
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  border: 1px solid var(--line) !important;
+  border-radius: 9px !important;
+  border-top: 1px solid var(--line) !important;
   font-size: 14px;
-  z-index: 100001 !important;
+  margin-top: 4px !important;
+  z-index: 40 !important;
+  box-shadow: 0 8px 24px rgba(15,23,42,.12);
 }
 .ts-dropdown .active { background: #eef2ff; color: var(--ink); }
 .no-results { padding: 8px 12px; color: var(--muted); }
 
-/* Jalali datepicker above sticky bars / inside dialogs */
-jdp-container, .jdp-container { z-index: 100000 !important; }
+/* Jalali datepicker: fixed under the input; inside dialog top-layer when needed */
+jdp-container, .jdp-container {
+  z-index: 100000 !important;
+  position: fixed !important;
+}
 jdp-overlay, .jdp-overlay { z-index: 99999 !important; }
-dialog.dialog jdp-container,
-dialog.dialog .jdp-container { z-index: 100000 !important; }
 
 /* Row action links */
 .row-actions a { margin-inline-start: 8px; font-size: 13px; }
