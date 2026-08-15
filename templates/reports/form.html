@@ -5,71 +5,90 @@
 {% block nav_report_create %}{% if mode == 'create' %}active{% endif %}{% endblock %}
 {% block nav_report_list %}{% if mode == 'edit' %}active{% endif %}{% endblock %}
 
-{% block content %}
-<div class="page-head">
-  <h1>{{ page_title }}</h1>
-  <a class="btn btn-ghost" href="{% url 'report_list' %}">بازگشت به لیست</a>
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">بازگشت به لیست</a>
+  <button class="btn btn-sm" type="submit" form="report-builder-form" id="top-submit" hidden>ثبت گزارش</button>
 </div>
+{% endblock %}
 
-<form method="post" id="report-builder-form">
+{% block content %}
+<form method="post" id="report-builder-form" class="builder-compact">
   {% csrf_token %}
   {{ form.columns_json }}
-  <div class="panel">
-    <div class="panel-head"><h2>اطلاعات گزارش</h2></div>
-    <div class="panel-body">
-      <div class="form-grid form-grid-3">
+  {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
+
+  {# Meta summary (shown after confirm / on edit) #}
+  <div class="meta-strip" id="meta-summary" {% if mode != 'edit' %}hidden{% endif %}>
+    <div class="meta-text">
+      <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
+      <div class="meta-sub">
+        شماره <span id="sum-number">{{ form.number.value|default:"" }}</span>
+        {% if form.is_manager %}<span id="sum-standard-wrap">{% if form.is_standard.value %} · استاندارد{% endif %}</span>{% endif %}
+      </div>
+      <div class="meta-desc" id="sum-desc">{% if form.description.value %}({{ form.description.value }}){% endif %}</div>
+    </div>
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
+  </div>
+
+  {# Meta editor #}
+  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="form-grid form-grid-compact form-grid-3">
         <div class="field">
           <label>{{ form.title.label }}</label>
           {{ form.title }}
           {{ form.title.errors }}
         </div>
         <div class="field">
-          <label>{{ form.number.label }} (۱ تا ۹۹۹)</label>
+          <label>{{ form.number.label }} (۱–۹۹۹)</label>
           {{ form.number }}
           {{ form.number.errors }}
         </div>
         {% if form.is_manager %}
         <div class="field field-check">
           <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
-          {{ form.is_standard.errors }}
         </div>
-        {% else %}
-        {{ form.is_standard }}
         {% endif %}
       </div>
       <div class="field">
         <label>{{ form.description.label }}</label>
         {{ form.description }}
-        <p class="helptext">این متن زیر عنوان گزارش، داخل پرانتز و با فونت کوچک‌تر نمایش داده می‌شود.</p>
-        {{ form.description.errors }}
       </div>
       {{ form.columns_json.errors }}
+      <div class="line-actions">
+        <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" {% if mode != 'edit' %}hidden{% endif %}>انصراف</button>
+      </div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-head"><h2>انتخاب ستون‌ها و سطح‌بندی</h2></div>
-    <div class="panel-body">
-      <div class="col-builder">
+  {# Column builder #}
+  <div class="panel panel-compact" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="col-builder col-builder-compact">
         <div class="col-builder-right">
           <div class="field">
             <label>منبع داده اصلی</label>
-            <div class="source-picker" id="source-picker"></div>
+            <div class="source-add-row">
+              <select id="source-select">
+                <option value="">افزودن منبع…</option>
+              </select>
+              <button type="button" class="btn btn-sm" id="add-source-btn">افزودن</button>
+            </div>
           </div>
           <div class="source-trees" id="source-trees"></div>
         </div>
         <div class="col-builder-left">
           <div class="selected-head">
             <strong>نحوه نمایش</strong>
-            <span class="muted">بالا = راست گزارش · پایین = چپ</span>
+            <span class="muted">بالا = راست · پایین = چپ</span>
           </div>
           <div class="selected-cols" id="selected-cols"></div>
         </div>
       </div>
     </div>
   </div>
-
-  <button class="btn" type="submit">ثبت گزارش</button>
 </form>
 {% endblock %}
 
@@ -78,6 +97,7 @@
 <script id="columns-initial" type="application/json">{{ columns_initial|safe }}</script>
 <script>
 (function () {
+  var mode = "{{ mode }}";
   var groups = JSON.parse(document.getElementById("column-groups").textContent);
   var hidden = document.getElementById("id_columns_json");
   var selected = [];
@@ -92,7 +112,50 @@
     if (c.source && addedSources.indexOf(c.source) < 0) addedSources.push(c.source);
   });
 
-  var picker = document.getElementById("source-picker");
+  var metaEditor = document.getElementById("meta-editor");
+  var metaSummary = document.getElementById("meta-summary");
+  var builderPanel = document.getElementById("builder-panel");
+  var topSubmit = document.getElementById("top-submit");
+  var titleInput = document.getElementById("id_title");
+  var numberInput = document.getElementById("id_number");
+  var descInput = document.getElementById("id_description");
+  var stdInput = document.getElementById("id_is_standard");
+
+  function syncSummary() {
+    document.getElementById("sum-title").textContent = titleInput.value || "—";
+    document.getElementById("sum-number").textContent = numberInput.value || "—";
+    var desc = (descInput.value || "").trim();
+    document.getElementById("sum-desc").textContent = desc ? "(" + desc + ")" : "";
+    var wrap = document.getElementById("sum-standard-wrap");
+    if (wrap && stdInput) wrap.textContent = stdInput.checked ? " · استاندارد" : "";
+  }
+
+  function showBuilder() {
+    metaEditor.hidden = true;
+    metaSummary.hidden = false;
+    builderPanel.hidden = false;
+    topSubmit.hidden = false;
+    syncSummary();
+  }
+  function showMetaEditor() {
+    metaEditor.hidden = false;
+    metaSummary.hidden = true;
+    builderPanel.hidden = true;
+    topSubmit.hidden = true;
+  }
+
+  document.getElementById("confirm-meta-btn").addEventListener("click", function () {
+    if (!titleInput.value.trim()) { alert("عنوان گزارش را وارد کنید."); return; }
+    if (!numberInput.value) { alert("شماره گزارش را وارد کنید."); return; }
+    showBuilder();
+  });
+  document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
+  var cancelBtn = document.getElementById("cancel-meta-btn");
+  if (cancelBtn) cancelBtn.addEventListener("click", showBuilder);
+
+  if (mode === "edit") showBuilder();
+
+  var sourceSelect = document.getElementById("source-select");
   var trees = document.getElementById("source-trees");
   var list = document.getElementById("selected-cols");
 
@@ -105,31 +168,49 @@
     return hit ? hit[1] : key;
   }
 
-  function renderPicker() {
-    picker.innerHTML = "";
+  function fillSourceSelect() {
+    sourceSelect.innerHTML = '<option value="">افزودن منبع…</option>';
     groups.forEach(function (g) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "source-chip" + (addedSources.indexOf(g.id) >= 0 ? " active" : "");
-      btn.textContent = g.label;
-      btn.addEventListener("click", function () {
-        if (addedSources.indexOf(g.id) >= 0) return;
-        if (g.id !== "file") {
-          var other = addedSources.filter(function (s) { return s !== "file" && s !== g.id; });
-          if (other.length) {
-            if (!confirm("با انتخاب این منبع، ستون‌های منبع قبلی از لیست حذف می‌شوند. ادامه؟")) return;
-            selected = selected.filter(function (c) { return c.source === "file" || c.source === g.id; });
-            addedSources = addedSources.filter(function (s) { return s === "file" || s === g.id; });
-          }
-        }
-        addedSources.push(g.id);
-        renderPicker();
-        renderTrees();
-        renderSelected();
-        syncHidden();
-      });
-      picker.appendChild(btn);
+      if (addedSources.indexOf(g.id) >= 0) return;
+      var opt = document.createElement("option");
+      opt.value = g.id;
+      opt.textContent = g.label;
+      sourceSelect.appendChild(opt);
     });
+  }
+
+  function addSource(sid) {
+    if (!sid || addedSources.indexOf(sid) >= 0) return;
+    if (sid !== "file") {
+      var other = addedSources.filter(function (s) { return s !== "file" && s !== sid; });
+      if (other.length) {
+        var hasCols = selected.some(function (c) { return other.indexOf(c.source) >= 0; });
+        if (hasCols && !confirm("با انتخاب این منبع، ستون‌های منبع قبلی حذف می‌شوند. ادامه؟")) return;
+        selected = selected.filter(function (c) { return c.source === "file" || c.source === sid; });
+        addedSources = addedSources.filter(function (s) { return s === "file" || s === sid; });
+      }
+    }
+    addedSources.push(sid);
+    fillSourceSelect();
+    renderTrees();
+    renderSelected();
+    syncHidden();
+  }
+
+  document.getElementById("add-source-btn").addEventListener("click", function () {
+    addSource(sourceSelect.value);
+    sourceSelect.value = "";
+  });
+
+  function removeSource(sid) {
+    var count = selected.filter(function (c) { return c.source === sid; }).length;
+    if (count && !confirm("از این منبع " + count + " ستون انتخاب شده است. با حذف منبع حذف می‌شوند. ادامه؟")) return;
+    selected = selected.filter(function (c) { return c.source !== sid; });
+    addedSources = addedSources.filter(function (s) { return s !== sid; });
+    fillSourceSelect();
+    renderTrees();
+    renderSelected();
+    syncHidden();
   }
 
   function renderTrees() {
@@ -139,16 +220,25 @@
       if (!g) return;
       var box = document.createElement("div");
       box.className = "source-tree";
-      var head = document.createElement("button");
-      head.type = "button";
-      head.className = "source-tree-head";
-      head.textContent = "▾ " + g.label;
+      var head = document.createElement("div");
+      head.className = "source-tree-head-row";
+      var toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "source-tree-head";
+      toggle.textContent = "▾ " + g.label;
       var body = document.createElement("div");
       body.className = "source-tree-body";
-      head.addEventListener("click", function () {
+      toggle.addEventListener("click", function () {
         body.hidden = !body.hidden;
-        head.textContent = (body.hidden ? "▸ " : "▾ ") + g.label;
+        toggle.textContent = (body.hidden ? "▸ " : "▾ ") + g.label;
       });
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "btn btn-sm btn-ghost";
+      rm.textContent = "حذف منبع";
+      rm.addEventListener("click", function () { removeSource(sid); });
+      head.appendChild(toggle);
+      head.appendChild(rm);
       g.columns.forEach(function (pair) {
         var key = pair[0], lab = pair[1];
         var labEl = document.createElement("label");
@@ -157,11 +247,8 @@
         cb.type = "checkbox";
         cb.checked = selected.some(function (c) { return c.key === key && c.source === sid; });
         cb.addEventListener("change", function () {
-          if (cb.checked) {
-            selected.push({ key: key, source: sid, level: 1, label: lab });
-          } else {
-            selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
-          }
+          if (cb.checked) selected.push({ key: key, source: sid, level: 1, label: lab });
+          else selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
           renderSelected();
           syncHidden();
         });
@@ -178,11 +265,8 @@
   function move(idx, dir) {
     var j = idx + dir;
     if (j < 0 || j >= selected.length) return;
-    var tmp = selected[idx];
-    selected[idx] = selected[j];
-    selected[j] = tmp;
-    renderSelected();
-    syncHidden();
+    var tmp = selected[idx]; selected[idx] = selected[j]; selected[j] = tmp;
+    renderSelected(); syncHidden();
   }
 
   function renderSelected() {
@@ -200,11 +284,10 @@
       }
       row.innerHTML =
         '<span class="sel-label">' + (c.label || labelOf(c.source, c.key)) + '</span>' +
-        '<span class="muted">' + (c.source || "") + '</span>' +
         '<label class="level-label">سطح <select data-level="' + idx + '">' + opts + "</select></label>" +
-        '<button type="button" class="btn btn-sm btn-ghost" data-up="' + idx + '">↑</button>' +
-        '<button type="button" class="btn btn-sm btn-ghost" data-down="' + idx + '">↓</button>' +
-        '<button type="button" class="btn btn-sm btn-danger" data-rm="' + idx + '">حذف</button>';
+        '<button type="button" class="btn btn-xs btn-ghost" data-up="' + idx + '">↑</button>' +
+        '<button type="button" class="btn btn-xs btn-ghost" data-down="' + idx + '">↓</button>' +
+        '<button type="button" class="btn btn-xs btn-danger" data-rm="' + idx + '">×</button>';
       list.appendChild(row);
     });
   }
@@ -217,20 +300,17 @@
     if (down) move(parseInt(down.getAttribute("data-down"), 10), 1);
     if (rm) {
       selected.splice(parseInt(rm.getAttribute("data-rm"), 10), 1);
-      renderTrees();
-      renderSelected();
-      syncHidden();
+      renderTrees(); renderSelected(); syncHidden();
     }
   });
   list.addEventListener("change", function (e) {
     var sel = e.target.closest("[data-level]");
     if (!sel) return;
-    var i = parseInt(sel.getAttribute("data-level"), 10);
-    selected[i].level = parseInt(sel.value, 10);
+    selected[parseInt(sel.getAttribute("data-level"), 10)].level = parseInt(sel.value, 10);
     syncHidden();
   });
 
-  renderPicker();
+  fillSourceSelect();
   renderTrees();
   renderSelected();
   syncHidden();

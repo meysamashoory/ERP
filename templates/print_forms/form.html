@@ -5,26 +5,42 @@
 {% block nav_form_create %}{% if mode == 'create' %}active{% endif %}{% endblock %}
 {% block nav_form_list %}{% if mode == 'edit' %}active{% endif %}{% endblock %}
 
-{% block content %}
-<div class="page-head">
-  <h1>{{ page_title }}</h1>
-  <a class="btn btn-ghost" href="{% url 'print_form_list' %}">بازگشت به لیست</a>
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'print_form_list' %}">بازگشت به لیست</a>
+  <button class="btn btn-sm" type="submit" form="print-form-builder" id="top-submit" hidden>ثبت فرم</button>
 </div>
+{% endblock %}
 
-<form method="post" id="print-form-builder">
+{% block content %}
+<form method="post" id="print-form-builder" class="builder-compact">
   {% csrf_token %}
   {{ form.frames_json }}
-  <div class="panel">
-    <div class="panel-head"><h2>اطلاعات فرم</h2></div>
-    <div class="panel-body">
-      <div class="form-grid form-grid-3">
+  {{ form.page_width_mm }}
+  {{ form.page_height_mm }}
+  {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
+
+  <div class="meta-strip" id="meta-summary" {% if mode != 'edit' %}hidden{% endif %}>
+    <div class="meta-text">
+      <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
+      <div class="meta-sub">شماره <span id="sum-number">{{ form.number.value|default:"" }}</span>
+        {% if form.is_manager %}<span id="sum-standard-wrap">{% if form.is_standard.value %} · استاندارد{% endif %}</span>{% endif %}
+      </div>
+      <div class="meta-desc" id="sum-desc">{% if form.description.value %}({{ form.description.value }}){% endif %}</div>
+    </div>
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
+  </div>
+
+  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="form-grid form-grid-compact form-grid-3">
         <div class="field">
           <label>{{ form.title.label }}</label>
           {{ form.title }}
           {{ form.title.errors }}
         </div>
         <div class="field">
-          <label>{{ form.number.label }} (۱ تا ۹۹۹)</label>
+          <label>{{ form.number.label }} (۱–۹۹۹)</label>
           {{ form.number }}
           {{ form.number.errors }}
         </div>
@@ -32,42 +48,23 @@
         <div class="field field-check">
           <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
         </div>
-        {% else %}
-        {{ form.is_standard }}
         {% endif %}
       </div>
       <div class="field">
         <label>{{ form.description.label }}</label>
         {{ form.description }}
-        <p class="helptext">زیر عنوان فرم، داخل پرانتز و کوچک‌تر نمایش داده می‌شود.</p>
       </div>
-      <div class="form-grid form-grid-3">
-        <div class="field">
-          <label>{{ form.page_width_mm.label }}</label>
-          {{ form.page_width_mm }}
-        </div>
-        <div class="field">
-          <label>{{ form.page_height_mm.label }}</label>
-          {{ form.page_height_mm }}
-        </div>
-        <div class="field">
-          <label>شبکه (مم)</label>
-          <select id="snap-mm" data-combo="1">
-            <option value="1">۱ مم</option>
-            <option value="2" selected>۲ مم</option>
-            <option value="5">۵ مم</option>
-            <option value="10">۱۰ مم</option>
-          </select>
-        </div>
+      <div class="line-actions">
+        <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" {% if mode != 'edit' %}hidden{% endif %}>انصراف</button>
       </div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-head">
+  <div class="panel panel-compact designer-first" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+    <div class="panel-head panel-head-compact">
       <h2>طراحی فرم چاپی</h2>
       <div class="designer-toolbar">
-        <button type="button" class="btn btn-sm" data-tool="select">انتخاب</button>
         <button type="button" class="btn btn-sm" data-add="header">عنوان</button>
         <button type="button" class="btn btn-sm" data-add="box">کادر</button>
         <button type="button" class="btn btn-sm" data-add="field">فیلد</button>
@@ -79,7 +76,7 @@
         <button type="button" class="btn btn-sm btn-danger" data-delete-selected>حذف انتخاب</button>
       </div>
     </div>
-    <div class="panel-body designer-body">
+    <div class="panel-body panel-body-compact designer-body">
       <div class="ruler-workspace" id="ruler-workspace">
         <div class="ruler-corner"></div>
         <div class="ruler-h" id="ruler-h"></div>
@@ -91,31 +88,95 @@
         </div>
       </div>
       <div class="props-panel" id="frame-props">
-        <h3>ویژگی‌های کادر</h3>
-        <p class="muted" id="props-empty">یک کادر را انتخاب کنید.</p>
-        <div id="props-fields" hidden>
-          <div class="field"><label>برچسب</label><input class="input" id="prop-label"></div>
-          <div class="field"><label>نوع</label>
-            <select id="prop-kind" data-combo="1">
-              <option value="header">عنوان</option>
-              <option value="box">کادر</option>
-              <option value="field">فیلد</option>
-              <option value="line">خط</option>
-              <option value="footer">پاورقی</option>
+        <details class="props-section" open>
+          <summary>کاغذ و شبکه</summary>
+          <div class="field">
+            <label>اندازه کاغذ</label>
+            <select id="paper-preset">
+              <option value="A4-P">A4 عمودی (۲۱۰×۲۹۷)</option>
+              <option value="A4-L">A4 افقی (۲۹۷×۲۱۰)</option>
+              <option value="A5-P">A5 عمودی (۱۴۸×۲۱۰)</option>
+              <option value="A5-L">A5 افقی (۲۱۰×۱۴۸)</option>
+              <option value="custom">سفارشی (Custom)</option>
             </select>
           </div>
-          <div class="form-grid form-grid-2">
-            <div class="field"><label>X (مم)</label><input class="input" type="number" step="0.5" id="prop-x"></div>
-            <div class="field"><label>Y (مم)</label><input class="input" type="number" step="0.5" id="prop-y"></div>
-            <div class="field"><label>عرض</label><input class="input" type="number" step="0.5" id="prop-w"></div>
-            <div class="field"><label>ارتفاع</label><input class="input" type="number" step="0.5" id="prop-h"></div>
+          <div class="form-grid form-grid-2" id="custom-size-fields">
+            <div class="field">
+              <label>عرض (میلی‌متر)</label>
+              <div class="stepper">
+                <button type="button" class="btn btn-xs" data-step="page-w" data-dir="-1">−</button>
+                <input class="input" type="number" id="prop-page-w" min="50" max="600" step="1">
+                <button type="button" class="btn btn-xs" data-step="page-w" data-dir="1">+</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>ارتفاع (میلی‌متر)</label>
+              <div class="stepper">
+                <button type="button" class="btn btn-xs" data-step="page-h" data-dir="-1">−</button>
+                <input class="input" type="number" id="prop-page-h" min="50" max="600" step="1">
+                <button type="button" class="btn btn-xs" data-step="page-h" data-dir="1">+</button>
+              </div>
+            </div>
           </div>
-        </div>
+          <div class="field">
+            <label>شبکه (میلی‌متر)</label>
+            <select id="snap-mm">
+              <option value="0.5">۰٫۵ میلی‌متر</option>
+              <option value="1">۱ میلی‌متر</option>
+              <option value="2" selected>۲ میلی‌متر</option>
+              <option value="5">۵ میلی‌متر</option>
+              <option value="10">۱۰ میلی‌متر</option>
+            </select>
+          </div>
+        </details>
+
+        <details class="props-section" open>
+          <summary>ویژگی‌های کادر</summary>
+          <p class="muted" id="props-empty">یک کادر را انتخاب کنید.</p>
+          <div id="props-fields" hidden>
+            <div class="field"><label>برچسب</label><input class="input" id="prop-label"></div>
+            <div class="field"><label>نوع</label>
+              <select id="prop-kind">
+                <option value="header">عنوان</option>
+                <option value="box">کادر</option>
+                <option value="field">فیلد</option>
+                <option value="line">خط</option>
+                <option value="footer">پاورقی</option>
+              </select>
+            </div>
+            <div class="field"><label>X (میلی‌متر از راست)</label>
+              <div class="stepper">
+                <button type="button" class="btn btn-xs" data-step="x" data-dir="-1">−</button>
+                <input class="input" type="number" step="0.5" id="prop-x">
+                <button type="button" class="btn btn-xs" data-step="x" data-dir="1">+</button>
+              </div>
+            </div>
+            <div class="field"><label>Y (میلی‌متر از بالا)</label>
+              <div class="stepper">
+                <button type="button" class="btn btn-xs" data-step="y" data-dir="-1">−</button>
+                <input class="input" type="number" step="0.5" id="prop-y">
+                <button type="button" class="btn btn-xs" data-step="y" data-dir="1">+</button>
+              </div>
+            </div>
+            <div class="field"><label>عرض (میلی‌متر)</label>
+              <div class="stepper">
+                <button type="button" class="btn btn-xs" data-step="w" data-dir="-1">−</button>
+                <input class="input" type="number" step="0.5" id="prop-w">
+                <button type="button" class="btn btn-xs" data-step="w" data-dir="1">+</button>
+              </div>
+            </div>
+            <div class="field"><label>ارتفاع (میلی‌متر)</label>
+              <div class="stepper">
+                <button type="button" class="btn btn-xs" data-step="h" data-dir="-1">−</button>
+                <input class="input" type="number" step="0.5" id="prop-h">
+                <button type="button" class="btn btn-xs" data-step="h" data-dir="1">+</button>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   </div>
-
-  <button class="btn" type="submit">ثبت فرم</button>
 </form>
 {% endblock %}
 
@@ -123,38 +184,110 @@
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script>
 (function () {
-  var MM = 3.7795275591; // px per mm at 96dpi baseline; scaled by zoom
+  var mode = "{{ mode }}";
+  var MM = 3.7795275591;
   var zoom = 1;
   var snap = 2;
   var frames = [];
   try { frames = JSON.parse(document.getElementById("frames-initial").textContent || "[]"); } catch (e) { frames = []; }
   var selectedId = null;
   var hidden = document.getElementById("id_frames_json");
+  var pageWInput = document.getElementById("id_page_width_mm");
+  var pageHInput = document.getElementById("id_page_height_mm");
+  // Hidden inputs from as_hidden may have different IDs - find by name
+  if (!pageWInput) pageWInput = document.querySelector('[name="page_width_mm"]');
+  if (!pageHInput) pageHInput = document.querySelector('[name="page_height_mm"]');
   var canvas = document.getElementById("form-canvas");
-  var stage = document.getElementById("designer-stage");
-  var scroll = document.getElementById("designer-scroll");
   var rulerH = document.getElementById("ruler-h");
   var rulerV = document.getElementById("ruler-v");
   var uid = 1;
 
-  function pageW() { return parseFloat(document.getElementById("id_page_width_mm").value) || 210; }
-  function pageH() { return parseFloat(document.getElementById("id_page_height_mm").value) || 297; }
+  var titleInput = document.getElementById("id_title");
+  var numberInput = document.getElementById("id_number");
+  var descInput = document.getElementById("id_description");
+  var stdInput = document.getElementById("id_is_standard");
+  var metaEditor = document.getElementById("meta-editor");
+  var metaSummary = document.getElementById("meta-summary");
+  var builderPanel = document.getElementById("builder-panel");
+  var topSubmit = document.getElementById("top-submit");
+
+  function syncSummary() {
+    document.getElementById("sum-title").textContent = titleInput.value || "—";
+    document.getElementById("sum-number").textContent = numberInput.value || "—";
+    var desc = (descInput.value || "").trim();
+    document.getElementById("sum-desc").textContent = desc ? "(" + desc + ")" : "";
+    var wrap = document.getElementById("sum-standard-wrap");
+    if (wrap && stdInput) wrap.textContent = stdInput.checked ? " · استاندارد" : "";
+  }
+  function showBuilder() {
+    metaEditor.hidden = true;
+    metaSummary.hidden = false;
+    builderPanel.hidden = false;
+    topSubmit.hidden = false;
+    syncSummary();
+    render();
+  }
+  function showMetaEditor() {
+    metaEditor.hidden = false;
+    metaSummary.hidden = true;
+    builderPanel.hidden = true;
+    topSubmit.hidden = true;
+  }
+  document.getElementById("confirm-meta-btn").addEventListener("click", function () {
+    if (!titleInput.value.trim()) { alert("عنوان فرم را وارد کنید."); return; }
+    if (!numberInput.value) { alert("شماره فرم را وارد کنید."); return; }
+    showBuilder();
+  });
+  document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
+  document.getElementById("cancel-meta-btn").addEventListener("click", showBuilder);
+
+  function pageW() { return parseFloat(pageWInput.value) || 210; }
+  function pageH() { return parseFloat(pageHInput.value) || 297; }
   function px(mm) { return mm * MM * zoom; }
   function mmFromPx(v) { return v / (MM * zoom); }
   function snapMm(v) { return Math.round(v / snap) * snap; }
-
   function syncHidden() { hidden.value = JSON.stringify(frames); }
+
+  var PRESETS = {
+    "A4-P": [210, 297], "A4-L": [297, 210],
+    "A5-P": [148, 210], "A5-L": [210, 148]
+  };
+
+  function syncPresetSelect() {
+    var w = pageW(), h = pageH();
+    var sel = document.getElementById("paper-preset");
+    var found = "custom";
+    Object.keys(PRESETS).forEach(function (k) {
+      if (PRESETS[k][0] === w && PRESETS[k][1] === h) found = k;
+    });
+    sel.value = found;
+    document.getElementById("prop-page-w").value = w;
+    document.getElementById("prop-page-h").value = h;
+  }
+
+  document.getElementById("paper-preset").addEventListener("change", function () {
+    var v = this.value;
+    if (PRESETS[v]) {
+      pageWInput.value = PRESETS[v][0];
+      pageHInput.value = PRESETS[v][1];
+      document.getElementById("prop-page-w").value = PRESETS[v][0];
+      document.getElementById("prop-page-h").value = PRESETS[v][1];
+      render();
+    }
+  });
 
   function drawRulers() {
     var w = pageW(), h = pageH();
     rulerH.innerHTML = "";
     rulerV.innerHTML = "";
+    // Ruler length matches paper exactly; ticks start at 0 of paper edge
     rulerH.style.width = px(w) + "px";
     rulerV.style.height = px(h) + "px";
     for (var x = 0; x <= w; x += 5) {
       var tick = document.createElement("div");
       tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : "");
-      tick.style.left = px(x) + "px";
+      // X=0 is the right edge of the paper (matches frame CSS `right`)
+      tick.style.right = px(x) + "px";
       if (x % 10 === 0) {
         var lab = document.createElement("span");
         lab.textContent = String(x);
@@ -176,18 +309,15 @@
   }
 
   function render() {
+    if (builderPanel.hidden) return;
     var w = pageW(), h = pageH();
     canvas.style.width = px(w) + "px";
     canvas.style.height = px(h) + "px";
-    canvas.style.setProperty("--page-w", w);
-    canvas.style.setProperty("--page-h", h);
     canvas.innerHTML = "";
-    // grid
     var grid = document.createElement("div");
     grid.className = "designer-grid";
     grid.style.backgroundSize = px(snap) + "px " + px(snap) + "px";
     canvas.appendChild(grid);
-
     frames.forEach(function (f) {
       var el = document.createElement("div");
       el.className = "form-frame kind-" + (f.kind || "box") + (f.id === selectedId ? " selected" : "");
@@ -212,6 +342,7 @@
     drawRulers();
     syncHidden();
     renderProps();
+    syncPresetSelect();
     document.getElementById("zoom-label").textContent = Math.round(zoom * 100) + "٪";
   }
 
@@ -231,15 +362,46 @@
     document.getElementById("prop-h").value = f.height;
   }
 
+  function applyPropInputs() {
+    var f = find(selectedId); if (!f) return;
+    f.label = document.getElementById("prop-label").value;
+    f.kind = document.getElementById("prop-kind").value;
+    f.x = snapMm(parseFloat(document.getElementById("prop-x").value) || 0);
+    f.y = snapMm(parseFloat(document.getElementById("prop-y").value) || 0);
+    f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
+    f.height = Math.max(snap * 0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+    render();
+  }
   ["prop-label","prop-kind","prop-x","prop-y","prop-w","prop-h"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", applyPropInputs);
+  });
+
+  document.getElementById("frame-props").addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-step]");
+    if (!btn) return;
+    var key = btn.getAttribute("data-step");
+    var dir = parseFloat(btn.getAttribute("data-dir"));
+    var map = {
+      x: "prop-x", y: "prop-y", w: "prop-w", h: "prop-h",
+      "page-w": "prop-page-w", "page-h": "prop-page-h"
+    };
+    var inp = document.getElementById(map[key]);
+    if (!inp) return;
+    var step = (key === "page-w" || key === "page-h") ? 1 : snap;
+    var v = (parseFloat(inp.value) || 0) + dir * step;
+    if (key === "w" || key === "h" || key.indexOf("page") === 0) v = Math.max(step, v);
+    if (v < 0) v = 0;
+    inp.value = Math.round(v * 10) / 10;
+    if (key === "page-w") { pageWInput.value = inp.value; document.getElementById("paper-preset").value = "custom"; render(); }
+    else if (key === "page-h") { pageHInput.value = inp.value; document.getElementById("paper-preset").value = "custom"; render(); }
+    else applyPropInputs();
+  });
+
+  ["prop-page-w", "prop-page-h"].forEach(function (id) {
     document.getElementById(id).addEventListener("change", function () {
-      var f = find(selectedId); if (!f) return;
-      f.label = document.getElementById("prop-label").value;
-      f.kind = document.getElementById("prop-kind").value;
-      f.x = snapMm(parseFloat(document.getElementById("prop-x").value) || 0);
-      f.y = snapMm(parseFloat(document.getElementById("prop-y").value) || 0);
-      f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
-      f.height = Math.max(1, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+      pageWInput.value = document.getElementById("prop-page-w").value;
+      pageHInput.value = document.getElementById("prop-page-h").value;
+      document.getElementById("paper-preset").value = "custom";
       render();
     });
   });
@@ -248,22 +410,19 @@
   function startDrag(e) {
     if (e.target.classList.contains("resize-handle")) return;
     e.preventDefault();
-    var id = e.currentTarget.dataset.id;
-    selectedId = id;
-    var f = find(id);
-    drag = { mode: "move", id: id, startX: e.clientX, startY: e.clientY, ox: f.x, oy: f.y };
+    selectedId = e.currentTarget.dataset.id;
+    var f = find(selectedId);
+    drag = { mode: "move", id: selectedId, startX: e.clientX, startY: e.clientY, ox: f.x, oy: f.y };
     render();
   }
   function startResize(e) {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     var id = e.currentTarget.parentElement.dataset.id;
     var f = find(id);
     selectedId = id;
     drag = {
       mode: "resize", corner: e.currentTarget.dataset.corner, id: id,
-      startX: e.clientX, startY: e.clientY,
-      ox: f.x, oy: f.y, ow: f.width, oh: f.height
+      startX: e.clientX, startY: e.clientY, ox: f.x, oy: f.y, ow: f.width, oh: f.height
     };
   }
   window.addEventListener("mousemove", function (e) {
@@ -271,18 +430,16 @@
     var f = find(drag.id); if (!f) return;
     var dx = mmFromPx(e.clientX - drag.startX);
     var dy = mmFromPx(e.clientY - drag.startY);
-    // RTL: moving mouse left increases "right" offset? canvas uses CSS right.
-    // Positive clientX increase (to the right) should decrease CSS right.
     if (drag.mode === "move") {
       f.x = snapMm(Math.max(0, drag.ox - dx));
       f.y = snapMm(Math.max(0, drag.oy + dy));
     } else {
       var c = drag.corner;
       if (c === "se") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
-      if (c === "sw") { f.x = snapMm(drag.ox - dx); f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
-      if (c === "ne") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.y = snapMm(drag.oy + dy); f.height = snapMm(Math.max(1, drag.oh - dy)); }
+      if (c === "sw") { f.x = snapMm(Math.max(0, drag.ox - dx)); f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "ne") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.y = snapMm(Math.max(0, drag.oy + dy)); f.height = snapMm(Math.max(1, drag.oh - dy)); }
       if (c === "nw") {
-        f.x = snapMm(drag.ox - dx); f.y = snapMm(drag.oy + dy);
+        f.x = snapMm(Math.max(0, drag.ox - dx)); f.y = snapMm(Math.max(0, drag.oy + dy));
         f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh - dy));
       }
     }
@@ -302,42 +459,34 @@
       var f = {
         id: "f" + Date.now() + "-" + (uid++),
         label: kind === "header" ? "عنوان فرم" : kind === "footer" ? "پاورقی" : kind === "field" ? "فیلد" : kind === "line" ? "" : "کادر",
-        kind: kind,
-        x: 15, y: 20 + frames.length * 12,
-        width: kind === "line" ? 180 : kind === "header" ? 180 : 70,
-        height: kind === "line" ? 1 : kind === "header" ? 12 : 18
+        kind: kind, x: 10, y: 15 + frames.length * 12,
+        width: kind === "line" || kind === "header" ? Math.max(40, pageW() - 20) : 70,
+        height: kind === "line" ? 1 : kind === "header" ? 12 : 16
       };
-      frames.push(f);
-      selectedId = f.id;
-      render();
+      frames.push(f); selectedId = f.id; render();
     });
   });
-
   document.querySelector("[data-delete-selected]").addEventListener("click", function () {
     if (!selectedId) return;
     frames = frames.filter(function (f) { return f.id !== selectedId; });
-    selectedId = null;
-    render();
+    selectedId = null; render();
   });
-
   document.querySelectorAll("[data-zoom]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var d = btn.getAttribute("data-zoom");
-      zoom = Math.max(0.5, Math.min(2, zoom + (d === "+" ? 0.1 : -0.1)));
+      zoom = Math.max(0.5, Math.min(2, zoom + (btn.getAttribute("data-zoom") === "+" ? 0.1 : -0.1)));
       render();
     });
   });
-
   document.getElementById("snap-mm").addEventListener("change", function (e) {
-    snap = parseFloat(e.target.value) || 2;
-    render();
-  });
-  ["id_page_width_mm", "id_page_height_mm"].forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) el.addEventListener("change", render);
+    snap = parseFloat(e.target.value) || 2; render();
   });
 
-  render();
+  // Align rulers with paper: no padding offset — scroll content flush
+  var scroll = document.getElementById("designer-scroll");
+  scroll.style.padding = "0";
+
+  if (mode === "edit") showBuilder();
+  {% if form.errors %}showMetaEditor();{% endif %}
 })();
 </script>
 {% endblock %}

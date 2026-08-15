@@ -45,6 +45,7 @@ class ReportFlowTests(TestCase):
         self.assertContains(list_resp, "گزارش تست")
         self.assertContains(list_resp, "(توضیح نمونه)")
         self.assertNotContains(list_resp, "+ ایجاد گزارش")
+        self.assertContains(list_resp, "list-desc")
 
         detail = self.client.get(reverse("report_detail", args=[report.pk]))
         self.assertEqual(detail.status_code, 200)

@@ -5,17 +5,16 @@
 {% block nav_form_list %}active{% endblock %}
 
 {% block content %}
-<div class="page-head">
+<div class="page-head page-head-sm">
   <h1>مشاهده فرم‌ها</h1>
 </div>
 
-<div class="panel">
-  <div class="panel-head"><h2>فرم‌های قابل مشاهده</h2></div>
+<div class="panel panel-compact">
   {% if rows %}
-  <table class="table">
+  <table class="table table-compact">
     <thead>
       <tr>
-        <th>
+        <th style="width:72px">
           <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
             شماره {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
@@ -32,12 +31,12 @@
             </form>
           </div>
         </th>
-        <th>
+        <th style="width:90px">
           <a class="th-sort" href="?sort=type&dir={% if sort == 'type' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
             نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
-        <th>عملیات</th>
+        <th style="width:210px">عملیات</th>
       </tr>
     </thead>
     <tbody>
@@ -48,14 +47,14 @@
           data-description="{{ row.form.description }}">
         <td class="num">{{ row.form.number }}</td>
         <td>
-          <a href="{% url 'print_form_detail' row.form.pk %}">{{ row.form.title }}</a>
-          {% if row.form.description %}<span class="report-desc">({{ row.form.description }})</span>{% endif %}
+          <a class="list-title" href="{% url 'print_form_detail' row.form.pk %}">{{ row.form.title }}</a>
+          {% if row.form.description %}<div class="list-desc">({{ row.form.description }})</div>{% endif %}
         </td>
         <td>{% if row.form.is_standard %}<span class="badge badge-approved">استاندارد</span>{% else %}<span class="badge">شخصی</span>{% endif %}</td>
         <td>
           <div class="ops-inline">
             <select class="ops-select" data-ops>
-              <option value="">انتخاب عملیات…</option>
+              <option value="">عملیات…</option>
               {% if row.can_edit %}<option value="edit">ویرایش</option>{% endif %}
               {% if row.can_send %}<option value="send">ارسال به کاربر</option>{% endif %}
               {% if row.can_copy %}<option value="copy">ایجاد کپی</option>{% endif %}

@@ -183,6 +183,9 @@ class PrintFormForm(forms.ModelForm):
         if not (profile and profile.is_manager):
             self.fields["is_standard"].widget = forms.HiddenInput()
             self.fields["is_standard"].initial = False
+        # Page size is edited in the designer props panel.
+        self.fields["page_width_mm"].widget = forms.HiddenInput()
+        self.fields["page_height_mm"].widget = forms.HiddenInput()
         if self.instance and self.instance.pk:
             self.fields["frames_json"].initial = json.dumps(
                 self.instance.frames or [], ensure_ascii=False
