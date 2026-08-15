@@ -20,7 +20,7 @@
   {{ form.page_height_mm }}
   {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
 
-  <div class="meta-strip" id="meta-summary" {% if mode != 'edit' %}hidden{% endif %}>
+  <div class="meta-strip" id="meta-summary" hidden>
     <div class="meta-text">
       <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
       <div class="meta-sub">شماره <span id="sum-number">{{ form.number.value|default:"" }}</span>
@@ -31,7 +31,7 @@
     <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
   </div>
 
-  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+  <div class="panel panel-compact" id="meta-editor">
     <div class="panel-body panel-body-compact">
       <div class="form-grid form-grid-compact form-grid-3">
         <div class="field">
@@ -56,25 +56,23 @@
       </div>
       <div class="line-actions">
         <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" {% if mode != 'edit' %}hidden{% endif %}>انصراف</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" hidden>انصراف</button>
       </div>
     </div>
   </div>
 
-  <div class="panel panel-compact designer-first" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
-    <div class="panel-head panel-head-compact">
-      <h2>طراحی فرم چاپی</h2>
-      <div class="designer-toolbar">
-        <button type="button" class="btn btn-sm" data-add="header">عنوان</button>
-        <button type="button" class="btn btn-sm" data-add="box">کادر</button>
-        <button type="button" class="btn btn-sm" data-add="field">فیلد</button>
-        <button type="button" class="btn btn-sm" data-add="line">خط</button>
-        <button type="button" class="btn btn-sm" data-add="footer">پاورقی</button>
-        <button type="button" class="btn btn-sm btn-ghost" data-zoom="-">−</button>
-        <span class="zoom-label" id="zoom-label">۱۰۰٪</span>
-        <button type="button" class="btn btn-sm btn-ghost" data-zoom="+">+</button>
-        <button type="button" class="btn btn-sm btn-danger" data-delete-selected>حذف انتخاب</button>
-      </div>
+  <div class="panel panel-compact designer-first" id="builder-panel" hidden>
+    <div class="designer-toolbar-bar">
+      <button type="button" class="btn btn-sm" data-add="header">عنوان</button>
+      <button type="button" class="btn btn-sm" data-add="box">کادر</button>
+      <button type="button" class="btn btn-sm" data-add="field">فیلد</button>
+      <button type="button" class="btn btn-sm" data-add="line">خط</button>
+      <button type="button" class="btn btn-sm" data-add="footer">پاورقی</button>
+      <span class="toolbar-sep"></span>
+      <button type="button" class="btn btn-sm btn-ghost" data-zoom="-">−</button>
+      <span class="zoom-label" id="zoom-label">۱۰۰٪</span>
+      <button type="button" class="btn btn-sm btn-ghost" data-zoom="+">+</button>
+      <button type="button" class="btn btn-sm btn-danger" data-delete-selected>حذف انتخاب</button>
     </div>
     <div class="panel-body panel-body-compact designer-body">
       <div class="ruler-workspace" id="ruler-workspace">
@@ -100,26 +98,18 @@
               <option value="custom">سفارشی (Custom)</option>
             </select>
           </div>
-          <div class="form-grid form-grid-2" id="custom-size-fields">
+          <div class="form-grid form-grid-2">
             <div class="field">
               <label>عرض (میلی‌متر)</label>
-              <div class="stepper">
-                <button type="button" class="btn btn-xs" data-step="page-w" data-dir="-1">−</button>
-                <input class="input" type="number" id="prop-page-w" min="50" max="600" step="1">
-                <button type="button" class="btn btn-xs" data-step="page-w" data-dir="1">+</button>
-              </div>
+              <input class="input spin" type="number" id="prop-page-w" min="50" max="600" step="1">
             </div>
             <div class="field">
               <label>ارتفاع (میلی‌متر)</label>
-              <div class="stepper">
-                <button type="button" class="btn btn-xs" data-step="page-h" data-dir="-1">−</button>
-                <input class="input" type="number" id="prop-page-h" min="50" max="600" step="1">
-                <button type="button" class="btn btn-xs" data-step="page-h" data-dir="1">+</button>
-              </div>
+              <input class="input spin" type="number" id="prop-page-h" min="50" max="600" step="1">
             </div>
           </div>
           <div class="field">
-            <label>شبکه (میلی‌متر)</label>
+            <label>شبکه (میلی‌متر واقعی از صفر)</label>
             <select id="snap-mm">
               <option value="0.5">۰٫۵ میلی‌متر</option>
               <option value="1">۱ میلی‌متر</option>
@@ -144,33 +134,23 @@
                 <option value="footer">پاورقی</option>
               </select>
             </div>
-            <div class="field"><label>X (میلی‌متر از راست)</label>
-              <div class="stepper">
-                <button type="button" class="btn btn-xs" data-step="x" data-dir="-1">−</button>
-                <input class="input" type="number" step="0.5" id="prop-x">
-                <button type="button" class="btn btn-xs" data-step="x" data-dir="1">+</button>
-              </div>
+            <div class="field"><label>X (میلی‌متر از چپ)</label>
+              <input class="input spin" type="number" step="0.5" id="prop-x" min="0">
             </div>
             <div class="field"><label>Y (میلی‌متر از بالا)</label>
-              <div class="stepper">
-                <button type="button" class="btn btn-xs" data-step="y" data-dir="-1">−</button>
-                <input class="input" type="number" step="0.5" id="prop-y">
-                <button type="button" class="btn btn-xs" data-step="y" data-dir="1">+</button>
-              </div>
+              <input class="input spin" type="number" step="0.5" id="prop-y" min="0">
             </div>
             <div class="field"><label>عرض (میلی‌متر)</label>
-              <div class="stepper">
-                <button type="button" class="btn btn-xs" data-step="w" data-dir="-1">−</button>
-                <input class="input" type="number" step="0.5" id="prop-w">
-                <button type="button" class="btn btn-xs" data-step="w" data-dir="1">+</button>
-              </div>
+              <input class="input spin" type="number" step="0.5" id="prop-w" min="0.5">
             </div>
             <div class="field"><label>ارتفاع (میلی‌متر)</label>
-              <div class="stepper">
-                <button type="button" class="btn btn-xs" data-step="h" data-dir="-1">−</button>
-                <input class="input" type="number" step="0.5" id="prop-h">
-                <button type="button" class="btn btn-xs" data-step="h" data-dir="1">+</button>
-              </div>
+              <input class="input spin" type="number" step="0.5" id="prop-h" min="0.5">
+            </div>
+            <div class="field"><label>چرخش (درجه)</label>
+              <input class="input spin" type="number" step="1" id="prop-rot" min="-180" max="180" value="0">
+            </div>
+            <div class="field"><label>ضخامت خط (میلی‌متر)</label>
+              <input class="input spin" type="number" step="0.1" id="prop-stroke" min="0.1" max="5" value="0.5">
             </div>
           </div>
         </details>
@@ -185,22 +165,28 @@
 <script>
 (function () {
   var mode = "{{ mode }}";
-  var MM = 3.7795275591;
+  var MM = 3.7795275591; // CSS px per mm at 96dpi
   var zoom = 1;
   var snap = 2;
   var frames = [];
   try { frames = JSON.parse(document.getElementById("frames-initial").textContent || "[]"); } catch (e) { frames = []; }
+  // Migrate old right-based coords: keep as-is; new frames use left
+  frames.forEach(function (f) {
+    if (f.left == null && f.x != null) {
+      // Prefer explicit left; if only x existed (was right-offset), leave as left for new system
+      f.left = f.x;
+    }
+    if (f.left == null) f.left = 0;
+  });
   var selectedId = null;
   var hidden = document.getElementById("id_frames_json");
-  var pageWInput = document.getElementById("id_page_width_mm");
-  var pageHInput = document.getElementById("id_page_height_mm");
-  // Hidden inputs from as_hidden may have different IDs - find by name
-  if (!pageWInput) pageWInput = document.querySelector('[name="page_width_mm"]');
-  if (!pageHInput) pageHInput = document.querySelector('[name="page_height_mm"]');
+  var pageWInput = document.getElementById("id_page_width_mm") || document.querySelector('[name="page_width_mm"]');
+  var pageHInput = document.getElementById("id_page_height_mm") || document.querySelector('[name="page_height_mm"]');
   var canvas = document.getElementById("form-canvas");
   var rulerH = document.getElementById("ruler-h");
   var rulerV = document.getElementById("ruler-v");
   var uid = 1;
+  var confirmedOnce = (mode === "edit");
 
   var titleInput = document.getElementById("id_title");
   var numberInput = document.getElementById("id_number");
@@ -210,6 +196,7 @@
   var metaSummary = document.getElementById("meta-summary");
   var builderPanel = document.getElementById("builder-panel");
   var topSubmit = document.getElementById("top-submit");
+  var cancelBtn = document.getElementById("cancel-meta-btn");
 
   function syncSummary() {
     document.getElementById("sum-title").textContent = titleInput.value || "—";
@@ -220,10 +207,12 @@
     if (wrap && stdInput) wrap.textContent = stdInput.checked ? " · استاندارد" : "";
   }
   function showBuilder() {
+    confirmedOnce = true;
     metaEditor.hidden = true;
     metaSummary.hidden = false;
     builderPanel.hidden = false;
     topSubmit.hidden = false;
+    cancelBtn.hidden = false;
     syncSummary();
     render();
   }
@@ -232,6 +221,7 @@
     metaSummary.hidden = true;
     builderPanel.hidden = true;
     topSubmit.hidden = true;
+    cancelBtn.hidden = !confirmedOnce;
   }
   document.getElementById("confirm-meta-btn").addEventListener("click", function () {
     if (!titleInput.value.trim()) { alert("عنوان فرم را وارد کنید."); return; }
@@ -239,14 +229,17 @@
     showBuilder();
   });
   document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
-  document.getElementById("cancel-meta-btn").addEventListener("click", showBuilder);
+  cancelBtn.addEventListener("click", showBuilder);
 
   function pageW() { return parseFloat(pageWInput.value) || 210; }
   function pageH() { return parseFloat(pageHInput.value) || 297; }
   function px(mm) { return mm * MM * zoom; }
   function mmFromPx(v) { return v / (MM * zoom); }
   function snapMm(v) { return Math.round(v / snap) * snap; }
-  function syncHidden() { hidden.value = JSON.stringify(frames); }
+  function syncHidden() {
+    frames.forEach(function (f) { f.x = f.left; }); // keep x synced for older readers
+    hidden.value = JSON.stringify(frames);
+  }
 
   var PRESETS = {
     "A4-P": [210, 297], "A4-L": [297, 210],
@@ -280,14 +273,14 @@
     var w = pageW(), h = pageH();
     rulerH.innerHTML = "";
     rulerV.innerHTML = "";
-    // Ruler length matches paper exactly; ticks start at 0 of paper edge
     rulerH.style.width = px(w) + "px";
     rulerV.style.height = px(h) + "px";
-    for (var x = 0; x <= w; x += 5) {
+    // 0 at LEFT of paper
+    for (var x = 0; x <= w; x += 1) {
+      if (x % 5 !== 0 && snap > 1) continue;
       var tick = document.createElement("div");
-      tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : "");
-      // X=0 is the right edge of the paper (matches frame CSS `right`)
-      tick.style.right = px(x) + "px";
+      tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : (x % 5 === 0 ? "" : " minor"));
+      tick.style.left = px(x) + "px";
       if (x % 10 === 0) {
         var lab = document.createElement("span");
         lab.textContent = String(x);
@@ -295,9 +288,10 @@
       }
       rulerH.appendChild(tick);
     }
-    for (var y = 0; y <= h; y += 5) {
+    for (var y = 0; y <= h; y += 1) {
+      if (y % 5 !== 0 && snap > 1) continue;
       var tick2 = document.createElement("div");
-      tick2.className = "ruler-tick" + (y % 10 === 0 ? " major" : "");
+      tick2.className = "ruler-tick" + (y % 10 === 0 ? " major" : (y % 5 === 0 ? "" : " minor"));
       tick2.style.top = px(y) + "px";
       if (y % 10 === 0) {
         var lab2 = document.createElement("span");
@@ -316,15 +310,21 @@
     canvas.innerHTML = "";
     var grid = document.createElement("div");
     grid.className = "designer-grid";
-    grid.style.backgroundSize = px(snap) + "px " + px(snap) + "px";
+    // Real mm grid from origin (0,0) top-left
+    var g = px(snap);
+    grid.style.backgroundSize = g + "px " + g + "px";
+    grid.style.backgroundPosition = "0 0";
     canvas.appendChild(grid);
     frames.forEach(function (f) {
       var el = document.createElement("div");
       el.className = "form-frame kind-" + (f.kind || "box") + (f.id === selectedId ? " selected" : "");
-      el.style.right = px(f.x || 0) + "px";
+      el.style.left = px(f.left || 0) + "px";
+      el.style.right = "auto";
       el.style.top = px(f.y || 0) + "px";
       el.style.width = px(f.width || 20) + "px";
       el.style.height = px(f.height || 10) + "px";
+      el.style.transform = "rotate(" + (f.rotation || 0) + "deg)";
+      if (f.stroke) el.style.borderWidth = px(f.stroke) + "px";
       el.textContent = f.label || f.kind;
       el.dataset.id = f.id;
       el.addEventListener("mousedown", startDrag);
@@ -356,45 +356,28 @@
     empty.hidden = true; fields.hidden = false;
     document.getElementById("prop-label").value = f.label || "";
     document.getElementById("prop-kind").value = f.kind || "box";
-    document.getElementById("prop-x").value = f.x;
-    document.getElementById("prop-y").value = f.y;
+    document.getElementById("prop-x").value = f.left || 0;
+    document.getElementById("prop-y").value = f.y || 0;
     document.getElementById("prop-w").value = f.width;
     document.getElementById("prop-h").value = f.height;
+    document.getElementById("prop-rot").value = f.rotation || 0;
+    document.getElementById("prop-stroke").value = f.stroke || 0.5;
   }
 
   function applyPropInputs() {
     var f = find(selectedId); if (!f) return;
     f.label = document.getElementById("prop-label").value;
     f.kind = document.getElementById("prop-kind").value;
-    f.x = snapMm(parseFloat(document.getElementById("prop-x").value) || 0);
-    f.y = snapMm(parseFloat(document.getElementById("prop-y").value) || 0);
+    f.left = snapMm(Math.max(0, parseFloat(document.getElementById("prop-x").value) || 0));
+    f.y = snapMm(Math.max(0, parseFloat(document.getElementById("prop-y").value) || 0));
     f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
-    f.height = Math.max(snap * 0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+    f.height = Math.max(0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+    f.rotation = parseFloat(document.getElementById("prop-rot").value) || 0;
+    f.stroke = parseFloat(document.getElementById("prop-stroke").value) || 0.5;
     render();
   }
-  ["prop-label","prop-kind","prop-x","prop-y","prop-w","prop-h"].forEach(function (id) {
+  ["prop-label","prop-kind","prop-x","prop-y","prop-w","prop-h","prop-rot","prop-stroke"].forEach(function (id) {
     document.getElementById(id).addEventListener("change", applyPropInputs);
-  });
-
-  document.getElementById("frame-props").addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-step]");
-    if (!btn) return;
-    var key = btn.getAttribute("data-step");
-    var dir = parseFloat(btn.getAttribute("data-dir"));
-    var map = {
-      x: "prop-x", y: "prop-y", w: "prop-w", h: "prop-h",
-      "page-w": "prop-page-w", "page-h": "prop-page-h"
-    };
-    var inp = document.getElementById(map[key]);
-    if (!inp) return;
-    var step = (key === "page-w" || key === "page-h") ? 1 : snap;
-    var v = (parseFloat(inp.value) || 0) + dir * step;
-    if (key === "w" || key === "h" || key.indexOf("page") === 0) v = Math.max(step, v);
-    if (v < 0) v = 0;
-    inp.value = Math.round(v * 10) / 10;
-    if (key === "page-w") { pageWInput.value = inp.value; document.getElementById("paper-preset").value = "custom"; render(); }
-    else if (key === "page-h") { pageHInput.value = inp.value; document.getElementById("paper-preset").value = "custom"; render(); }
-    else applyPropInputs();
   });
 
   ["prop-page-w", "prop-page-h"].forEach(function (id) {
@@ -412,7 +395,7 @@
     e.preventDefault();
     selectedId = e.currentTarget.dataset.id;
     var f = find(selectedId);
-    drag = { mode: "move", id: selectedId, startX: e.clientX, startY: e.clientY, ox: f.x, oy: f.y };
+    drag = { mode: "move", id: selectedId, startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y };
     render();
   }
   function startResize(e) {
@@ -422,7 +405,7 @@
     selectedId = id;
     drag = {
       mode: "resize", corner: e.currentTarget.dataset.corner, id: id,
-      startX: e.clientX, startY: e.clientY, ox: f.x, oy: f.y, ow: f.width, oh: f.height
+      startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y, ow: f.width, oh: f.height
     };
   }
   window.addEventListener("mousemove", function (e) {
@@ -430,17 +413,18 @@
     var f = find(drag.id); if (!f) return;
     var dx = mmFromPx(e.clientX - drag.startX);
     var dy = mmFromPx(e.clientY - drag.startY);
+    // LTR coords: mouse right increases left
     if (drag.mode === "move") {
-      f.x = snapMm(Math.max(0, drag.ox - dx));
+      f.left = snapMm(Math.max(0, drag.ox + dx));
       f.y = snapMm(Math.max(0, drag.oy + dy));
     } else {
       var c = drag.corner;
-      if (c === "se") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
-      if (c === "sw") { f.x = snapMm(Math.max(0, drag.ox - dx)); f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
-      if (c === "ne") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.y = snapMm(Math.max(0, drag.oy + dy)); f.height = snapMm(Math.max(1, drag.oh - dy)); }
+      if (c === "se") { f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "sw") { f.left = snapMm(Math.max(0, drag.ox + dx)); f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "ne") { f.width = snapMm(Math.max(snap, drag.ow + dx)); f.y = snapMm(Math.max(0, drag.oy + dy)); f.height = snapMm(Math.max(1, drag.oh - dy)); }
       if (c === "nw") {
-        f.x = snapMm(Math.max(0, drag.ox - dx)); f.y = snapMm(Math.max(0, drag.oy + dy));
-        f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh - dy));
+        f.left = snapMm(Math.max(0, drag.ox + dx)); f.y = snapMm(Math.max(0, drag.oy + dy));
+        f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh - dy));
       }
     }
     render();
@@ -459,9 +443,10 @@
       var f = {
         id: "f" + Date.now() + "-" + (uid++),
         label: kind === "header" ? "عنوان فرم" : kind === "footer" ? "پاورقی" : kind === "field" ? "فیلد" : kind === "line" ? "" : "کادر",
-        kind: kind, x: 10, y: 15 + frames.length * 12,
+        kind: kind, left: 10, x: 10, y: 15 + frames.length * 12,
         width: kind === "line" || kind === "header" ? Math.max(40, pageW() - 20) : 70,
-        height: kind === "line" ? 1 : kind === "header" ? 12 : 16
+        height: kind === "line" ? 1 : kind === "header" ? 12 : 16,
+        rotation: 0, stroke: 0.5
       };
       frames.push(f); selectedId = f.id; render();
     });
@@ -481,11 +466,10 @@
     snap = parseFloat(e.target.value) || 2; render();
   });
 
-  // Align rulers with paper: no padding offset — scroll content flush
-  var scroll = document.getElementById("designer-scroll");
-  scroll.style.padding = "0";
+  document.getElementById("designer-scroll").style.padding = "0";
 
   if (mode === "edit") showBuilder();
+  else showMetaEditor();
   {% if form.errors %}showMetaEditor();{% endif %}
 })();
 </script>

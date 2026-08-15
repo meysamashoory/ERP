@@ -130,6 +130,10 @@ def report_create(request: HttpRequest) -> HttpResponse:
             report.created_by = request.user
             report.columns = form.cleaned_data["columns_json"]
             report.data_source = form.primary_source()
+            try:
+                report.source_links = json.loads(request.POST.get("source_links_json") or "[]")
+            except json.JSONDecodeError:
+                report.source_links = []
             report.save()
             messages.success(request, "گزارش ایجاد شد.")
             return redirect("report_detail", pk=report.pk)
@@ -142,6 +146,7 @@ def report_create(request: HttpRequest) -> HttpResponse:
             "form": form,
             "column_groups": COLUMN_GROUPS,
             "columns_initial": form.fields["columns_json"].initial or "[]",
+            "source_links_json": getattr(form, "source_links_json", "[]"),
             "mode": "create",
             "page_title": "ایجاد گزارش",
         },
@@ -159,6 +164,10 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
             obj = form.save(commit=False)
             obj.columns = form.cleaned_data["columns_json"]
             obj.data_source = form.primary_source()
+            try:
+                obj.source_links = json.loads(request.POST.get("source_links_json") or "[]")
+            except json.JSONDecodeError:
+                obj.source_links = []
             obj.save()
             messages.success(request, "گزارش به‌روزرسانی شد.")
             return redirect("report_detail", pk=report.pk)
@@ -171,6 +180,7 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
             "form": form,
             "column_groups": COLUMN_GROUPS,
             "columns_initial": form.fields["columns_json"].initial or "[]",
+            "source_links_json": getattr(form, "source_links_json", "[]"),
             "mode": "edit",
             "page_title": "ویرایش گزارش",
             "report": report,
@@ -283,6 +293,7 @@ def report_send(request: HttpRequest, pk: int) -> HttpResponse:
         number=form.cleaned_data["number"],
         data_source=report.data_source,
         columns=list(report.columns or []),
+        source_links=list(report.source_links or []),
         is_standard=False,
         created_by=request.user,
         source_report=report,
@@ -315,6 +326,7 @@ def report_copy(request: HttpRequest, pk: int) -> HttpResponse:
         number=form.cleaned_data["number"],
         data_source=report.data_source,
         columns=list(report.columns or []),
+        source_links=list(report.source_links or []),
         is_standard=False,
         created_by=request.user,
         source_report=report,

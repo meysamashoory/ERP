@@ -53,8 +53,12 @@ class SavedReportForm(forms.ModelForm):
             self.fields["columns_json"].initial = json.dumps(
                 normalize_columns(self.instance.columns or []), ensure_ascii=False
             )
+            self.source_links_json = json.dumps(
+                getattr(self.instance, "source_links", None) or [], ensure_ascii=False
+            )
         else:
             self.fields["columns_json"].initial = "[]"
+            self.source_links_json = "[]"
         self.column_groups = COLUMN_GROUPS
         self.is_manager = bool(profile and profile.is_manager)
         _style_fields(self)

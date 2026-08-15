@@ -35,7 +35,7 @@
            style="--page-w: {{ print_form.page_width_mm }}; --page-h: {{ print_form.page_height_mm }};">
         {% for frame in print_form.frames %}
         <div class="form-frame kind-{{ frame.kind|default:'box' }}"
-             style="right: {{ frame.x }}mm; top: {{ frame.y }}mm; width: {{ frame.width }}mm; height: {{ frame.height }}mm;">
+             style="left: {{ frame.left|default:frame.x }}mm; top: {{ frame.y }}mm; width: {{ frame.width }}mm; height: {{ frame.height }}mm;{% if frame.rotation %} transform: rotate({{ frame.rotation }}deg);{% endif %}">
           {{ frame.label }}
         </div>
         {% empty %}

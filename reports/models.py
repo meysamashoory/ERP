@@ -36,6 +36,8 @@ class SavedReport(models.Model):
     )
     # Ordered: [{"key", "source", "level", "label"}, ...]
     columns = models.JSONField("ستون‌ها", default=list)
+    # Join keys across sources: [{"keys": {"fitting": "code", "file": "file_col_1"}}]
+    source_links = models.JSONField("ربط منابع", default=list, blank=True)
     is_standard = models.BooleanField("گزارش استاندارد", default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

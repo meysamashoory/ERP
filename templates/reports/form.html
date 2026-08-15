@@ -16,10 +16,10 @@
 <form method="post" id="report-builder-form" class="builder-compact">
   {% csrf_token %}
   {{ form.columns_json }}
+  <input type="hidden" name="source_links_json" id="id_source_links_json" value="{{ source_links_json|default:'[]' }}">
   {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
 
-  {# Meta summary (shown after confirm / on edit) #}
-  <div class="meta-strip" id="meta-summary" {% if mode != 'edit' %}hidden{% endif %}>
+  <div class="meta-strip" id="meta-summary" hidden>
     <div class="meta-text">
       <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
       <div class="meta-sub">
@@ -31,8 +31,7 @@
     <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
   </div>
 
-  {# Meta editor #}
-  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+  <div class="panel panel-compact" id="meta-editor">
     <div class="panel-body panel-body-compact">
       <div class="form-grid form-grid-compact form-grid-3">
         <div class="field">
@@ -58,52 +57,73 @@
       {{ form.columns_json.errors }}
       <div class="line-actions">
         <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" {% if mode != 'edit' %}hidden{% endif %}>انصراف</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" hidden>انصراف</button>
       </div>
     </div>
   </div>
 
-  {# Column builder #}
-  <div class="panel panel-compact" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+  <div class="panel panel-compact" id="builder-panel" hidden>
     <div class="panel-body panel-body-compact">
       <div class="col-builder col-builder-compact">
         <div class="col-builder-right">
           <div class="field">
             <label>منبع داده اصلی</label>
-            <div class="source-add-row">
-              <select id="source-select">
-                <option value="">افزودن منبع…</option>
-              </select>
-              <button type="button" class="btn btn-sm" id="add-source-btn">افزودن</button>
-            </div>
+            <details class="source-menu" id="source-menu">
+              <summary class="source-menu-summary">افزودن منبع ▾</summary>
+              <div class="source-menu-list" id="source-menu-list"></div>
+            </details>
           </div>
           <div class="source-trees" id="source-trees"></div>
+          <div class="source-link-bar">
+            <button type="button" class="btn btn-sm btn-ghost" id="link-sources-btn" hidden>ربط منابع (نقطه اشتراک)</button>
+            <div class="source-links-summary muted" id="source-links-summary"></div>
+          </div>
         </div>
         <div class="col-builder-left">
           <div class="selected-head">
             <strong>نحوه نمایش</strong>
             <span class="muted">بالا = راست · پایین = چپ</span>
+            <div class="move-controls">
+              <button type="button" class="btn btn-xs btn-ghost" id="move-up" title="بالا">↑</button>
+              <button type="button" class="btn btn-xs btn-ghost" id="move-down" title="پایین">↓</button>
+            </div>
           </div>
           <div class="selected-cols" id="selected-cols"></div>
+          <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
         </div>
       </div>
     </div>
   </div>
 </form>
+
+<dialog id="source-link-dialog" class="dialog">
+  <div class="dialog-head"><h3>ربط منابع — نقطه اشتراک</h3></div>
+  <p class="muted">برای هر منبع، ستونی را انتخاب کنید که شناسه مشترک است (مثلاً کد کالا در هر منبع با نام متفاوت).</p>
+  <div id="link-fields"></div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="save-links-btn">ذخیره ربط</button>
+    <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 {{ column_groups|json_script:"column-groups" }}
 <script id="columns-initial" type="application/json">{{ columns_initial|safe }}</script>
+<script id="links-initial" type="application/json">{{ source_links_json|default:'[]'|safe }}</script>
 <script>
 (function () {
   var mode = "{{ mode }}";
   var groups = JSON.parse(document.getElementById("column-groups").textContent);
   var hidden = document.getElementById("id_columns_json");
+  var linksHidden = document.getElementById("id_source_links_json");
   var selected = [];
+  var sourceLinks = [];
   try { selected = JSON.parse(document.getElementById("columns-initial").textContent || "[]"); } catch (e) { selected = []; }
+  try { sourceLinks = JSON.parse(document.getElementById("links-initial").textContent || "[]"); } catch (e) { sourceLinks = []; }
   selected = (selected || []).map(function (item) {
-    if (typeof item === "string") return { key: item, source: "fitting", level: 1, label: item };
+    if (typeof item === "string") return { key: item, source: "fitting", level: 1, label: item, origLabel: item };
+    item.origLabel = item.origLabel || item.label || item.key;
     return item;
   });
 
@@ -111,15 +131,18 @@
   selected.forEach(function (c) {
     if (c.source && addedSources.indexOf(c.source) < 0) addedSources.push(c.source);
   });
+  var activeIdx = -1;
 
   var metaEditor = document.getElementById("meta-editor");
   var metaSummary = document.getElementById("meta-summary");
   var builderPanel = document.getElementById("builder-panel");
   var topSubmit = document.getElementById("top-submit");
+  var cancelBtn = document.getElementById("cancel-meta-btn");
   var titleInput = document.getElementById("id_title");
   var numberInput = document.getElementById("id_number");
   var descInput = document.getElementById("id_description");
   var stdInput = document.getElementById("id_is_standard");
+  var confirmedOnce = (mode === "edit");
 
   function syncSummary() {
     document.getElementById("sum-title").textContent = titleInput.value || "—";
@@ -131,17 +154,22 @@
   }
 
   function showBuilder() {
+    confirmedOnce = true;
     metaEditor.hidden = true;
     metaSummary.hidden = false;
     builderPanel.hidden = false;
     topSubmit.hidden = false;
+    cancelBtn.hidden = false;
     syncSummary();
+    renderAll();
   }
   function showMetaEditor() {
     metaEditor.hidden = false;
     metaSummary.hidden = true;
     builderPanel.hidden = true;
     topSubmit.hidden = true;
+    // Cancel only after at least one successful confirm (or edit mode)
+    cancelBtn.hidden = !confirmedOnce;
   }
 
   document.getElementById("confirm-meta-btn").addEventListener("click", function () {
@@ -150,18 +178,29 @@
     showBuilder();
   });
   document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
-  var cancelBtn = document.getElementById("cancel-meta-btn");
-  if (cancelBtn) cancelBtn.addEventListener("click", showBuilder);
+  cancelBtn.addEventListener("click", showBuilder);
 
   if (mode === "edit") showBuilder();
+  else showMetaEditor();
   {% if form.errors %}showMetaEditor();{% endif %}
 
-  var sourceSelect = document.getElementById("source-select");
   var trees = document.getElementById("source-trees");
   var list = document.getElementById("selected-cols");
+  var pathEl = document.getElementById("col-path");
+  var menuList = document.getElementById("source-menu-list");
+  var linkBtn = document.getElementById("link-sources-btn");
+  var linkSummary = document.getElementById("source-links-summary");
+  var linkDialog = document.getElementById("source-link-dialog");
 
-  function syncHidden() { hidden.value = JSON.stringify(selected); }
+  function syncHidden() {
+    hidden.value = JSON.stringify(selected);
+    linksHidden.value = JSON.stringify(sourceLinks);
+  }
 
+  function groupLabel(sid) {
+    var g = groups.find(function (x) { return x.id === sid; });
+    return g ? g.label : sid;
+  }
   function labelOf(source, key) {
     var g = groups.find(function (x) { return x.id === source; });
     if (!g) return key;
@@ -169,49 +208,46 @@
     return hit ? hit[1] : key;
   }
 
-  function fillSourceSelect() {
-    sourceSelect.innerHTML = '<option value="">افزودن منبع…</option>';
-    groups.forEach(function (g) {
-      if (addedSources.indexOf(g.id) >= 0) return;
-      var opt = document.createElement("option");
-      opt.value = g.id;
-      opt.textContent = g.label;
-      sourceSelect.appendChild(opt);
+  function fillSourceMenu() {
+    menuList.innerHTML = "";
+    var available = groups.filter(function (g) { return addedSources.indexOf(g.id) < 0; });
+    if (!available.length) {
+      menuList.innerHTML = '<p class="muted">همه منابع اضافه شده‌اند.</p>';
+      return;
+    }
+    available.forEach(function (g) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "source-menu-item";
+      btn.textContent = g.label;
+      btn.addEventListener("click", function () {
+        addSource(g.id);
+        document.getElementById("source-menu").open = false;
+      });
+      menuList.appendChild(btn);
     });
   }
 
   function addSource(sid) {
     if (!sid || addedSources.indexOf(sid) >= 0) return;
-    if (sid !== "file") {
-      var other = addedSources.filter(function (s) { return s !== "file" && s !== sid; });
-      if (other.length) {
-        var hasCols = selected.some(function (c) { return other.indexOf(c.source) >= 0; });
-        if (hasCols && !confirm("با انتخاب این منبع، ستون‌های منبع قبلی حذف می‌شوند. ادامه؟")) return;
-        selected = selected.filter(function (c) { return c.source === "file" || c.source === sid; });
-        addedSources = addedSources.filter(function (s) { return s === "file" || s === sid; });
-      }
-    }
     addedSources.push(sid);
-    fillSourceSelect();
-    renderTrees();
-    renderSelected();
-    syncHidden();
+    renderAll();
+    if (addedSources.filter(function (s) { return s !== "file"; }).length >= 2) {
+      // Prompt to define join keys when multiple data sources
+      linkBtn.hidden = false;
+    }
   }
-
-  document.getElementById("add-source-btn").addEventListener("click", function () {
-    addSource(sourceSelect.value);
-    sourceSelect.value = "";
-  });
 
   function removeSource(sid) {
     var count = selected.filter(function (c) { return c.source === sid; }).length;
     if (count && !confirm("از این منبع " + count + " ستون انتخاب شده است. با حذف منبع حذف می‌شوند. ادامه؟")) return;
     selected = selected.filter(function (c) { return c.source !== sid; });
     addedSources = addedSources.filter(function (s) { return s !== sid; });
-    fillSourceSelect();
-    renderTrees();
-    renderSelected();
-    syncHidden();
+    sourceLinks = sourceLinks.filter(function (L) {
+      return !(L.keys && L.keys[sid]);
+    });
+    if (activeIdx >= selected.length) activeIdx = -1;
+    renderAll();
   }
 
   function renderTrees() {
@@ -235,7 +271,7 @@
       });
       var rm = document.createElement("button");
       rm.type = "button";
-      rm.className = "btn btn-sm btn-ghost";
+      rm.className = "btn btn-xs btn-ghost";
       rm.textContent = "حذف منبع";
       rm.addEventListener("click", function () { removeSource(sid); });
       head.appendChild(toggle);
@@ -248,8 +284,11 @@
         cb.type = "checkbox";
         cb.checked = selected.some(function (c) { return c.key === key && c.source === sid; });
         cb.addEventListener("change", function () {
-          if (cb.checked) selected.push({ key: key, source: sid, level: 1, label: lab });
-          else selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
+          if (cb.checked) {
+            selected.push({ key: key, source: sid, level: 1, label: lab, origLabel: lab });
+          } else {
+            selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
+          }
           renderSelected();
           syncHidden();
         });
@@ -263,58 +302,156 @@
     });
   }
 
-  function move(idx, dir) {
-    var j = idx + dir;
+  function moveActive(dir) {
+    if (activeIdx < 0) return;
+    var j = activeIdx + dir;
     if (j < 0 || j >= selected.length) return;
-    var tmp = selected[idx]; selected[idx] = selected[j]; selected[j] = tmp;
+    var tmp = selected[activeIdx]; selected[activeIdx] = selected[j]; selected[j] = tmp;
+    activeIdx = j;
     renderSelected(); syncHidden();
+  }
+
+  document.getElementById("move-up").addEventListener("click", function () { moveActive(-1); });
+  document.getElementById("move-down").addEventListener("click", function () { moveActive(1); });
+
+  function updatePath() {
+    if (activeIdx < 0 || !selected[activeIdx]) {
+      pathEl.textContent = "ردیفی انتخاب نشده است.";
+      return;
+    }
+    var c = selected[activeIdx];
+    pathEl.textContent = "منبع: " + groupLabel(c.source) + "  ←  " + (c.origLabel || labelOf(c.source, c.key)) + "  (" + c.key + ")";
   }
 
   function renderSelected() {
     list.innerHTML = "";
     if (!selected.length) {
       list.innerHTML = '<p class="muted">ستونی انتخاب نشده است.</p>';
+      updatePath();
       return;
     }
     selected.forEach(function (c, idx) {
       var row = document.createElement("div");
-      row.className = "selected-col-row";
+      row.className = "selected-col-row" + (idx === activeIdx ? " is-active" : "");
+      row.dataset.idx = String(idx);
       var opts = "";
       for (var n = 1; n <= 10; n++) {
         opts += '<option value="' + n + '"' + (Number(c.level) === n ? " selected" : "") + ">" + n + "</option>";
       }
       row.innerHTML =
-        '<span class="sel-label">' + (c.label || labelOf(c.source, c.key)) + '</span>' +
+        '<input class="input sel-rename" data-label="' + idx + '" value="' + (c.label || "").replace(/"/g, "&quot;") + '">' +
         '<label class="level-label">سطح <select data-level="' + idx + '">' + opts + "</select></label>" +
-        '<button type="button" class="btn btn-xs btn-ghost" data-up="' + idx + '">↑</button>' +
-        '<button type="button" class="btn btn-xs btn-ghost" data-down="' + idx + '">↓</button>' +
         '<button type="button" class="btn btn-xs btn-danger" data-rm="' + idx + '">×</button>';
       list.appendChild(row);
     });
+    updatePath();
   }
 
   list.addEventListener("click", function (e) {
-    var up = e.target.closest("[data-up]");
-    var down = e.target.closest("[data-down]");
     var rm = e.target.closest("[data-rm]");
-    if (up) move(parseInt(up.getAttribute("data-up"), 10), -1);
-    if (down) move(parseInt(down.getAttribute("data-down"), 10), 1);
     if (rm) {
-      selected.splice(parseInt(rm.getAttribute("data-rm"), 10), 1);
+      var i = parseInt(rm.getAttribute("data-rm"), 10);
+      selected.splice(i, 1);
+      if (activeIdx === i) activeIdx = -1;
+      else if (activeIdx > i) activeIdx -= 1;
       renderTrees(); renderSelected(); syncHidden();
+      return;
     }
+    if (e.target.closest("select") || e.target.closest("input")) return;
+    var row = e.target.closest(".selected-col-row");
+    if (!row) return;
+    activeIdx = parseInt(row.dataset.idx, 10);
+    renderSelected();
   });
   list.addEventListener("change", function (e) {
     var sel = e.target.closest("[data-level]");
-    if (!sel) return;
-    selected[parseInt(sel.getAttribute("data-level"), 10)].level = parseInt(sel.value, 10);
+    if (sel) {
+      selected[parseInt(sel.getAttribute("data-level"), 10)].level = parseInt(sel.value, 10);
+      syncHidden();
+    }
+  });
+  list.addEventListener("input", function (e) {
+    var inp = e.target.closest("[data-label]");
+    if (!inp) return;
+    var i = parseInt(inp.getAttribute("data-label"), 10);
+    selected[i].label = inp.value;
     syncHidden();
   });
 
-  fillSourceSelect();
-  renderTrees();
-  renderSelected();
-  syncHidden();
+  function updateLinkUi() {
+    var multi = addedSources.length >= 2;
+    linkBtn.hidden = !multi;
+    if (!sourceLinks.length) {
+      linkSummary.textContent = multi ? "هنوز نقطه اشتراکی تعریف نشده است." : "";
+      return;
+    }
+    linkSummary.textContent = sourceLinks.map(function (L) {
+      return Object.keys(L.keys || {}).map(function (s) {
+        return groupLabel(s) + " ← " + labelOf(s, L.keys[s]);
+      }).join("  ≈  ");
+    }).join(" | ");
+  }
+
+  linkBtn.addEventListener("click", function () {
+    var box = document.getElementById("link-fields");
+    box.innerHTML = "";
+    addedSources.forEach(function (sid) {
+      var g = groups.find(function (x) { return x.id === sid; });
+      if (!g) return;
+      var field = document.createElement("div");
+      field.className = "field";
+      var lab = document.createElement("label");
+      lab.textContent = "ستون مشترک در «" + g.label + "»";
+      var sel = document.createElement("select");
+      sel.dataset.source = sid;
+      sel.innerHTML = '<option value="">انتخاب ستون…</option>';
+      g.columns.forEach(function (pair) {
+        var opt = document.createElement("option");
+        opt.value = pair[0];
+        opt.textContent = pair[1];
+        var existing = sourceLinks[0] && sourceLinks[0].keys && sourceLinks[0].keys[sid];
+        if (existing === pair[0]) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      field.appendChild(lab);
+      field.appendChild(sel);
+      box.appendChild(field);
+    });
+    if (typeof linkDialog.showModal === "function") linkDialog.showModal();
+    else linkDialog.setAttribute("open", "");
+  });
+
+  document.getElementById("save-links-btn").addEventListener("click", function () {
+    var keys = {};
+    document.querySelectorAll("#link-fields select").forEach(function (sel) {
+      if (sel.value) keys[sel.dataset.source] = sel.value;
+    });
+    if (Object.keys(keys).length < 2) {
+      alert("حداقل برای دو منبع ستون مشترک انتخاب کنید.");
+      return;
+    }
+    sourceLinks = [{ keys: keys }];
+    syncHidden();
+    updateLinkUi();
+    if (typeof linkDialog.close === "function") linkDialog.close();
+    else linkDialog.removeAttribute("open");
+  });
+  linkDialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) {
+      if (typeof linkDialog.close === "function") linkDialog.close();
+      else linkDialog.removeAttribute("open");
+    }
+  });
+
+  function renderAll() {
+    fillSourceMenu();
+    renderTrees();
+    renderSelected();
+    updateLinkUi();
+    syncHidden();
+  }
+
+  renderAll();
 })();
 </script>
 {% endblock %}
