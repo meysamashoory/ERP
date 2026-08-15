@@ -153,7 +153,7 @@ a { color: var(--brand); }
 .alert-warning { background: var(--warn-bg); color: var(--warn); }
 .alert-info { background: #dbeafe; color: #1e40af; }
 
-form .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 18px; }
+form .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 18px; align-items: end; }
 @media (max-width: 1100px) { form .form-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 800px) { form .form-grid { grid-template-columns: 1fr 1fr; } }
 
@@ -161,8 +161,8 @@ form .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14p
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; appearance: textfield; }
-.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.field label { font-size: 13px; font-weight: 600; color: #334155; }
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; justify-content: flex-end; }
+.field label { font-size: 13px; font-weight: 600; color: #334155; min-height: 1.2em; }
 .field .helptext { font-size: 12px; color: var(--muted); }
 .field .errorlist { color: var(--danger); font-size: 12px; margin: 0; padding: 0; list-style: none; }
 .input, input[type=text], input[type=number], input[type=password], input[type=time], select, textarea {
