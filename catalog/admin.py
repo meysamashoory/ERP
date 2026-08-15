@@ -4,6 +4,7 @@ from .models import (
     DeviationReason,
     Machine,
     MoldOption,
+    PlanningInsightField,
     Product,
     ProductGroup,
     ProductSubGroup,
@@ -112,3 +113,12 @@ class ProgramChangeReasonAdmin(admin.ModelAdmin):
 class MoldOptionAdmin(admin.ModelAdmin):
     list_display = ("label", "order", "is_active")
     list_editable = ("order", "is_active")
+
+
+@admin.register(PlanningInsightField)
+class PlanningInsightFieldAdmin(admin.ModelAdmin):
+    list_display = ("label", "source", "source_key", "order", "is_active")
+    list_editable = ("order", "is_active", "source", "source_key")
+    list_filter = ("source", "is_active")
+    search_fields = ("label", "source_key")
+    ordering = ("order", "id")

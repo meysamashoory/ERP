@@ -10,4 +10,5 @@ urlpatterns = [
     path("<int:pk>/items/save/", views.item_save, name="plan_item_save"),
     path("<int:pk>/status/", views.plan_set_status, name="plan_set_status"),
     path("mold-change-dates/", views.mold_change_dates, name="mold_change_dates"),
+    path("product-insights/", views.product_insights, name="product_insights"),
 ]

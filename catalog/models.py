@@ -233,3 +233,52 @@ class MoldOption(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+
+class PlanningInsightField(models.Model):
+    """Configurable metric shown in the glass insight strip on planning.
+
+    Values are resolved at runtime from either the product catalog, the latest
+    saved production record, or (later) a mapped file/Excel column.
+    """
+
+    class Source(models.TextChoices):
+        PRODUCT = "product", "اطلاعات کالا (کاتالوگ)"
+        LAST_PRODUCTION = "last_production", "آخرین تولید ذخیره‌شده"
+        FILE_COLUMN = "file_column", "ستون فایل / داده خارجی"
+
+    # Keys the insight resolver understands for each source.
+    PRODUCT_KEYS = (
+        ("last_cycle", "آخرین سیکل (کاتالوگ)"),
+        ("main_cavities", "حفره اصلی"),
+        ("per_carton", "تعداد در کارتن"),
+        ("per_bag", "تعداد در کیسه"),
+        ("depot_ceiling", "سقف دپو"),
+        ("stock_finished", "موجودی محصول"),
+        ("unit_weight_grams", "وزن واحد (گرم)"),
+    )
+    LAST_PRODUCTION_KEYS = (
+        ("shot_cycle", "آخرین سیکل تولیدشده"),
+        ("machine_unit", "آخرین دستگاه و واحد"),
+        ("active_cavities", "تعداد حفره فعال"),
+        ("produced_quantity", "آخرین مقدار تولید"),
+        ("date", "آخرین تاریخ تولید"),
+    )
+
+    label = models.CharField("عنوان نمایشی", max_length=120)
+    source = models.CharField("منبع داده", max_length=20, choices=Source.choices)
+    source_key = models.CharField(
+        "کلید / ستون",
+        max_length=80,
+        help_text="برای کاتالوگ/تولید یکی از کلیدهای شناخته‌شده؛ برای فایل نام ستون.",
+    )
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("نمایش در صفحه", default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "فیلد اطلاعات برنامه‌ریزی"
+        verbose_name_plural = "فیلدهای اطلاعات برنامه‌ریزی (نوار شیشه‌ای)"
+
+    def __str__(self) -> str:
+        return self.label

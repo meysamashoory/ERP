@@ -9,8 +9,10 @@ from accounts.permissions import get_profile
 from production.models import FittingProduction
 
 from .forms import WeeklyPlanForm, WeeklyPlanItemForm, WeeklyPlanLineFormSet
+from .insights import resolve_insights
 from .models import WeeklyPlan, WeeklyPlanItem
 from .utils import mold_change_date_candidates
+from catalog.models import Product
 
 
 @login_required
@@ -79,6 +81,8 @@ def plan_detail(request, pk):
     item_form = WeeklyPlanItemForm(plan_date=plan.date, instance=editing_item)
     line_formset = WeeklyPlanLineFormSet(instance=editing_item, prefix="lines")
     edit_form = WeeklyPlanForm(instance=plan)
+    insight_product = editing_item.product if editing_item else None
+    insights = resolve_insights(insight_product)
 
     return render(
         request,
@@ -91,6 +95,7 @@ def plan_detail(request, pk):
             "line_formset": line_formset,
             "editing_item": editing_item,
             "edit_form": edit_form,
+            "insights": insights,
         },
     )
 
@@ -129,6 +134,9 @@ def item_save(request, pk):
 
     messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
     line_formset = WeeklyPlanLineFormSet(request.POST, instance=instance, prefix="lines")
+    insight_product = form.cleaned_data.get("product") if getattr(form, "cleaned_data", None) else None
+    if insight_product is None and instance:
+        insight_product = instance.product
     return render(
         request,
         "planning/plan_detail.html",
@@ -140,8 +148,17 @@ def item_save(request, pk):
             "line_formset": line_formset,
             "editing_item": instance,
             "edit_form": WeeklyPlanForm(instance=plan),
+            "insights": resolve_insights(insight_product),
         },
     )
+
+
+@login_required
+def product_insights(request):
+    """JSON: glass-panel metrics for the selected product."""
+    product_id = request.GET.get("product")
+    product = Product.objects.filter(pk=product_id).first() if product_id else None
+    return JsonResponse({"insights": resolve_insights(product)})
 
 
 @login_required

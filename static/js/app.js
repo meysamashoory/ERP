@@ -315,14 +315,39 @@
         var container = document.querySelector('[data-formset="' + prefix + '"]');
         var totalEl = document.getElementById("id_" + prefix + "-TOTAL_FORMS");
         if (!container || !totalEl) return;
-        var tmpl = container.querySelector("[data-formset-row]");
-        if (!tmpl) return;
         var idx = parseInt(totalEl.value, 10);
-        var clone = tmpl.cloneNode(true);
-        clone.innerHTML = clone.innerHTML.replace(new RegExp(prefix + "-(\\d+)-", "g"), prefix + "-" + idx + "-");
-        clone.querySelectorAll(".ts-wrapper").forEach(function (w) { w.remove(); });
+        var clone;
+        var emptyTpl = document.querySelector('[data-formset-empty="' + prefix + '"]');
+        if (emptyTpl && emptyTpl.content) {
+          // Prefer pristine Django empty_form — selects still have all options.
+          clone = emptyTpl.content.firstElementChild.cloneNode(true);
+          clone.innerHTML = clone.innerHTML.replace(/__prefix__/g, String(idx));
+        } else {
+          var tmpl = container.querySelector("[data-formset-row]");
+          if (!tmpl) return;
+          clone = tmpl.cloneNode(true);
+          // Recover <select> from Tom Select wrappers before wiping the clone.
+          clone.querySelectorAll(".ts-wrapper").forEach(function (w) {
+            var sel = w.querySelector("select");
+            if (sel) {
+              sel.classList.remove("tomselected", "ts-hidden-accessible");
+              sel.removeAttribute("tabindex");
+              sel.style.display = "";
+              sel.removeAttribute("id");
+              if (!sel.getAttribute("data-combo")) sel.setAttribute("data-combo", "1");
+              w.parentNode.insertBefore(sel, w);
+            }
+            w.remove();
+          });
+          clone.querySelectorAll(".ts-dropdown").forEach(function (d) { d.remove(); });
+          clone.innerHTML = clone.innerHTML.replace(
+            new RegExp(prefix + "-(\\d+)-", "g"),
+            prefix + "-" + idx + "-"
+          );
+        }
         clone.querySelectorAll("input, select, textarea").forEach(function (inp) {
-          inp.style.display = ""; if (inp.type !== "hidden") inp.value = "";
+          if (inp.type === "hidden" && /TOTAL_FORMS|INITIAL_FORMS|MIN_NUM|MAX_NUM/.test(inp.name || "")) return;
+          if (inp.type !== "hidden") inp.value = "";
           inp.removeAttribute("data-wired");
         });
         container.appendChild(clone);

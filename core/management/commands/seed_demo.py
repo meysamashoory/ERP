@@ -23,6 +23,7 @@ from catalog.models import (
     ProductionUnit,
     ProgramChangeReason,
     MoldOption,
+    PlanningInsightField,
     StoppageReason,
 )
 from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, Weekday
@@ -105,6 +106,18 @@ class Command(BaseCommand):
             ProgramChangeReason.objects.get_or_create(label=label, defaults={"order": i})
         for i, label in enumerate(MOLD_OPTIONS):
             MoldOption.objects.get_or_create(label=label, defaults={"order": i})
+
+        insight_defaults = [
+            ("آخرین سیکل تولیدشده", "last_production", "shot_cycle", 0),
+            ("آخرین دستگاه و واحد", "last_production", "machine_unit", 1),
+            ("تعداد حفره فعال", "last_production", "active_cavities", 2),
+            ("تعداد حفره اصلی", "product", "main_cavities", 3),
+        ]
+        for label, source, key, order in insight_defaults:
+            PlanningInsightField.objects.get_or_create(
+                label=label,
+                defaults={"source": source, "source_key": key, "order": order, "is_active": True},
+            )
 
     def _seed_units_and_machines(self):
         specs = {

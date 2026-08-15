@@ -37,22 +37,20 @@
 {% endif %}
 
 {% if editable %}
-<div class="panel">
-  <div class="panel-head">
-    <h2>{% if editing_item %}ویرایش کالا{% else %}افزودن کالا{% endif %}</h2>
-    {% if editing_item %}<a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}">افزودن کالای جدید</a>{% endif %}
-  </div>
-  <div class="panel-body">
-    <form method="post" action="{% url 'plan_item_save' plan.pk %}">
+<div class="panel panel-compact">
+  <div class="panel-body panel-body-compact">
+    {% if editing_item %}
+    <div class="edit-switch"><a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}">افزودن کالای جدید</a></div>
+    {% endif %}
+    <form method="post" action="{% url 'plan_item_save' plan.pk %}" id="item-form">
       {% csrf_token %}
       {% if editing_item %}<input type="hidden" name="item_id" value="{{ editing_item.pk }}">{% endif %}
-      <div class="form-grid">
+      <div class="form-grid form-grid-compact">
         {% include "partials/form_fields.html" with form=item_form %}
       </div>
 
-      <h3 style="margin:18px 0 8px;font-size:15px">ردیف‌های تولید (نوع تولید / قالب / مقدار / سیکل)</h3>
       {{ line_formset.management_form }}
-      <div data-formset="lines">
+      <div data-formset="lines" class="lines-block">
         {% for lform in line_formset %}
         <div class="repeat-row" data-formset-row>
           {{ lform.id }}
@@ -62,11 +60,19 @@
         </div>
         {% endfor %}
       </div>
-      <div style="margin:10px 0">
-        <button type="button" class="btn btn-sm btn-ghost" data-formset-add="lines">+ افزودن ردیف تولید</button>
-      </div>
 
-      <div class="form-actions">
+      {# Pristine empty row for «افزودن ردیف تولید» (avoids cloning broken Tom Select DOM) #}
+      <template data-formset-empty="lines">
+        <div class="repeat-row" data-formset-row>
+          {{ line_formset.empty_form.id }}
+          {% for field in line_formset.empty_form.visible_fields %}{% if field.name != 'id' %}
+          <div class="field"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>
+          {% endif %}{% endfor %}
+        </div>
+      </template>
+
+      <div class="line-actions">
+        <button type="button" class="btn btn-sm btn-ghost" data-formset-add="lines">+ افزودن ردیف تولید</button>
         <button class="btn" type="submit">{% if editing_item %}ذخیره تغییرات کالا{% else %}افزودن کالا{% endif %}</button>
       </div>
     </form>
@@ -75,6 +81,19 @@
 {% else %}
 <div class="panel"><div class="panel-body muted">این برنامه در وضعیت «{{ plan.get_status_display }}» است و تنها قابل مشاهده می‌باشد. برای ویرایش، وضعیت را از فهرست برنامه‌ها به «موقت» تغییر دهید.</div></div>
 {% endif %}
+
+<section class="insight-glass" data-insights data-insights-url="{% url 'product_insights' %}">
+  <div class="insight-glass-inner" data-insights-body>
+    {% for card in insights %}
+    <article class="insight-card">
+      <p class="insight-label">{{ card.label }}</p>
+      <p class="insight-value">{{ card.value }}</p>
+    </article>
+    {% empty %}
+    <p class="insight-empty muted">هنوز فیلد اطلاعاتی تعریف نشده است. از «مدیریت داده‌ها» فیلدهای نوار شیشه‌ای را اضافه کنید.</p>
+    {% endfor %}
+  </div>
+</section>
 
 <div class="panel">
   <div class="panel-head"><h2>کالاهای برنامه</h2></div>
@@ -110,7 +129,6 @@
 {% block scripts %}
 <script>
 (function () {
-  // Inline edit of program number / date.
   var toggle = document.getElementById("toggle-plan-edit");
   var panel = document.getElementById("plan-edit-panel");
   var cancel = document.getElementById("cancel-plan-edit");
@@ -123,7 +141,6 @@
   if (cancel && panel) cancel.addEventListener("click", function () { panel.style.display = "none"; });
 })();
 (function () {
-  // Dynamic تاریخ تعویض قالب based on the chosen weekday (plan-specific).
   var weekday = document.getElementById("id_mold_change_weekday");
   var dateSel = document.getElementById("id_mold_change_date");
   if (!weekday || !dateSel) return;
@@ -132,8 +149,6 @@
     var ts = dateSel.tomselect;
     var prev = ts ? ts.getValue() : dateSel.value;
     if (ts) {
-      // clearOptions() keeps the currently selected option — clear value first
-      // so a previous weekday's date never lingers as a 3rd choice.
       ts.clear(true);
       ts.clearOptions();
       dates.forEach(function (d) { ts.addOption({ value: d, text: d }); });
@@ -161,8 +176,38 @@
   var wts = weekday.tomselect;
   if (wts) wts.on("change", function () { refresh(false); });
   else weekday.addEventListener("change", function () { refresh(false); });
-  // On load (edit), keep the current mold-change date option.
   refresh(true);
+})();
+(function () {
+  // Refresh glass insight strip when product changes.
+  var wrap = document.querySelector("[data-insights]");
+  if (!wrap) return;
+  var url = wrap.getAttribute("data-insights-url");
+  var body = wrap.querySelector("[data-insights-body]");
+  var prod = document.getElementById("id_product");
+  if (!url || !body || !prod) return;
+
+  function render(cards) {
+    if (!cards || !cards.length) {
+      body.innerHTML = '<p class="insight-empty muted">مقداری برای نمایش نیست.</p>';
+      return;
+    }
+    body.innerHTML = cards.map(function (c) {
+      return '<article class="insight-card"><p class="insight-label">' + c.label +
+        '</p><p class="insight-value">' + (c.value == null || c.value === "" ? "—" : c.value) + "</p></article>";
+    }).join("");
+  }
+
+  function load() {
+    var id = prod.tomselect ? prod.tomselect.getValue() : prod.value;
+    if (!id) { render([]); return; }
+    fetch(url + "?product=" + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { render(d.insights || []); });
+  }
+
+  if (prod.tomselect) prod.tomselect.on("change", load);
+  else prod.addEventListener("change", load);
 })();
 </script>
 {% endblock %}
