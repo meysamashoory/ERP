@@ -252,6 +252,7 @@
   }
 
   window.ERP = { enhance: enhance };
+  window.enhance = enhance;
 
   ready(function () {
     enhance(document);

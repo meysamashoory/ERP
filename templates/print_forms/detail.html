@@ -7,7 +7,10 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>{{ print_form.title }}</h1>
+    <h1>
+      {{ print_form.title }}
+      {% if print_form.description %}<span class="report-desc">({{ print_form.description }})</span>{% endif %}
+    </h1>
     <p class="muted">شماره {{ print_form.number }}
       {% if print_form.is_standard %} — <span class="badge badge-approved">استاندارد</span>{% endif %}
       — {{ print_form.page_width_mm }}×{{ print_form.page_height_mm }} مم
@@ -15,54 +18,19 @@
   </div>
   <div class="row-actions">
     <a class="btn btn-sm btn-ghost" href="{% url 'print_form_list' %}">لیست فرم‌ها</a>
-    <button class="btn btn-sm" type="button" onclick="window.print()">پرینت</button>
-    {% if can_edit %}
-    <a class="btn btn-sm" href="{% url 'print_form_edit' print_form.pk %}">ویرایش</a>
-    {% endif %}
-    {% if can_delete %}
-    <form method="post" action="{% url 'print_form_delete' print_form.pk %}" class="inline-form" onsubmit="return confirm('فرم فقط از لیست شما حذف می‌شود. ادامه؟');">
-      {% csrf_token %}
-      <button class="btn btn-sm btn-danger" type="submit">حذف</button>
-    </form>
-    {% endif %}
-  </div>
-</div>
-
-{% if can_send and send_form %}
-<div class="panel no-print">
-  <div class="panel-head"><h2>ارسال فرم برای کاربر دیگر</h2></div>
-  <div class="panel-body">
-    <p class="muted">در هر ارسال فقط یک کاربر انتخاب می‌شود.</p>
-    <form method="post" action="{% url 'print_form_send' print_form.pk %}">
-      {% csrf_token %}
-      <div class="form-grid">
-        <div class="field">
-          <label>{{ send_form.recipient.label }}</label>
-          {{ send_form.recipient }}
-        </div>
-        <div class="field">
-          <label>{{ send_form.title.label }}</label>
-          {{ send_form.title }}
-        </div>
-        <div class="field">
-          <label>{{ send_form.number.label }}</label>
-          {{ send_form.number }}
-        </div>
-        <div class="field">
-          <label>{{ send_form.sent_at.label }}</label>
-          {{ send_form.sent_at }}
-        </div>
+    <div class="menu-drop">
+      <button type="button" class="btn btn-sm" data-menu-toggle>خروجی ▾</button>
+      <div class="menu-panel" hidden>
+        <button type="button" data-print-form>چاپ فرم</button>
       </div>
-      <button class="btn" type="submit">ارسال</button>
-    </form>
+    </div>
   </div>
 </div>
-{% endif %}
 
 <div class="panel print-sheet-panel">
   <div class="panel-head no-print"><h2>پیش‌نمایش چاپی</h2></div>
   <div class="panel-body">
-    <div class="form-canvas-wrap">
+    <div class="form-canvas-wrap preview-only">
       <div class="form-canvas print-sheet"
            style="--page-w: {{ print_form.page_width_mm }}; --page-h: {{ print_form.page_height_mm }};">
         {% for frame in print_form.frames %}
@@ -77,4 +45,25 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll("[data-menu-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var panel = btn.parentElement.querySelector(".menu-panel");
+      panel.hidden = !panel.hidden;
+    });
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".menu-drop")) {
+      document.querySelectorAll(".menu-panel").forEach(function (p) { p.hidden = true; });
+    }
+  });
+  var printBtn = document.querySelector("[data-print-form]");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+})();
+</script>
 {% endblock %}

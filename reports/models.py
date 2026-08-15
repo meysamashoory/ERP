@@ -1,6 +1,7 @@
 """Saved reports and printable forms owned per-user (with optional standard copies)."""
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 import django_jalali.db.models as jmodels
 
@@ -14,10 +15,8 @@ class DataSource(models.TextChoices):
 class SavedReport(models.Model):
     """A report definition owned by one user (or a manager-owned standard report).
 
-    Non-standard reports are visible to the owner plus explicitly granted viewers.
-    Sending a report creates a *new* row owned by the recipient so edit/delete
-    never touches another user's copy. Standard reports are shared; only the
-    manager may edit or delete them, and edits apply for everyone at once.
+    ``columns`` is an ordered JSON list of
+    ``{"key", "source", "level", "label"}`` entries (level 1–10).
     """
 
     owner = models.ForeignKey(
@@ -27,11 +26,15 @@ class SavedReport(models.Model):
         verbose_name="مالک",
     )
     title = models.CharField("عنوان گزارش", max_length=200)
-    number = models.CharField("شماره گزارش", max_length=60)
+    description = models.CharField("توضیحات", max_length=300, blank=True, default="")
+    number = models.PositiveSmallIntegerField(
+        "شماره گزارش",
+        validators=[MinValueValidator(1), MaxValueValidator(999)],
+    )
     data_source = models.CharField(
         "منبع داده", max_length=20, choices=DataSource.choices, default=DataSource.FITTING
     )
-    # Ordered list of column keys, e.g. ["date", "product", "stock_finished"].
+    # Ordered: [{"key", "source", "level", "label"}, ...]
     columns = models.JSONField("ستون‌ها", default=list)
     is_standard = models.BooleanField("گزارش استاندارد", default=False)
     created_by = models.ForeignKey(
@@ -42,7 +45,6 @@ class SavedReport(models.Model):
         related_name="created_reports",
         verbose_name="ایجادکننده",
     )
-    # Optional link to the report this copy was sent from.
     source_report = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -62,7 +64,7 @@ class SavedReport(models.Model):
     )
 
     class Meta:
-        ordering = ["-updated_at", "-id"]
+        ordering = ["number", "id"]
         verbose_name = "گزارش ذخیره‌شده"
         verbose_name_plural = "گزارش‌های ذخیره‌شده"
         constraints = [
@@ -86,9 +88,11 @@ class PrintForm(models.Model):
         verbose_name="مالک",
     )
     title = models.CharField("عنوان فرم", max_length=200)
-    number = models.CharField("شماره فرم", max_length=60)
-    # Layout frames: [{"id", "label", "x", "y", "width", "height", "kind"}]
-    # kind: text | field | box | line | header | footer
+    description = models.CharField("توضیحات", max_length=300, blank=True, default="")
+    number = models.PositiveSmallIntegerField(
+        "شماره فرم",
+        validators=[MinValueValidator(1), MaxValueValidator(999)],
+    )
     frames = models.JSONField("کادرها و چیدمان", default=list)
     page_width_mm = models.PositiveIntegerField("عرض صفحه (مم)", default=210)
     page_height_mm = models.PositiveIntegerField("ارتفاع صفحه (مم)", default=297)
@@ -120,7 +124,7 @@ class PrintForm(models.Model):
     )
 
     class Meta:
-        ordering = ["-updated_at", "-id"]
+        ordering = ["number", "id"]
         verbose_name = "فرم چاپی"
         verbose_name_plural = "فرم‌های چاپی"
         constraints = [

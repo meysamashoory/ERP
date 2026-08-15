@@ -5,78 +5,93 @@
 {% block nav_report_list %}active{% endblock %}
 
 {% block content %}
-<div class="page-head">
+<div class="page-head report-detail-head">
   <div>
-    <h1>{{ report.title }}</h1>
-    <p class="muted">شماره {{ report.number }}
-      {% if report.is_standard %} — <span class="badge badge-approved">استاندارد</span>{% endif %}
-      — {{ report.get_data_source_display }}
-    </p>
+    <h1>
+      {{ report.title }}
+      {% if report.description %}<span class="report-desc">({{ report.description }})</span>{% endif %}
+    </h1>
+    <p class="muted">شماره {{ report.number }}{% if report.is_standard %} — <span class="badge badge-approved">استاندارد</span>{% endif %}</p>
   </div>
   <div class="row-actions">
     <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
-    <a class="btn btn-sm" href="?export=excel">خروجی Excel</a>
-    <a class="btn btn-sm btn-ghost" href="?export=pdf">خروجی PDF</a>
-    {% if can_edit %}
-    <a class="btn btn-sm" href="{% url 'report_edit' report.pk %}">ویرایش</a>
-    {% endif %}
-    {% if can_delete %}
-    <form method="post" action="{% url 'report_delete' report.pk %}" class="inline-form" onsubmit="return confirm('گزارش فقط از لیست شما حذف می‌شود. ادامه؟');">
-      {% csrf_token %}
-      <button class="btn btn-sm btn-danger" type="submit">حذف</button>
-    </form>
-    {% endif %}
-  </div>
-</div>
-
-{% if can_send and send_form %}
-<div class="panel">
-  <div class="panel-head"><h2>ارسال گزارش برای کاربر دیگر</h2></div>
-  <div class="panel-body">
-    <p class="muted">در هر ارسال فقط یک کاربر انتخاب می‌شود. برای کاربر مقصد کپی جداگانه ساخته می‌شود.</p>
-    <form method="post" action="{% url 'report_send' report.pk %}">
-      {% csrf_token %}
-      <div class="form-grid">
-        <div class="field">
-          <label>{{ send_form.recipient.label }}</label>
-          {{ send_form.recipient }}
-        </div>
-        <div class="field">
-          <label>{{ send_form.title.label }}</label>
-          {{ send_form.title }}
-        </div>
-        <div class="field">
-          <label>{{ send_form.number.label }}</label>
-          {{ send_form.number }}
-        </div>
-        <div class="field">
-          <label>{{ send_form.sent_at.label }}</label>
-          {{ send_form.sent_at }}
-        </div>
+    <div class="menu-drop">
+      <button type="button" class="btn btn-sm" data-menu-toggle>خروجی ▾</button>
+      <div class="menu-panel" hidden>
+        <a href="?export=excel&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی Excel</a>
+        <a href="?export=pdf&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی PDF</a>
+        <button type="button" data-print-report>چاپ گزارش</button>
       </div>
-      <button class="btn" type="submit">ارسال</button>
-    </form>
+    </div>
   </div>
 </div>
-{% endif %}
 
-<div class="panel">
+<div class="level-bar">
+  <div class="level-path">{{ path_label }}</div>
+  {% if can_go_back %}
+  <a class="btn btn-sm btn-ghost level-back" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
+  {% endif %}
+</div>
+
+<div class="panel" id="report-print-area">
   <div class="panel-head">
-    <h2>نتایج ({{ rows|length }} ردیف)</h2>
+    <h2>نتایج ({{ rows|length }} ردیف){% if deeper %} — برای ورود به سطح بعد روی ردیف کلیک کنید{% endif %}</h2>
   </div>
   {% if rows %}
   <div class="table-scroll">
-    <table class="table">
+    <table class="table {% if deeper %}table-drill{% endif %}" id="report-data-table">
       <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
       <tbody>
         {% for row in rows %}
-        <tr>{% for cell in row %}<td class="num">{{ cell }}</td>{% endfor %}</tr>
+        <tr {% if deeper %}data-drill-index="{{ forloop.counter0 }}" class="drill-row"{% endif %}>
+          {% for cell in row %}<td class="num">{{ cell }}</td>{% endfor %}
+        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="empty">داده‌ای برای این گزارش یافت نشد.</p>
+  <p class="empty">داده‌ای برای این سطح یافت نشد.</p>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ payloads|json_script:"report-payloads" }}
+{{ filters|json_script:"report-filters" }}
+<script>
+(function () {
+  document.querySelectorAll("[data-menu-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var panel = btn.parentElement.querySelector(".menu-panel");
+      panel.hidden = !panel.hidden;
+    });
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".menu-drop")) {
+      document.querySelectorAll(".menu-panel").forEach(function (p) { p.hidden = true; });
+    }
+  });
+  var printBtn = document.querySelector("[data-print-report]");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+
+  var deeper = {{ deeper|yesno:"true,false" }};
+  if (!deeper) return;
+  var payloads = JSON.parse(document.getElementById("report-payloads").textContent);
+  var filters = JSON.parse(document.getElementById("report-filters").textContent || "{}");
+  var level = {{ level }};
+  document.querySelectorAll("[data-drill-index]").forEach(function (tr) {
+    tr.addEventListener("click", function () {
+      var idx = parseInt(tr.getAttribute("data-drill-index"), 10);
+      var payload = payloads[idx] || {};
+      var params = new URLSearchParams();
+      params.set("level", String(level + 1));
+      Object.keys(filters).forEach(function (k) { params.set("f_" + k, filters[k]); });
+      Object.keys(payload).forEach(function (k) { params.set("f_" + k, payload[k]); });
+      window.location = "?" + params.toString();
+    });
+  });
+})();
+</script>
 {% endblock %}

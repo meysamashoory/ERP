@@ -1,11 +1,13 @@
+import json
+
 from django import forms
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
 from accounts.permissions import get_profile
 
-from .columns import COLUMN_GROUPS, available_keys
-from .models import DataSource, PrintForm, SavedReport
+from .columns import COLUMN_GROUPS, normalize_columns
+from .models import PrintForm, SavedReport
 
 User = get_user_model()
 
@@ -21,17 +23,7 @@ def _style_fields(form):
 
 
 class SavedReportForm(forms.ModelForm):
-    columns = forms.MultipleChoiceField(
-        label="ستون‌های گزارش (به ترتیب انتخاب)",
-        widget=forms.CheckboxSelectMultiple,
-        required=True,
-    )
-    viewers = forms.ModelMultipleChoiceField(
-        label="کاربرانی که می‌توانند گزارش را ببینند",
-        queryset=User.objects.none(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-    )
+    columns_json = forms.CharField(widget=forms.HiddenInput, required=False)
     is_standard = forms.BooleanField(
         label="ایجاد گزارش استاندارد (قابل مشاهده برای همه)",
         required=False,
@@ -39,53 +31,36 @@ class SavedReportForm(forms.ModelForm):
 
     class Meta:
         model = SavedReport
-        fields = ["title", "number", "data_source", "columns", "viewers", "is_standard"]
+        fields = ["title", "description", "number", "is_standard"]
         labels = {
             "title": "عنوان گزارش",
+            "description": "توضیحات",
             "number": "شماره گزارش",
-            "data_source": "منبع داده اصلی",
+        }
+        widgets = {
+            "description": forms.TextInput(attrs={"placeholder": "توضیح کوتاه (اختیاری)"}),
+            "number": forms.NumberInput(attrs={"min": 1, "max": 999, "step": 1}),
         }
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
         profile = get_profile(user) if user else None
-        source = (
-            self.data.get("data_source")
-            or self.initial.get("data_source")
-            or getattr(self.instance, "data_source", None)
-            or DataSource.FITTING
-        )
-        keys = sorted(available_keys(source))
-        choices = []
-        for group in COLUMN_GROUPS:
-            if group["id"] == source or group["id"] == "file":
-                choices.extend(group["columns"])
-        seen = set()
-        unique = []
-        for key, label in choices:
-            if key not in seen:
-                seen.add(key)
-                unique.append((key, label))
-        self.fields["columns"].choices = unique or [(k, k) for k in keys]
-
-        qs = User.objects.filter(is_active=True).exclude(pk=user.pk if user else None).order_by("username")
-        self.fields["viewers"].queryset = qs
-
         if not (profile and profile.is_manager):
             self.fields["is_standard"].widget = forms.HiddenInput()
             self.fields["is_standard"].initial = False
-
-        if self.instance and self.instance.pk and self.instance.columns:
-            self.fields["columns"].initial = list(self.instance.columns)
-
-        self.column_groups = [
-            g for g in COLUMN_GROUPS if g["id"] == source or g["id"] == "file"
-        ]
+        if self.instance and self.instance.pk:
+            self.fields["columns_json"].initial = json.dumps(
+                normalize_columns(self.instance.columns or []), ensure_ascii=False
+            )
+        else:
+            self.fields["columns_json"].initial = "[]"
+        self.column_groups = COLUMN_GROUPS
+        self.is_manager = bool(profile and profile.is_manager)
         _style_fields(self)
 
     def clean_number(self):
-        number = self.cleaned_data["number"].strip()
+        number = self.cleaned_data["number"]
         owner = self.user
         if self.instance and self.instance.pk:
             owner = self.instance.owner
@@ -96,16 +71,16 @@ class SavedReportForm(forms.ModelForm):
             raise ValidationError("شماره گزارش وجود دارد")
         return number
 
-    def clean_columns(self):
-        cols = self.cleaned_data.get("columns") or []
-        source = self.cleaned_data.get("data_source") or DataSource.FITTING
-        allowed = available_keys(source)
-        invalid = [c for c in cols if c not in allowed]
-        if invalid:
-            raise ValidationError("برخی ستون‌های انتخاب‌شده برای این منبع معتبر نیستند.")
+    def clean_columns_json(self):
+        raw = self.cleaned_data.get("columns_json") or "[]"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValidationError("ساختار ستون‌ها نامعتبر است.") from exc
+        cols = normalize_columns(data)
         if not cols:
             raise ValidationError("حداقل یک ستون انتخاب کنید.")
-        return list(cols)
+        return cols
 
     def clean_is_standard(self):
         value = self.cleaned_data.get("is_standard")
@@ -114,53 +89,72 @@ class SavedReportForm(forms.ModelForm):
             raise ValidationError("فقط مدیر می‌تواند گزارش استاندارد ایجاد کند.")
         return bool(value)
 
+    def primary_source(self) -> str:
+        cols = self.cleaned_data.get("columns_json") or []
+        for col in cols:
+            src = col.get("source") or ""
+            if src and src != "file":
+                return src
+        return "fitting"
 
-class SendReportForm(forms.Form):
+
+class SendOrCopyReportForm(forms.Form):
+    title = forms.CharField(label="نام گزارش", max_length=200)
+    number = forms.IntegerField(
+        label="شماره گزارش",
+        min_value=1,
+        max_value=999,
+        widget=forms.NumberInput(attrs={"min": 1, "max": 999, "step": 1}),
+    )
+    description = forms.CharField(
+        label="توضیحات",
+        max_length=300,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "توضیح اختیاری"}),
+    )
     recipient = forms.ModelChoiceField(
         label="کاربر مقصد",
         queryset=User.objects.none(),
-        required=True,
-    )
-    title = forms.CharField(label="عنوان گزارش", max_length=200)
-    number = forms.CharField(label="شماره گزارش", max_length=60)
-    sent_at = forms.CharField(
-        label="زمان ارسال (شمسی)",
         required=False,
-        widget=forms.TextInput(attrs={"data-jdp": "1", "autocomplete": "off"}),
-        help_text="در صورت خالی بودن، زمان فعلی ثبت می‌شود.",
     )
 
-    def __init__(self, *args, sender=None, report=None, **kwargs):
+    def __init__(self, *args, sender=None, report=None, mode="send", **kwargs):
         self.sender = sender
         self.report = report
+        self.mode = mode
         super().__init__(*args, **kwargs)
-        qs = User.objects.filter(is_active=True)
-        if sender:
-            qs = qs.exclude(pk=sender.pk)
-        self.fields["recipient"].queryset = qs.order_by("username")
+        if mode == "copy":
+            self.fields["recipient"].required = False
+            self.fields["recipient"].widget = forms.HiddenInput()
+            if sender:
+                self.fields["recipient"].initial = sender.pk
+                self.fields["recipient"].queryset = User.objects.filter(pk=sender.pk)
+        else:
+            self.fields["recipient"].required = True
+            qs = User.objects.filter(is_active=True)
+            if sender:
+                qs = qs.exclude(pk=sender.pk)
+            self.fields["recipient"].queryset = qs.order_by("username")
         if report:
             self.fields["title"].initial = report.title
             self.fields["number"].initial = report.number
+            self.fields["description"].initial = report.description
         _style_fields(self)
 
     def clean(self):
         cleaned = super().clean()
-        recipient = cleaned.get("recipient")
-        number = (cleaned.get("number") or "").strip()
-        cleaned["number"] = number
-        if recipient and number:
-            if SavedReport.objects.filter(owner=recipient, number=number).exists():
+        number = cleaned.get("number")
+        if self.mode == "copy":
+            owner = self.sender
+        else:
+            owner = cleaned.get("recipient")
+        if owner and number is not None:
+            if SavedReport.objects.filter(owner=owner, number=number).exists():
                 self.add_error("number", "شماره گزارش وجود دارد")
         return cleaned
 
 
 class PrintFormForm(forms.ModelForm):
-    viewers = forms.ModelMultipleChoiceField(
-        label="کاربرانی که می‌توانند فرم را ببینند",
-        queryset=User.objects.none(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-    )
     is_standard = forms.BooleanField(
         label="ایجاد فرم استاندارد (قابل مشاهده برای همه)",
         required=False,
@@ -169,40 +163,35 @@ class PrintFormForm(forms.ModelForm):
 
     class Meta:
         model = PrintForm
-        fields = [
-            "title",
-            "number",
-            "page_width_mm",
-            "page_height_mm",
-            "viewers",
-            "is_standard",
-        ]
+        fields = ["title", "description", "number", "page_width_mm", "page_height_mm", "is_standard"]
         labels = {
             "title": "عنوان فرم",
+            "description": "توضیحات",
             "number": "شماره فرم",
             "page_width_mm": "عرض صفحه (میلی‌متر)",
             "page_height_mm": "ارتفاع صفحه (میلی‌متر)",
+        }
+        widgets = {
+            "description": forms.TextInput(attrs={"placeholder": "توضیح کوتاه (اختیاری)"}),
+            "number": forms.NumberInput(attrs={"min": 1, "max": 999, "step": 1}),
         }
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
         profile = get_profile(user) if user else None
-        qs = User.objects.filter(is_active=True).exclude(pk=user.pk if user else None).order_by("username")
-        self.fields["viewers"].queryset = qs
         if not (profile and profile.is_manager):
             self.fields["is_standard"].widget = forms.HiddenInput()
             self.fields["is_standard"].initial = False
         if self.instance and self.instance.pk:
-            import json
-
             self.fields["frames_json"].initial = json.dumps(
                 self.instance.frames or [], ensure_ascii=False
             )
+        self.is_manager = bool(profile and profile.is_manager)
         _style_fields(self)
 
     def clean_number(self):
-        number = self.cleaned_data["number"].strip()
+        number = self.cleaned_data["number"]
         owner = self.user
         if self.instance and self.instance.pk:
             owner = self.instance.owner
@@ -221,8 +210,6 @@ class PrintFormForm(forms.ModelForm):
         return bool(value)
 
     def clean_frames_json(self):
-        import json
-
         raw = self.cleaned_data.get("frames_json") or "[]"
         try:
             data = json.loads(raw)
@@ -239,48 +226,63 @@ class PrintFormForm(forms.ModelForm):
                     "id": str(item.get("id") or ""),
                     "label": str(item.get("label") or "")[:120],
                     "kind": str(item.get("kind") or "box")[:40],
-                    "x": int(item.get("x") or 10),
-                    "y": int(item.get("y") or 10),
-                    "width": int(item.get("width") or 80),
-                    "height": int(item.get("height") or 24),
+                    "x": float(item.get("x") or 10),
+                    "y": float(item.get("y") or 10),
+                    "width": float(item.get("width") or 80),
+                    "height": float(item.get("height") or 24),
                 }
             )
         return cleaned
 
 
-class SendPrintFormForm(forms.Form):
+class SendOrCopyPrintFormForm(forms.Form):
+    title = forms.CharField(label="نام فرم", max_length=200)
+    number = forms.IntegerField(
+        label="شماره فرم",
+        min_value=1,
+        max_value=999,
+        widget=forms.NumberInput(attrs={"min": 1, "max": 999, "step": 1}),
+    )
+    description = forms.CharField(
+        label="توضیحات",
+        max_length=300,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "توضیح اختیاری"}),
+    )
     recipient = forms.ModelChoiceField(
         label="کاربر مقصد",
         queryset=User.objects.none(),
-        required=True,
-    )
-    title = forms.CharField(label="عنوان فرم", max_length=200)
-    number = forms.CharField(label="شماره فرم", max_length=60)
-    sent_at = forms.CharField(
-        label="زمان ارسال (شمسی)",
         required=False,
-        widget=forms.TextInput(attrs={"data-jdp": "1", "autocomplete": "off"}),
     )
 
-    def __init__(self, *args, sender=None, form_obj=None, **kwargs):
+    def __init__(self, *args, sender=None, form_obj=None, mode="send", **kwargs):
         self.sender = sender
         self.form_obj = form_obj
+        self.mode = mode
         super().__init__(*args, **kwargs)
-        qs = User.objects.filter(is_active=True)
-        if sender:
-            qs = qs.exclude(pk=sender.pk)
-        self.fields["recipient"].queryset = qs.order_by("username")
+        if mode == "copy":
+            self.fields["recipient"].required = False
+            self.fields["recipient"].widget = forms.HiddenInput()
+            if sender:
+                self.fields["recipient"].initial = sender.pk
+                self.fields["recipient"].queryset = User.objects.filter(pk=sender.pk)
+        else:
+            self.fields["recipient"].required = True
+            qs = User.objects.filter(is_active=True)
+            if sender:
+                qs = qs.exclude(pk=sender.pk)
+            self.fields["recipient"].queryset = qs.order_by("username")
         if form_obj:
             self.fields["title"].initial = form_obj.title
             self.fields["number"].initial = form_obj.number
+            self.fields["description"].initial = form_obj.description
         _style_fields(self)
 
     def clean(self):
         cleaned = super().clean()
-        recipient = cleaned.get("recipient")
-        number = (cleaned.get("number") or "").strip()
-        cleaned["number"] = number
-        if recipient and number:
-            if PrintForm.objects.filter(owner=recipient, number=number).exists():
+        number = cleaned.get("number")
+        owner = self.sender if self.mode == "copy" else cleaned.get("recipient")
+        if owner and number is not None:
+            if PrintForm.objects.filter(owner=owner, number=number).exists():
                 self.add_error("number", "شماره فرم وجود دارد")
         return cleaned

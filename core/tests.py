@@ -45,9 +45,13 @@ class SeedAndDashboardTests(TestCase):
         report = SavedReport.objects.create(
             owner=User.objects.get(username="admin"),
             title="گزارش تولید",
-            number="EXP-1",
+            number=11,
             data_source="fitting",
-            columns=["date", "product", "produced"],
+            columns=[
+                {"key": "date", "source": "fitting", "level": 1},
+                {"key": "product", "source": "fitting", "level": 1},
+                {"key": "produced", "source": "fitting", "level": 1},
+            ],
         )
         resp = self.client.get(reverse("report_detail", args=[report.pk]), {"export": "excel"})
         self.assertEqual(resp.status_code, 200)

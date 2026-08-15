@@ -17,17 +17,31 @@
   <div class="panel">
     <div class="panel-head"><h2>اطلاعات فرم</h2></div>
     <div class="panel-body">
-      <div class="form-grid">
+      <div class="form-grid form-grid-3">
         <div class="field">
           <label>{{ form.title.label }}</label>
           {{ form.title }}
           {{ form.title.errors }}
         </div>
         <div class="field">
-          <label>{{ form.number.label }}</label>
+          <label>{{ form.number.label }} (۱ تا ۹۹۹)</label>
           {{ form.number }}
           {{ form.number.errors }}
         </div>
+        {% if form.is_manager %}
+        <div class="field field-check">
+          <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+        </div>
+        {% else %}
+        {{ form.is_standard }}
+        {% endif %}
+      </div>
+      <div class="field">
+        <label>{{ form.description.label }}</label>
+        {{ form.description }}
+        <p class="helptext">زیر عنوان فرم، داخل پرانتز و کوچک‌تر نمایش داده می‌شود.</p>
+      </div>
+      <div class="form-grid form-grid-3">
         <div class="field">
           <label>{{ form.page_width_mm.label }}</label>
           {{ form.page_width_mm }}
@@ -36,39 +50,68 @@
           <label>{{ form.page_height_mm.label }}</label>
           {{ form.page_height_mm }}
         </div>
-        {% if form.is_standard %}
-        <div class="field field-check">
-          <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+        <div class="field">
+          <label>شبکه (مم)</label>
+          <select id="snap-mm" data-combo="1">
+            <option value="1">۱ مم</option>
+            <option value="2" selected>۲ مم</option>
+            <option value="5">۵ مم</option>
+            <option value="10">۱۰ مم</option>
+          </select>
         </div>
-        {% endif %}
       </div>
     </div>
   </div>
 
   <div class="panel">
     <div class="panel-head">
-      <h2>کادر‌بندی فرم (برای پرینت)</h2>
-      <div class="row-actions">
-        <button type="button" class="btn btn-sm" data-add-frame="header">+ عنوان</button>
-        <button type="button" class="btn btn-sm" data-add-frame="box">+ کادر</button>
-        <button type="button" class="btn btn-sm" data-add-frame="field">+ فیلد</button>
-        <button type="button" class="btn btn-sm" data-add-frame="line">+ خط</button>
-        <button type="button" class="btn btn-sm btn-ghost" data-add-frame="footer">+ پاورقی</button>
+      <h2>طراحی فرم چاپی</h2>
+      <div class="designer-toolbar">
+        <button type="button" class="btn btn-sm" data-tool="select">انتخاب</button>
+        <button type="button" class="btn btn-sm" data-add="header">عنوان</button>
+        <button type="button" class="btn btn-sm" data-add="box">کادر</button>
+        <button type="button" class="btn btn-sm" data-add="field">فیلد</button>
+        <button type="button" class="btn btn-sm" data-add="line">خط</button>
+        <button type="button" class="btn btn-sm" data-add="footer">پاورقی</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-zoom="-">−</button>
+        <span class="zoom-label" id="zoom-label">۱۰۰٪</span>
+        <button type="button" class="btn btn-sm btn-ghost" data-zoom="+">+</button>
+        <button type="button" class="btn btn-sm btn-danger" data-delete-selected>حذف انتخاب</button>
       </div>
     </div>
-    <div class="panel-body">
-      <p class="muted">با افزودن کادر، چیدمان فرم چاپی را بسازید. مختصات به میلی‌متر از گوشه بالا-راست صفحه است.</p>
-      <div class="form-canvas-wrap">
-        <div class="form-canvas" id="form-canvas" style="--page-w: {{ form.page_width_mm.value|default:210 }}; --page-h: {{ form.page_height_mm.value|default:297 }};"></div>
+    <div class="panel-body designer-body">
+      <div class="ruler-workspace" id="ruler-workspace">
+        <div class="ruler-corner"></div>
+        <div class="ruler-h" id="ruler-h"></div>
+        <div class="ruler-v" id="ruler-v"></div>
+        <div class="designer-scroll" id="designer-scroll">
+          <div class="designer-stage" id="designer-stage">
+            <div class="form-canvas designer-page" id="form-canvas"></div>
+          </div>
+        </div>
       </div>
-      <div class="frame-list" id="frame-list"></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head"><h2>دسترسی مشاهده</h2></div>
-    <div class="panel-body">
-      <div class="col-toggles">{{ form.viewers }}</div>
+      <div class="props-panel" id="frame-props">
+        <h3>ویژگی‌های کادر</h3>
+        <p class="muted" id="props-empty">یک کادر را انتخاب کنید.</p>
+        <div id="props-fields" hidden>
+          <div class="field"><label>برچسب</label><input class="input" id="prop-label"></div>
+          <div class="field"><label>نوع</label>
+            <select id="prop-kind" data-combo="1">
+              <option value="header">عنوان</option>
+              <option value="box">کادر</option>
+              <option value="field">فیلد</option>
+              <option value="line">خط</option>
+              <option value="footer">پاورقی</option>
+            </select>
+          </div>
+          <div class="form-grid form-grid-2">
+            <div class="field"><label>X (مم)</label><input class="input" type="number" step="0.5" id="prop-x"></div>
+            <div class="field"><label>Y (مم)</label><input class="input" type="number" step="0.5" id="prop-y"></div>
+            <div class="field"><label>عرض</label><input class="input" type="number" step="0.5" id="prop-w"></div>
+            <div class="field"><label>ارتفاع</label><input class="input" type="number" step="0.5" id="prop-h"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -77,96 +120,224 @@
 {% endblock %}
 
 {% block scripts %}
+<script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script>
 (function () {
-  var initial = {{ frames_json|default:"[]"|safe }};
-  if (typeof initial === "string") {
-    try { initial = JSON.parse(initial); } catch (e) { initial = []; }
-  }
-  var frames = Array.isArray(initial) ? initial.slice() : [];
-  var canvas = document.getElementById("form-canvas");
-  var list = document.getElementById("frame-list");
+  var MM = 3.7795275591; // px per mm at 96dpi baseline; scaled by zoom
+  var zoom = 1;
+  var snap = 2;
+  var frames = [];
+  try { frames = JSON.parse(document.getElementById("frames-initial").textContent || "[]"); } catch (e) { frames = []; }
+  var selectedId = null;
   var hidden = document.getElementById("id_frames_json");
+  var canvas = document.getElementById("form-canvas");
+  var stage = document.getElementById("designer-stage");
+  var scroll = document.getElementById("designer-scroll");
+  var rulerH = document.getElementById("ruler-h");
+  var rulerV = document.getElementById("ruler-v");
   var uid = 1;
 
-  function sync() {
-    if (hidden) hidden.value = JSON.stringify(frames);
-    render();
+  function pageW() { return parseFloat(document.getElementById("id_page_width_mm").value) || 210; }
+  function pageH() { return parseFloat(document.getElementById("id_page_height_mm").value) || 297; }
+  function px(mm) { return mm * MM * zoom; }
+  function mmFromPx(v) { return v / (MM * zoom); }
+  function snapMm(v) { return Math.round(v / snap) * snap; }
+
+  function syncHidden() { hidden.value = JSON.stringify(frames); }
+
+  function drawRulers() {
+    var w = pageW(), h = pageH();
+    rulerH.innerHTML = "";
+    rulerV.innerHTML = "";
+    rulerH.style.width = px(w) + "px";
+    rulerV.style.height = px(h) + "px";
+    for (var x = 0; x <= w; x += 5) {
+      var tick = document.createElement("div");
+      tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : "");
+      tick.style.left = px(x) + "px";
+      if (x % 10 === 0) {
+        var lab = document.createElement("span");
+        lab.textContent = String(x);
+        tick.appendChild(lab);
+      }
+      rulerH.appendChild(tick);
+    }
+    for (var y = 0; y <= h; y += 5) {
+      var tick2 = document.createElement("div");
+      tick2.className = "ruler-tick" + (y % 10 === 0 ? " major" : "");
+      tick2.style.top = px(y) + "px";
+      if (y % 10 === 0) {
+        var lab2 = document.createElement("span");
+        lab2.textContent = String(y);
+        tick2.appendChild(lab2);
+      }
+      rulerV.appendChild(tick2);
+    }
   }
 
   function render() {
+    var w = pageW(), h = pageH();
+    canvas.style.width = px(w) + "px";
+    canvas.style.height = px(h) + "px";
+    canvas.style.setProperty("--page-w", w);
+    canvas.style.setProperty("--page-h", h);
     canvas.innerHTML = "";
-    list.innerHTML = "";
-    frames.forEach(function (f, idx) {
-      var el = document.createElement("div");
-      el.className = "form-frame kind-" + (f.kind || "box");
-      el.style.right = (f.x || 10) + "mm";
-      el.style.top = (f.y || 10) + "mm";
-      el.style.width = (f.width || 80) + "mm";
-      el.style.height = (f.height || 24) + "mm";
-      el.textContent = f.label || f.kind;
-      canvas.appendChild(el);
+    // grid
+    var grid = document.createElement("div");
+    grid.className = "designer-grid";
+    grid.style.backgroundSize = px(snap) + "px " + px(snap) + "px";
+    canvas.appendChild(grid);
 
-      var row = document.createElement("div");
-      row.className = "frame-row";
-      row.innerHTML =
-        '<input class="input" data-i="' + idx + '" data-k="label" value="' + (f.label || "").replace(/"/g, "&quot;") + '" placeholder="برچسب">' +
-        '<select data-i="' + idx + '" data-k="kind">' +
-        ["header","box","field","line","footer"].map(function (k) {
-          return '<option value="' + k + '"' + (f.kind === k ? " selected" : "") + ">" + k + "</option>";
-        }).join("") +
-        "</select>" +
-        '<input class="input" type="number" data-i="' + idx + '" data-k="x" value="' + (f.x || 10) + '" title="X">' +
-        '<input class="input" type="number" data-i="' + idx + '" data-k="y" value="' + (f.y || 10) + '" title="Y">' +
-        '<input class="input" type="number" data-i="' + idx + '" data-k="width" value="' + (f.width || 80) + '" title="عرض">' +
-        '<input class="input" type="number" data-i="' + idx + '" data-k="height" value="' + (f.height || 24) + '" title="ارتفاع">' +
-        '<button type="button" class="btn btn-sm btn-danger" data-remove="' + idx + '">حذف</button>';
-      list.appendChild(row);
+    frames.forEach(function (f) {
+      var el = document.createElement("div");
+      el.className = "form-frame kind-" + (f.kind || "box") + (f.id === selectedId ? " selected" : "");
+      el.style.right = px(f.x || 0) + "px";
+      el.style.top = px(f.y || 0) + "px";
+      el.style.width = px(f.width || 20) + "px";
+      el.style.height = px(f.height || 10) + "px";
+      el.textContent = f.label || f.kind;
+      el.dataset.id = f.id;
+      el.addEventListener("mousedown", startDrag);
+      if (f.id === selectedId) {
+        ["nw","ne","sw","se"].forEach(function (c) {
+          var hndl = document.createElement("span");
+          hndl.className = "resize-handle " + c;
+          hndl.dataset.corner = c;
+          hndl.addEventListener("mousedown", startResize);
+          el.appendChild(hndl);
+        });
+      }
+      canvas.appendChild(el);
     });
+    drawRulers();
+    syncHidden();
+    renderProps();
+    document.getElementById("zoom-label").textContent = Math.round(zoom * 100) + "٪";
   }
 
-  document.querySelectorAll("[data-add-frame]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var kind = btn.getAttribute("data-add-frame");
-      frames.push({
-        id: "f" + (Date.now()) + "-" + (uid++),
-        label: kind === "header" ? "عنوان فرم" : (kind === "footer" ? "پاورقی" : "کادر جدید"),
-        kind: kind,
-        x: 15,
-        y: 20 + frames.length * 28,
-        width: kind === "line" ? 180 : 80,
-        height: kind === "line" ? 2 : 24
-      });
-      sync();
+  function find(id) { return frames.find(function (f) { return f.id === id; }); }
+
+  function renderProps() {
+    var empty = document.getElementById("props-empty");
+    var fields = document.getElementById("props-fields");
+    var f = find(selectedId);
+    if (!f) { empty.hidden = false; fields.hidden = true; return; }
+    empty.hidden = true; fields.hidden = false;
+    document.getElementById("prop-label").value = f.label || "";
+    document.getElementById("prop-kind").value = f.kind || "box";
+    document.getElementById("prop-x").value = f.x;
+    document.getElementById("prop-y").value = f.y;
+    document.getElementById("prop-w").value = f.width;
+    document.getElementById("prop-h").value = f.height;
+  }
+
+  ["prop-label","prop-kind","prop-x","prop-y","prop-w","prop-h"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      var f = find(selectedId); if (!f) return;
+      f.label = document.getElementById("prop-label").value;
+      f.kind = document.getElementById("prop-kind").value;
+      f.x = snapMm(parseFloat(document.getElementById("prop-x").value) || 0);
+      f.y = snapMm(parseFloat(document.getElementById("prop-y").value) || 0);
+      f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
+      f.height = Math.max(1, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+      render();
     });
   });
 
-  list.addEventListener("input", function (e) {
-    var t = e.target;
-    if (!t.dataset.i) return;
-    var i = parseInt(t.dataset.i, 10);
-    var k = t.dataset.k;
-    if (!frames[i]) return;
-    frames[i][k] = (k === "label" || k === "kind") ? t.value : parseInt(t.value || "0", 10);
-    sync();
+  var drag = null;
+  function startDrag(e) {
+    if (e.target.classList.contains("resize-handle")) return;
+    e.preventDefault();
+    var id = e.currentTarget.dataset.id;
+    selectedId = id;
+    var f = find(id);
+    drag = { mode: "move", id: id, startX: e.clientX, startY: e.clientY, ox: f.x, oy: f.y };
+    render();
+  }
+  function startResize(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var id = e.currentTarget.parentElement.dataset.id;
+    var f = find(id);
+    selectedId = id;
+    drag = {
+      mode: "resize", corner: e.currentTarget.dataset.corner, id: id,
+      startX: e.clientX, startY: e.clientY,
+      ox: f.x, oy: f.y, ow: f.width, oh: f.height
+    };
+  }
+  window.addEventListener("mousemove", function (e) {
+    if (!drag) return;
+    var f = find(drag.id); if (!f) return;
+    var dx = mmFromPx(e.clientX - drag.startX);
+    var dy = mmFromPx(e.clientY - drag.startY);
+    // RTL: moving mouse left increases "right" offset? canvas uses CSS right.
+    // Positive clientX increase (to the right) should decrease CSS right.
+    if (drag.mode === "move") {
+      f.x = snapMm(Math.max(0, drag.ox - dx));
+      f.y = snapMm(Math.max(0, drag.oy + dy));
+    } else {
+      var c = drag.corner;
+      if (c === "se") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "sw") { f.x = snapMm(drag.ox - dx); f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "ne") { f.width = snapMm(Math.max(snap, drag.ow - dx)); f.y = snapMm(drag.oy + dy); f.height = snapMm(Math.max(1, drag.oh - dy)); }
+      if (c === "nw") {
+        f.x = snapMm(drag.ox - dx); f.y = snapMm(drag.oy + dy);
+        f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh - dy));
+      }
+    }
+    render();
   });
-  list.addEventListener("change", function (e) {
-    var t = e.target;
-    if (!t.dataset.i) return;
-    var i = parseInt(t.dataset.i, 10);
-    var k = t.dataset.k;
-    if (!frames[i] || k !== "kind") return;
-    frames[i][k] = t.value;
-    sync();
-  });
-  list.addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-remove]");
-    if (!btn) return;
-    frames.splice(parseInt(btn.getAttribute("data-remove"), 10), 1);
-    sync();
+  window.addEventListener("mouseup", function () { drag = null; });
+
+  canvas.addEventListener("mousedown", function (e) {
+    if (e.target === canvas || e.target.classList.contains("designer-grid")) {
+      selectedId = null; render();
+    }
   });
 
-  sync();
+  document.querySelectorAll("[data-add]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var kind = btn.getAttribute("data-add");
+      var f = {
+        id: "f" + Date.now() + "-" + (uid++),
+        label: kind === "header" ? "عنوان فرم" : kind === "footer" ? "پاورقی" : kind === "field" ? "فیلد" : kind === "line" ? "" : "کادر",
+        kind: kind,
+        x: 15, y: 20 + frames.length * 12,
+        width: kind === "line" ? 180 : kind === "header" ? 180 : 70,
+        height: kind === "line" ? 1 : kind === "header" ? 12 : 18
+      };
+      frames.push(f);
+      selectedId = f.id;
+      render();
+    });
+  });
+
+  document.querySelector("[data-delete-selected]").addEventListener("click", function () {
+    if (!selectedId) return;
+    frames = frames.filter(function (f) { return f.id !== selectedId; });
+    selectedId = null;
+    render();
+  });
+
+  document.querySelectorAll("[data-zoom]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var d = btn.getAttribute("data-zoom");
+      zoom = Math.max(0.5, Math.min(2, zoom + (d === "+" ? 0.1 : -0.1)));
+      render();
+    });
+  });
+
+  document.getElementById("snap-mm").addEventListener("change", function (e) {
+    snap = parseFloat(e.target.value) || 2;
+    render();
+  });
+  ["id_page_width_mm", "id_page_height_mm"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("change", render);
+  });
+
+  render();
 })();
 </script>
 {% endblock %}

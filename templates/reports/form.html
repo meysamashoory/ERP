@@ -11,70 +11,61 @@
   <a class="btn btn-ghost" href="{% url 'report_list' %}">بازگشت به لیست</a>
 </div>
 
-<form method="post">
+<form method="post" id="report-builder-form">
   {% csrf_token %}
+  {{ form.columns_json }}
   <div class="panel">
     <div class="panel-head"><h2>اطلاعات گزارش</h2></div>
     <div class="panel-body">
-      <div class="form-grid">
+      <div class="form-grid form-grid-3">
         <div class="field">
           <label>{{ form.title.label }}</label>
           {{ form.title }}
           {{ form.title.errors }}
         </div>
         <div class="field">
-          <label>{{ form.number.label }}</label>
+          <label>{{ form.number.label }} (۱ تا ۹۹۹)</label>
           {{ form.number }}
           {{ form.number.errors }}
         </div>
-        <div class="field">
-          <label>{{ form.data_source.label }}</label>
-          {{ form.data_source }}
-          {{ form.data_source.errors }}
-        </div>
-        {% if form.is_standard %}
+        {% if form.is_manager %}
         <div class="field field-check">
           <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
           {{ form.is_standard.errors }}
         </div>
+        {% else %}
+        {{ form.is_standard }}
         {% endif %}
       </div>
+      <div class="field">
+        <label>{{ form.description.label }}</label>
+        {{ form.description }}
+        <p class="helptext">این متن زیر عنوان گزارش، داخل پرانتز و با فونت کوچک‌تر نمایش داده می‌شود.</p>
+        {{ form.description.errors }}
+      </div>
+      {{ form.columns_json.errors }}
     </div>
   </div>
 
   <div class="panel">
-    <div class="panel-head"><h2>انتخاب ستون‌ها (به ترتیب نمایش)</h2></div>
+    <div class="panel-head"><h2>انتخاب ستون‌ها و سطح‌بندی</h2></div>
     <div class="panel-body">
-      <p class="muted">ستون‌های تاریخ سند و موجودی در صورت وجود در منبع داده قابل انتخاب هستند. ستون‌های فایل پس از اتصال فایل فعال می‌شوند.</p>
-      {{ form.columns.errors }}
-      {% with selected=form.columns.value|default_if_none:form.fields.columns.initial %}
-      {% for group in column_groups %}
-      <div class="col-group">
-        <h3>{{ group.label }}</h3>
-        {% if group.hint %}<p class="muted">{{ group.hint }}</p>{% endif %}
-        <div class="col-toggles">
-          {% for value, label in group.columns %}
-          <label class="chk">
-            <input type="checkbox" name="columns" value="{{ value }}"
-              {% if selected and value in selected %}checked{% endif %}>
-            {{ label }}
-          </label>
-          {% endfor %}
+      <div class="col-builder">
+        <div class="col-builder-right">
+          <div class="field">
+            <label>منبع داده اصلی</label>
+            <div class="source-picker" id="source-picker"></div>
+          </div>
+          <div class="source-trees" id="source-trees"></div>
+        </div>
+        <div class="col-builder-left">
+          <div class="selected-head">
+            <strong>نحوه نمایش</strong>
+            <span class="muted">بالا = راست گزارش · پایین = چپ</span>
+          </div>
+          <div class="selected-cols" id="selected-cols"></div>
         </div>
       </div>
-      {% empty %}
-      <div class="col-toggles">{{ form.columns }}</div>
-      {% endfor %}
-      {% endwith %}
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head"><h2>دسترسی مشاهده</h2></div>
-    <div class="panel-body">
-      <p class="muted">کاربرانی که می‌توانند این گزارش را ببینند (علاوه بر خودتان). گزارش استاندارد برای همه قابل مشاهده است.</p>
-      <div class="col-toggles">{{ form.viewers }}</div>
-      {{ form.viewers.errors }}
     </div>
   </div>
 
@@ -83,33 +74,166 @@
 {% endblock %}
 
 {% block scripts %}
+{{ column_groups|json_script:"column-groups" }}
+<script id="columns-initial" type="application/json">{{ columns_initial|safe }}</script>
 <script>
-  (function () {
-    var source = document.getElementById("id_data_source");
-    if (!source) return;
-    source.addEventListener("change", function () {
-      // Reload with selected source so column groups match.
-      var url = new URL(window.location.href);
-      url.searchParams.set("source", source.value);
-      // Preserve title/number via sessionStorage briefly.
-      try {
-        sessionStorage.setItem("reportDraftTitle", document.getElementById("id_title").value || "");
-        sessionStorage.setItem("reportDraftNumber", document.getElementById("id_number").value || "");
-      } catch (e) {}
-      window.location = url.pathname + "?source=" + encodeURIComponent(source.value);
+(function () {
+  var groups = JSON.parse(document.getElementById("column-groups").textContent);
+  var hidden = document.getElementById("id_columns_json");
+  var selected = [];
+  try { selected = JSON.parse(document.getElementById("columns-initial").textContent || "[]"); } catch (e) { selected = []; }
+  selected = (selected || []).map(function (item) {
+    if (typeof item === "string") return { key: item, source: "fitting", level: 1, label: item };
+    return item;
+  });
+
+  var addedSources = [];
+  selected.forEach(function (c) {
+    if (c.source && addedSources.indexOf(c.source) < 0) addedSources.push(c.source);
+  });
+
+  var picker = document.getElementById("source-picker");
+  var trees = document.getElementById("source-trees");
+  var list = document.getElementById("selected-cols");
+
+  function syncHidden() { hidden.value = JSON.stringify(selected); }
+
+  function labelOf(source, key) {
+    var g = groups.find(function (x) { return x.id === source; });
+    if (!g) return key;
+    var hit = g.columns.find(function (c) { return c[0] === key; });
+    return hit ? hit[1] : key;
+  }
+
+  function renderPicker() {
+    picker.innerHTML = "";
+    groups.forEach(function (g) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "source-chip" + (addedSources.indexOf(g.id) >= 0 ? " active" : "");
+      btn.textContent = g.label;
+      btn.addEventListener("click", function () {
+        if (addedSources.indexOf(g.id) >= 0) return;
+        if (g.id !== "file") {
+          var other = addedSources.filter(function (s) { return s !== "file" && s !== g.id; });
+          if (other.length) {
+            if (!confirm("با انتخاب این منبع، ستون‌های منبع قبلی از لیست حذف می‌شوند. ادامه؟")) return;
+            selected = selected.filter(function (c) { return c.source === "file" || c.source === g.id; });
+            addedSources = addedSources.filter(function (s) { return s === "file" || s === g.id; });
+          }
+        }
+        addedSources.push(g.id);
+        renderPicker();
+        renderTrees();
+        renderSelected();
+        syncHidden();
+      });
+      picker.appendChild(btn);
     });
-    try {
-      var t = sessionStorage.getItem("reportDraftTitle");
-      var n = sessionStorage.getItem("reportDraftNumber");
-      if (t && document.getElementById("id_title") && !document.getElementById("id_title").value) {
-        document.getElementById("id_title").value = t;
+  }
+
+  function renderTrees() {
+    trees.innerHTML = "";
+    addedSources.forEach(function (sid) {
+      var g = groups.find(function (x) { return x.id === sid; });
+      if (!g) return;
+      var box = document.createElement("div");
+      box.className = "source-tree";
+      var head = document.createElement("button");
+      head.type = "button";
+      head.className = "source-tree-head";
+      head.textContent = "▾ " + g.label;
+      var body = document.createElement("div");
+      body.className = "source-tree-body";
+      head.addEventListener("click", function () {
+        body.hidden = !body.hidden;
+        head.textContent = (body.hidden ? "▸ " : "▾ ") + g.label;
+      });
+      g.columns.forEach(function (pair) {
+        var key = pair[0], lab = pair[1];
+        var labEl = document.createElement("label");
+        labEl.className = "chk";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = selected.some(function (c) { return c.key === key && c.source === sid; });
+        cb.addEventListener("change", function () {
+          if (cb.checked) {
+            selected.push({ key: key, source: sid, level: 1, label: lab });
+          } else {
+            selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
+          }
+          renderSelected();
+          syncHidden();
+        });
+        labEl.appendChild(cb);
+        labEl.appendChild(document.createTextNode(" " + lab));
+        body.appendChild(labEl);
+      });
+      box.appendChild(head);
+      box.appendChild(body);
+      trees.appendChild(box);
+    });
+  }
+
+  function move(idx, dir) {
+    var j = idx + dir;
+    if (j < 0 || j >= selected.length) return;
+    var tmp = selected[idx];
+    selected[idx] = selected[j];
+    selected[j] = tmp;
+    renderSelected();
+    syncHidden();
+  }
+
+  function renderSelected() {
+    list.innerHTML = "";
+    if (!selected.length) {
+      list.innerHTML = '<p class="muted">ستونی انتخاب نشده است.</p>';
+      return;
+    }
+    selected.forEach(function (c, idx) {
+      var row = document.createElement("div");
+      row.className = "selected-col-row";
+      var opts = "";
+      for (var n = 1; n <= 10; n++) {
+        opts += '<option value="' + n + '"' + (Number(c.level) === n ? " selected" : "") + ">" + n + "</option>";
       }
-      if (n && document.getElementById("id_number") && !document.getElementById("id_number").value) {
-        document.getElementById("id_number").value = n;
-      }
-      sessionStorage.removeItem("reportDraftTitle");
-      sessionStorage.removeItem("reportDraftNumber");
-    } catch (e) {}
-  })();
+      row.innerHTML =
+        '<span class="sel-label">' + (c.label || labelOf(c.source, c.key)) + '</span>' +
+        '<span class="muted">' + (c.source || "") + '</span>' +
+        '<label class="level-label">سطح <select data-level="' + idx + '">' + opts + "</select></label>" +
+        '<button type="button" class="btn btn-sm btn-ghost" data-up="' + idx + '">↑</button>' +
+        '<button type="button" class="btn btn-sm btn-ghost" data-down="' + idx + '">↓</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" data-rm="' + idx + '">حذف</button>';
+      list.appendChild(row);
+    });
+  }
+
+  list.addEventListener("click", function (e) {
+    var up = e.target.closest("[data-up]");
+    var down = e.target.closest("[data-down]");
+    var rm = e.target.closest("[data-rm]");
+    if (up) move(parseInt(up.getAttribute("data-up"), 10), -1);
+    if (down) move(parseInt(down.getAttribute("data-down"), 10), 1);
+    if (rm) {
+      selected.splice(parseInt(rm.getAttribute("data-rm"), 10), 1);
+      renderTrees();
+      renderSelected();
+      syncHidden();
+    }
+  });
+  list.addEventListener("change", function (e) {
+    var sel = e.target.closest("[data-level]");
+    if (!sel) return;
+    var i = parseInt(sel.getAttribute("data-level"), 10);
+    selected[i].level = parseInt(sel.value, 10);
+    syncHidden();
+  });
+
+  renderPicker();
+  renderTrees();
+  renderSelected();
+  syncHidden();
+})();
 </script>
 {% endblock %}
