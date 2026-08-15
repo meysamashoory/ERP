@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ report.title }}{% endblock %}
+{% block heading %}گزارش‌ها{% endblock %}
+{% block nav_reports %}open{% endblock %}
+{% block nav_report_list %}active{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ report.title }}</h1>
+    <p class="muted">شماره {{ report.number }}
+      {% if report.is_standard %} — <span class="badge badge-approved">استاندارد</span>{% endif %}
+      — {{ report.get_data_source_display }}
+    </p>
+  </div>
+  <div class="row-actions">
+    <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
+    <a class="btn btn-sm" href="?export=excel">خروجی Excel</a>
+    <a class="btn btn-sm btn-ghost" href="?export=pdf">خروجی PDF</a>
+    {% if can_edit %}
+    <a class="btn btn-sm" href="{% url 'report_edit' report.pk %}">ویرایش</a>
+    {% endif %}
+    {% if can_delete %}
+    <form method="post" action="{% url 'report_delete' report.pk %}" class="inline-form" onsubmit="return confirm('گزارش فقط از لیست شما حذف می‌شود. ادامه؟');">
+      {% csrf_token %}
+      <button class="btn btn-sm btn-danger" type="submit">حذف</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if can_send and send_form %}
+<div class="panel">
+  <div class="panel-head"><h2>ارسال گزارش برای کاربر دیگر</h2></div>
+  <div class="panel-body">
+    <p class="muted">در هر ارسال فقط یک کاربر انتخاب می‌شود. برای کاربر مقصد کپی جداگانه ساخته می‌شود.</p>
+    <form method="post" action="{% url 'report_send' report.pk %}">
+      {% csrf_token %}
+      <div class="form-grid">
+        <div class="field">
+          <label>{{ send_form.recipient.label }}</label>
+          {{ send_form.recipient }}
+        </div>
+        <div class="field">
+          <label>{{ send_form.title.label }}</label>
+          {{ send_form.title }}
+        </div>
+        <div class="field">
+          <label>{{ send_form.number.label }}</label>
+          {{ send_form.number }}
+        </div>
+        <div class="field">
+          <label>{{ send_form.sent_at.label }}</label>
+          {{ send_form.sent_at }}
+        </div>
+      </div>
+      <button class="btn" type="submit">ارسال</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-head">
+    <h2>نتایج ({{ rows|length }} ردیف)</h2>
+  </div>
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="table">
+      <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>{% for cell in row %}<td class="num">{{ cell }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">داده‌ای برای این گزارش یافت نشد.</p>
+  {% endif %}
+</div>
+{% endblock %}

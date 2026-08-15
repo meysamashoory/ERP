@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
 urlpatterns = [
+    path("", include("reports.urls")),
     path("", include("core.urls")),
     path("production/", include("production.urls")),
     path("planning/", include("planning.urls")),

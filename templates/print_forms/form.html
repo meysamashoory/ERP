@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block heading %}{{ page_title }}{% endblock %}
+{% block nav_forms %}open{% endblock %}
+{% block nav_form_create %}{% if mode == 'create' %}active{% endif %}{% endblock %}
+{% block nav_form_list %}{% if mode == 'edit' %}active{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ page_title }}</h1>
+  <a class="btn btn-ghost" href="{% url 'print_form_list' %}">بازگشت به لیست</a>
+</div>
+
+<form method="post" id="print-form-builder">
+  {% csrf_token %}
+  {{ form.frames_json }}
+  <div class="panel">
+    <div class="panel-head"><h2>اطلاعات فرم</h2></div>
+    <div class="panel-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>{{ form.title.label }}</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
+        <div class="field">
+          <label>{{ form.number.label }}</label>
+          {{ form.number }}
+          {{ form.number.errors }}
+        </div>
+        <div class="field">
+          <label>{{ form.page_width_mm.label }}</label>
+          {{ form.page_width_mm }}
+        </div>
+        <div class="field">
+          <label>{{ form.page_height_mm.label }}</label>
+          {{ form.page_height_mm }}
+        </div>
+        {% if form.is_standard %}
+        <div class="field field-check">
+          <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>کادر‌بندی فرم (برای پرینت)</h2>
+      <div class="row-actions">
+        <button type="button" class="btn btn-sm" data-add-frame="header">+ عنوان</button>
+        <button type="button" class="btn btn-sm" data-add-frame="box">+ کادر</button>
+        <button type="button" class="btn btn-sm" data-add-frame="field">+ فیلد</button>
+        <button type="button" class="btn btn-sm" data-add-frame="line">+ خط</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-add-frame="footer">+ پاورقی</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="muted">با افزودن کادر، چیدمان فرم چاپی را بسازید. مختصات به میلی‌متر از گوشه بالا-راست صفحه است.</p>
+      <div class="form-canvas-wrap">
+        <div class="form-canvas" id="form-canvas" style="--page-w: {{ form.page_width_mm.value|default:210 }}; --page-h: {{ form.page_height_mm.value|default:297 }};"></div>
+      </div>
+      <div class="frame-list" id="frame-list"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>دسترسی مشاهده</h2></div>
+    <div class="panel-body">
+      <div class="col-toggles">{{ form.viewers }}</div>
+    </div>
+  </div>
+
+  <button class="btn" type="submit">ثبت فرم</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var initial = {{ frames_json|default:"[]"|safe }};
+  if (typeof initial === "string") {
+    try { initial = JSON.parse(initial); } catch (e) { initial = []; }
+  }
+  var frames = Array.isArray(initial) ? initial.slice() : [];
+  var canvas = document.getElementById("form-canvas");
+  var list = document.getElementById("frame-list");
+  var hidden = document.getElementById("id_frames_json");
+  var uid = 1;
+
+  function sync() {
+    if (hidden) hidden.value = JSON.stringify(frames);
+    render();
+  }
+
+  function render() {
+    canvas.innerHTML = "";
+    list.innerHTML = "";
+    frames.forEach(function (f, idx) {
+      var el = document.createElement("div");
+      el.className = "form-frame kind-" + (f.kind || "box");
+      el.style.right = (f.x || 10) + "mm";
+      el.style.top = (f.y || 10) + "mm";
+      el.style.width = (f.width || 80) + "mm";
+      el.style.height = (f.height || 24) + "mm";
+      el.textContent = f.label || f.kind;
+      canvas.appendChild(el);
+
+      var row = document.createElement("div");
+      row.className = "frame-row";
+      row.innerHTML =
+        '<input class="input" data-i="' + idx + '" data-k="label" value="' + (f.label || "").replace(/"/g, "&quot;") + '" placeholder="برچسب">' +
+        '<select data-i="' + idx + '" data-k="kind">' +
+        ["header","box","field","line","footer"].map(function (k) {
+          return '<option value="' + k + '"' + (f.kind === k ? " selected" : "") + ">" + k + "</option>";
+        }).join("") +
+        "</select>" +
+        '<input class="input" type="number" data-i="' + idx + '" data-k="x" value="' + (f.x || 10) + '" title="X">' +
+        '<input class="input" type="number" data-i="' + idx + '" data-k="y" value="' + (f.y || 10) + '" title="Y">' +
+        '<input class="input" type="number" data-i="' + idx + '" data-k="width" value="' + (f.width || 80) + '" title="عرض">' +
+        '<input class="input" type="number" data-i="' + idx + '" data-k="height" value="' + (f.height || 24) + '" title="ارتفاع">' +
+        '<button type="button" class="btn btn-sm btn-danger" data-remove="' + idx + '">حذف</button>';
+      list.appendChild(row);
+    });
+  }
+
+  document.querySelectorAll("[data-add-frame]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var kind = btn.getAttribute("data-add-frame");
+      frames.push({
+        id: "f" + (Date.now()) + "-" + (uid++),
+        label: kind === "header" ? "عنوان فرم" : (kind === "footer" ? "پاورقی" : "کادر جدید"),
+        kind: kind,
+        x: 15,
+        y: 20 + frames.length * 28,
+        width: kind === "line" ? 180 : 80,
+        height: kind === "line" ? 2 : 24
+      });
+      sync();
+    });
+  });
+
+  list.addEventListener("input", function (e) {
+    var t = e.target;
+    if (!t.dataset.i) return;
+    var i = parseInt(t.dataset.i, 10);
+    var k = t.dataset.k;
+    if (!frames[i]) return;
+    frames[i][k] = (k === "label" || k === "kind") ? t.value : parseInt(t.value || "0", 10);
+    sync();
+  });
+  list.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t.dataset.i) return;
+    var i = parseInt(t.dataset.i, 10);
+    var k = t.dataset.k;
+    if (!frames[i] || k !== "kind") return;
+    frames[i][k] = t.value;
+    sync();
+  });
+  list.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-remove]");
+    if (!btn) return;
+    frames.splice(parseInt(btn.getAttribute("data-remove"), 10), 1);
+    sync();
+  });
+
+  sync();
+})();
+</script>
+{% endblock %}

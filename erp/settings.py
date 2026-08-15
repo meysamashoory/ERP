@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "catalog",
     "production",
     "planning",
+    "reports",
     "core",
 ]
 

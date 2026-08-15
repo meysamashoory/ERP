@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}فرم‌ها{% endblock %}
+{% block heading %}فرم‌ها{% endblock %}
+{% block nav_forms %}open{% endblock %}
+{% block nav_form_list %}active{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>مشاهده فرم‌ها</h1>
+  {% if can_create %}
+  <a class="btn" href="{% url 'print_form_create' %}">+ ایجاد فرم</a>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>فرم‌های قابل مشاهده</h2></div>
+  {% if rows %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>شماره</th>
+        <th>عنوان</th>
+        <th>مالک</th>
+        <th>نوع</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="num">{{ row.form.number }}</td>
+        <td><a href="{% url 'print_form_detail' row.form.pk %}">{{ row.form.title }}</a></td>
+        <td>{{ row.form.owner.username }}</td>
+        <td>{% if row.form.is_standard %}<span class="badge badge-approved">استاندارد</span>{% else %}<span class="badge">شخصی</span>{% endif %}</td>
+        <td class="row-actions">
+          <a class="btn btn-sm btn-ghost" href="{% url 'print_form_detail' row.form.pk %}">مشاهده</a>
+          {% if row.can_edit %}
+          <a class="btn btn-sm" href="{% url 'print_form_edit' row.form.pk %}">ویرایش</a>
+          {% endif %}
+          {% if row.can_delete %}
+          <form method="post" action="{% url 'print_form_delete' row.form.pk %}" class="inline-form" onsubmit="return confirm('فرم فقط از لیست شما حذف می‌شود. ادامه؟');">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-danger" type="submit">حذف</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">هنوز فرمی ایجاد نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -5,9 +5,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}سامانه برنامه‌ریزی و کنترل تولید{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=5">
-  <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=5">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=5">
+  <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=6">
 </head>
 <body>
 <div class="layout">
@@ -22,7 +22,20 @@
       <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">داشبورد</a>
       <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">برنامه‌ها و ثبت تولید</a>
       <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
-      <a href="{% url 'reports' %}" class="{% block nav_reports %}{% endblock %}">گزارش‌گیری</a>
+      <div class="nav-group {% block nav_reports %}{% endblock %}">
+        <div class="nav-group-title">گزارش‌ها</div>
+        <a href="{% url 'report_list' %}" class="{% block nav_report_list %}{% endblock %}">مشاهده گزارش‌ها</a>
+        {% if profile.can_create_reports %}
+        <a href="{% url 'report_create' %}" class="{% block nav_report_create %}{% endblock %}">ایجاد گزارش</a>
+        {% endif %}
+      </div>
+      <div class="nav-group {% block nav_forms %}{% endblock %}">
+        <div class="nav-group-title">فرم‌ها</div>
+        <a href="{% url 'print_form_list' %}" class="{% block nav_form_list %}{% endblock %}">مشاهده فرم‌ها</a>
+        {% if profile.can_create_reports %}
+        <a href="{% url 'print_form_create' %}" class="{% block nav_form_create %}{% endblock %}">ایجاد فرم</a>
+        {% endif %}
+      </div>
       {% if profile.can_manage_users or user.is_superuser %}
       <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
       {% endif %}
@@ -60,9 +73,9 @@
     products: "{% url 'products_json' %}"
   };
 </script>
-<script src="{% static 'vendor/tom-select/tom-select.complete.min.js' %}?v=5"></script>
-<script src="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.js' %}?v=5"></script>
-<script src="{% static 'js/app.js' %}?v=5"></script>
+<script src="{% static 'vendor/tom-select/tom-select.complete.min.js' %}?v=6"></script>
+<script src="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.js' %}?v=6"></script>
+<script src="{% static 'js/app.js' %}?v=6"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

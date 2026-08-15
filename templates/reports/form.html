@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block heading %}{{ page_title }}{% endblock %}
+{% block nav_reports %}open{% endblock %}
+{% block nav_report_create %}{% if mode == 'create' %}active{% endif %}{% endblock %}
+{% block nav_report_list %}{% if mode == 'edit' %}active{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ page_title }}</h1>
+  <a class="btn btn-ghost" href="{% url 'report_list' %}">بازگشت به لیست</a>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="panel">
+    <div class="panel-head"><h2>اطلاعات گزارش</h2></div>
+    <div class="panel-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>{{ form.title.label }}</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
+        <div class="field">
+          <label>{{ form.number.label }}</label>
+          {{ form.number }}
+          {{ form.number.errors }}
+        </div>
+        <div class="field">
+          <label>{{ form.data_source.label }}</label>
+          {{ form.data_source }}
+          {{ form.data_source.errors }}
+        </div>
+        {% if form.is_standard %}
+        <div class="field field-check">
+          <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+          {{ form.is_standard.errors }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>انتخاب ستون‌ها (به ترتیب نمایش)</h2></div>
+    <div class="panel-body">
+      <p class="muted">ستون‌های تاریخ سند و موجودی در صورت وجود در منبع داده قابل انتخاب هستند. ستون‌های فایل پس از اتصال فایل فعال می‌شوند.</p>
+      {{ form.columns.errors }}
+      {% with selected=form.columns.value|default_if_none:form.fields.columns.initial %}
+      {% for group in column_groups %}
+      <div class="col-group">
+        <h3>{{ group.label }}</h3>
+        {% if group.hint %}<p class="muted">{{ group.hint }}</p>{% endif %}
+        <div class="col-toggles">
+          {% for value, label in group.columns %}
+          <label class="chk">
+            <input type="checkbox" name="columns" value="{{ value }}"
+              {% if selected and value in selected %}checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% empty %}
+      <div class="col-toggles">{{ form.columns }}</div>
+      {% endfor %}
+      {% endwith %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>دسترسی مشاهده</h2></div>
+    <div class="panel-body">
+      <p class="muted">کاربرانی که می‌توانند این گزارش را ببینند (علاوه بر خودتان). گزارش استاندارد برای همه قابل مشاهده است.</p>
+      <div class="col-toggles">{{ form.viewers }}</div>
+      {{ form.viewers.errors }}
+    </div>
+  </div>
+
+  <button class="btn" type="submit">ثبت گزارش</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var source = document.getElementById("id_data_source");
+    if (!source) return;
+    source.addEventListener("change", function () {
+      // Reload with selected source so column groups match.
+      var url = new URL(window.location.href);
+      url.searchParams.set("source", source.value);
+      // Preserve title/number via sessionStorage briefly.
+      try {
+        sessionStorage.setItem("reportDraftTitle", document.getElementById("id_title").value || "");
+        sessionStorage.setItem("reportDraftNumber", document.getElementById("id_number").value || "");
+      } catch (e) {}
+      window.location = url.pathname + "?source=" + encodeURIComponent(source.value);
+    });
+    try {
+      var t = sessionStorage.getItem("reportDraftTitle");
+      var n = sessionStorage.getItem("reportDraftNumber");
+      if (t && document.getElementById("id_title") && !document.getElementById("id_title").value) {
+        document.getElementById("id_title").value = t;
+      }
+      if (n && document.getElementById("id_number") && !document.getElementById("id_number").value) {
+        document.getElementById("id_number").value = n;
+      }
+      sessionStorage.removeItem("reportDraftTitle");
+      sessionStorage.removeItem("reportDraftNumber");
+    } catch (e) {}
+  })();
+</script>
+{% endblock %}

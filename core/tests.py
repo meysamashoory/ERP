@@ -40,7 +40,16 @@ class SeedAndDashboardTests(TestCase):
 
     def test_reports_excel_export(self):
         self.client.login(username="admin", password="erp12345")
-        resp = self.client.get(reverse("reports"), {"type": "fitting", "export": "excel"})
+        from reports.models import SavedReport
+
+        report = SavedReport.objects.create(
+            owner=User.objects.get(username="admin"),
+            title="گزارش تولید",
+            number="EXP-1",
+            data_source="fitting",
+            columns=["date", "product", "produced"],
+        )
+        resp = self.client.get(reverse("report_detail", args=[report.pk]), {"export": "excel"})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(
             resp["Content-Type"],

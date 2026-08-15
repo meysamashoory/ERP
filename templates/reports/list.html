@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}گزارش‌ها{% endblock %}
+{% block heading %}گزارش‌ها{% endblock %}
+{% block nav_reports %}open{% endblock %}
+{% block nav_report_list %}active{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>مشاهده گزارش‌ها</h1>
+  {% if can_create %}
+  <a class="btn" href="{% url 'report_create' %}">+ ایجاد گزارش</a>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>گزارش‌های قابل مشاهده</h2></div>
+  {% if rows %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>شماره</th>
+        <th>عنوان</th>
+        <th>منبع</th>
+        <th>مالک</th>
+        <th>نوع</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="num">{{ row.report.number }}</td>
+        <td><a href="{% url 'report_detail' row.report.pk %}">{{ row.report.title }}</a></td>
+        <td>{{ row.report.get_data_source_display }}</td>
+        <td>{{ row.report.owner.username }}</td>
+        <td>{% if row.report.is_standard %}<span class="badge badge-approved">استاندارد</span>{% else %}<span class="badge">شخصی</span>{% endif %}</td>
+        <td class="row-actions">
+          <a class="btn btn-sm btn-ghost" href="{% url 'report_detail' row.report.pk %}">مشاهده</a>
+          {% if row.can_edit %}
+          <a class="btn btn-sm" href="{% url 'report_edit' row.report.pk %}">ویرایش</a>
+          {% endif %}
+          {% if row.can_delete %}
+          <form method="post" action="{% url 'report_delete' row.report.pk %}" class="inline-form" onsubmit="return confirm('گزارش فقط از لیست شما حذف می‌شود. ادامه؟');">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-danger" type="submit">حذف</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">هنوز گزارشی ایجاد نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}
