@@ -27,6 +27,18 @@ def plan_list(request):
 
 
 @login_required
+def plan_calendar_json(request):
+    """Read-only mold-change matrix for the plan-list calendar dialog."""
+    plan = get_object_or_404(WeeklyPlan, pk=request.GET.get("plan"))
+    stats = mold_change_stats(plan)
+    return JsonResponse({
+        "matrix_units": stats["matrix_units"],
+        "matrix_rows": stats["matrix_rows"],
+        "glass_rows": stats["glass_rows"],
+    })
+
+
+@login_required
 def plan_create(request):
     profile = get_profile(request.user)
     if not profile or not profile.can_create_plans:
@@ -89,6 +101,8 @@ def plan_detail(request, pk):
     line_formset = WeeklyPlanLineFormSet(instance=editing_item, prefix="lines")
     edit_form = WeeklyPlanForm(instance=plan)
     mold_stats = mold_change_stats(plan)
+    insight_product = editing_item.product if editing_item else None
+    insights = resolve_insights(insight_product) if editable else []
 
     return render(
         request,
@@ -102,6 +116,7 @@ def plan_detail(request, pk):
             "editing_item": editing_item,
             "edit_form": edit_form,
             "mold_stats": mold_stats,
+            "insights": insights,
         },
     )
 
@@ -152,6 +167,11 @@ def item_save(request, pk):
             "editing_item": instance,
             "edit_form": WeeklyPlanForm(instance=plan),
             "mold_stats": mold_change_stats(plan),
+            "insights": resolve_insights(
+                form.cleaned_data.get("product")
+                if getattr(form, "cleaned_data", None)
+                else (instance.product if instance else None)
+            ),
         },
     )
 
@@ -187,7 +207,7 @@ def plan_set_status(request, pk):
         plan.status = WeeklyPlan.Status.DRAFT
         plan.approved_by = None
         plan.approved_at = None
-        messages.info(request, f"برنامه {plan.program_number} به حالت «در انتظار تأیید» درآمد.")
+        messages.info(request, f"برنامه {plan.program_number} قابل ویرایش شد.")
     plan.save()
     return redirect(request.POST.get("next") or "plan_list")
 

@@ -164,6 +164,7 @@ class PrintFormForm(forms.ModelForm):
         required=False,
     )
     frames_json = forms.CharField(widget=forms.HiddenInput, required=False)
+    page_settings_json = forms.CharField(widget=forms.HiddenInput, required=False)
 
     class Meta:
         model = PrintForm
@@ -176,8 +177,9 @@ class PrintFormForm(forms.ModelForm):
             "page_height_mm": "ارتفاع صفحه (میلی‌متر)",
         }
         widgets = {
-            "description": forms.TextInput(attrs={"placeholder": "توضیح کوتاه (اختیاری)"}),
-            "number": forms.NumberInput(attrs={"min": 1, "max": 999, "step": 1}),
+            "title": forms.HiddenInput(),
+            "description": forms.HiddenInput(),
+            "number": forms.HiddenInput(),
         }
 
     def __init__(self, *args, user=None, **kwargs):
@@ -194,6 +196,15 @@ class PrintFormForm(forms.ModelForm):
             self.fields["frames_json"].initial = json.dumps(
                 self.instance.frames or [], ensure_ascii=False
             )
+            self.fields["page_settings_json"].initial = json.dumps(
+                self.instance.page_settings or {}, ensure_ascii=False
+            )
+        else:
+            self.fields["page_settings_json"].initial = json.dumps({
+                "margin_top": 10, "margin_bottom": 10,
+                "margin_left": 10, "margin_right": 10,
+                "snap_edge": 2,
+            })
         self.is_manager = bool(profile and profile.is_manager)
         _style_fields(self)
 
@@ -209,13 +220,6 @@ class PrintFormForm(forms.ModelForm):
             raise ValidationError("شماره فرم وجود دارد")
         return number
 
-    def clean_is_standard(self):
-        value = self.cleaned_data.get("is_standard")
-        profile = get_profile(self.user) if self.user else None
-        if value and not (profile and profile.is_manager):
-            raise ValidationError("فقط مدیر می‌تواند فرم استاندارد ایجاد کند.")
-        return bool(value)
-
     def clean_frames_json(self):
         raw = self.cleaned_data.get("frames_json") or "[]"
         try:
@@ -228,18 +232,61 @@ class PrintFormForm(forms.ModelForm):
         for item in data:
             if not isinstance(item, dict):
                 continue
-            cleaned.append(
-                {
-                    "id": str(item.get("id") or ""),
-                    "label": str(item.get("label") or "")[:120],
-                    "kind": str(item.get("kind") or "box")[:40],
-                    "x": float(item.get("x") or 10),
-                    "y": float(item.get("y") or 10),
-                    "width": float(item.get("width") or 80),
-                    "height": float(item.get("height") or 24),
-                }
-            )
+            kind = str(item.get("kind") or "box")[:40]
+            left = item.get("left", item.get("x", 10))
+            frame = {
+                "id": str(item.get("id") or ""),
+                "label": str(item.get("label") or "")[:200],
+                "kind": kind,
+                "left": float(left or 0),
+                "x": float(left or 0),
+                "y": float(item.get("y") or 0),
+                "width": float(item.get("width") or 80),
+                "height": float(item.get("height") or 24),
+                "rotation": float(item.get("rotation") or 0),
+                "stroke": float(item.get("stroke") or 0.5),
+                "align": str(item.get("align") or "center")[:20],
+                "valign": str(item.get("valign") or "middle")[:20],
+            }
+            if kind == "field":
+                frame["source"] = str(item.get("source") or "")[:40]
+                frame["source_key"] = str(item.get("source_key") or "")[:80]
+            if kind == "logo" and item.get("image_data"):
+                # Cap data-URL size (~1.5MB) to keep form JSON manageable.
+                img = str(item.get("image_data") or "")
+                frame["image_data"] = img[:2_000_000]
+            cleaned.append(frame)
         return cleaned
+
+    def clean_page_settings_json(self):
+        raw = self.cleaned_data.get("page_settings_json") or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+
+        def num(key, default):
+            try:
+                return float(data.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        return {
+            "margin_top": num("margin_top", 10),
+            "margin_bottom": num("margin_bottom", 10),
+            "margin_left": num("margin_left", 10),
+            "margin_right": num("margin_right", 10),
+            "snap_edge": num("snap_edge", 2),
+        }
+
+    def clean_is_standard(self):
+        value = self.cleaned_data.get("is_standard")
+        profile = get_profile(self.user) if self.user else None
+        if value and not (profile and profile.is_manager):
+            raise ValidationError("فقط مدیر می‌تواند فرم استاندارد ایجاد کند.")
+        return bool(value)
 
 
 class SendOrCopyPrintFormForm(forms.Form):
@@ -289,25 +336,4 @@ class SendOrCopyPrintFormForm(forms.Form):
         cleaned = super().clean()
         number = cleaned.get("number")
         owner = self.sender if self.mode == "copy" else cleaned.get("recipient")
-        if owner and number is not None:
-            if PrintForm.objects.filter(owner=owner, number=number).exists():
-                self.add_error("number", "شماره فرم وجود دارد")
         return cleaned
-
-
-class ExcelFormImportForm(forms.Form):
-    """Upload an .xlsx workbook; each sheet becomes one A4 PrintForm."""
-
-    excel_file = forms.FileField(
-        label="فایل اکسل فرم‌ها",
-        help_text="هر شیت به یک فرم A4 تبدیل می‌شود. سلول‌های پر و ادغام‌شده به کادر تبدیل می‌شوند.",
-    )
-
-    def clean_excel_file(self):
-        f = self.cleaned_data["excel_file"]
-        name = (getattr(f, "name", "") or "").lower()
-        if not (name.endswith(".xlsx") or name.endswith(".xlsm")):
-            raise forms.ValidationError("فقط فایل Excel با پسوند xlsx پذیرفته می‌شود.")
-        if f.size and f.size > 15 * 1024 * 1024:
-            raise forms.ValidationError("حجم فایل نباید بیشتر از ۱۵ مگابایت باشد.")
-        return f

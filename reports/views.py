@@ -25,16 +25,14 @@ from .access import (
     visible_forms,
     visible_reports,
 )
-from .columns import COLUMN_GROUPS, run_report
+from .columns import COLUMN_GROUPS, normalize_columns, run_report
 from .forms import (
-    ExcelFormImportForm,
     PrintFormForm,
     SavedReportForm,
     SendOrCopyPrintFormForm,
     SendOrCopyReportForm,
 )
 from .models import PrintForm, SavedReport
-from .excel_import import import_forms_from_excel
 
 User = get_user_model()
 
@@ -147,8 +145,8 @@ def report_create(request: HttpRequest) -> HttpResponse:
         {
             "form": form,
             "column_groups": COLUMN_GROUPS,
-            "columns_initial": form.fields["columns_json"].initial or "[]",
-            "source_links_json": getattr(form, "source_links_json", "[]"),
+            "columns_data": [],
+            "source_links_data": [],
             "mode": "create",
             "page_title": "ایجاد گزارش",
         },
@@ -181,10 +179,10 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
         {
             "form": form,
             "column_groups": COLUMN_GROUPS,
-            "columns_initial": form.fields["columns_json"].initial or "[]",
-            "source_links_json": getattr(form, "source_links_json", "[]"),
+            "columns_data": normalize_columns(report.columns or []),
+            "source_links_data": list(report.source_links or []),
             "mode": "edit",
-            "page_title": "ویرایش گزارش",
+            "page_title": f"ویرایش گزارش — {report.title}",
             "report": report,
         },
     )
@@ -393,11 +391,16 @@ def form_create(request: HttpRequest) -> HttpResponse:
             obj.owner = request.user
             obj.created_by = request.user
             obj.frames = form.cleaned_data.get("frames_json") or []
+            obj.page_settings = form.cleaned_data.get("page_settings_json") or {}
             obj.save()
             messages.success(request, "فرم ایجاد شد.")
             return redirect("print_form_detail", pk=obj.pk)
     else:
         form = PrintFormForm(user=request.user)
+        used = set(PrintForm.objects.filter(owner=request.user).values_list("number", flat=True))
+        n = next((i for i in range(1, 1000) if i not in used), 1)
+        form.fields["title"].initial = form.fields["title"].initial or "فرم جدید"
+        form.fields["number"].initial = form.fields["number"].initial or n
     return render(
         request,
         "print_forms/form.html",
@@ -406,36 +409,10 @@ def form_create(request: HttpRequest) -> HttpResponse:
             "mode": "create",
             "page_title": "ایجاد فرم",
             "frames_json": "[]",
-            "import_form": ExcelFormImportForm(),
+            "page_settings_json": form.fields["page_settings_json"].initial or "{}",
+            "column_groups": COLUMN_GROUPS,
         },
     )
-
-
-@login_required
-def form_import_excel(request: HttpRequest) -> HttpResponse:
-    """Create print forms immediately from an uploaded Excel workbook."""
-    if not can_create_form(request.user):
-        return HttpResponseForbidden("مشاهده‌گر مجاز به ایجاد فرم نیست.")
-    if request.method != "POST":
-        return redirect("print_form_create")
-    form = ExcelFormImportForm(request.POST, request.FILES)
-    if not form.is_valid():
-        for err in form.errors.get("excel_file", form.errors.get("__all__", [])):
-            messages.error(request, err)
-        return redirect("print_form_create")
-    try:
-        created = import_forms_from_excel(
-            form.cleaned_data["excel_file"],
-            owner=request.user,
-            created_by=request.user,
-        )
-    except Exception as exc:  # noqa: BLE001 — surface parse errors to the user
-        messages.error(request, f"خطا در وارد کردن اکسل: {exc}")
-        return redirect("print_form_create")
-    messages.success(request, f"{len(created)} فرم از اکسل ایجاد شد.")
-    if len(created) == 1:
-        return redirect("print_form_edit", pk=created[0].pk)
-    return redirect("print_form_list")
 
 
 @login_required
@@ -448,6 +425,7 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
         if form.is_valid():
             obj = form.save(commit=False)
             obj.frames = form.cleaned_data.get("frames_json") or []
+            obj.page_settings = form.cleaned_data.get("page_settings_json") or {}
             obj.save()
             messages.success(request, "فرم به‌روزرسانی شد.")
             return redirect("print_form_detail", pk=obj.pk)
@@ -459,9 +437,11 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
         {
             "form": form,
             "mode": "edit",
-            "page_title": "ویرایش فرم",
+            "page_title": f"ویرایش فرم — {form_obj.title}",
             "print_form": form_obj,
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
+            "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
+            "column_groups": COLUMN_GROUPS,
         },
     )
 

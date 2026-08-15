@@ -36,9 +36,9 @@
 </div>
 {% endif %}
 
+{% if editable %}
 <div class="plan-workspace">
   <div class="plan-workspace-main">
-    {% if editable %}
     <div class="panel panel-compact">
       <div class="panel-body panel-body-compact">
         {% if editing_item %}
@@ -63,7 +63,6 @@
             {% endfor %}
           </div>
 
-          {# Pristine empty row for «افزودن ردیف تولید» (avoids cloning broken Tom Select DOM) #}
           <template data-formset-empty="lines">
             <div class="repeat-row" data-formset-row>
               {{ line_formset.empty_form.id }}
@@ -80,26 +79,16 @@
         </form>
       </div>
     </div>
-    {% else %}
-    <div class="panel"><div class="panel-body muted">این برنامه در وضعیت «{{ plan.get_status_display }}» است و تنها قابل مشاهده می‌باشد. برای ویرایش، وضعیت را از فهرست برنامه‌ها به «در انتظار تأیید» تغییر دهید.</div></div>
-    {% endif %}
 
-    <section class="insight-glass mold-glass" style="--insight-scale: {{ mold_stats.height_coefficient }}">
-      <div class="insight-glass-inner mold-glass-inner">
-        {% for row in mold_stats.glass_rows %}
-        <article class="insight-card mold-unit-card">
-          <p class="insight-label">{{ row.label }}</p>
-          <p class="insight-value">{{ row.value }}</p>
-          {% if row.groups %}
-          <ul class="mold-group-list">
-            {% for g in row.groups %}
-            <li>گروه {{ g.name }} — {{ g.count }} قالب</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
+    <section class="insight-glass" style="--insight-scale: {{ mold_stats.height_coefficient }}" data-insights data-insights-url="{% url 'product_insights' %}">
+      <div class="insight-glass-inner" data-insights-body>
+        {% for card in insights %}
+        <article class="insight-card">
+          <p class="insight-label">{{ card.label }}</p>
+          <p class="insight-value">{{ card.value }}</p>
         </article>
         {% empty %}
-        <p class="insight-empty muted">هنوز تعویض قالبی در این برنامه ثبت نشده است.</p>
+        <p class="insight-empty muted">هنوز فیلد اطلاعاتی تعریف نشده است. از «مدیریت داده‌ها» فیلدهای نوار شیشه‌ای را اضافه کنید.</p>
         {% endfor %}
       </div>
     </section>
@@ -134,34 +123,59 @@
     </div>
   </aside>
 </div>
+{% else %}
+<div class="panel"><div class="panel-body muted">این برنامه در وضعیت «{{ plan.get_status_display }}» است و تنها قابل مشاهده می‌باشد. برای ویرایش، وضعیت را از فهرست برنامه‌ها به «قابل ویرایش» تغییر دهید.</div></div>
 
-<div class="panel">
-  <div class="panel-head"><h2>کالاهای برنامه</h2></div>
+<section class="insight-glass mold-glass-green" style="--insight-scale: {{ mold_stats.height_coefficient }}">
+  <div class="insight-glass-inner mold-glass-inner">
+    {% for row in mold_stats.glass_rows %}
+    <article class="insight-card mold-unit-card">
+      <p class="insight-label">{{ row.label }}</p>
+      <p class="insight-value">{{ row.value }}</p>
+      {% if row.groups %}
+      <ul class="mold-group-list">
+        {% for g in row.groups %}
+        <li>گروه {{ g.name }} — {{ g.count }} قالب</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </article>
+    {% empty %}
+    <p class="insight-empty muted">هنوز تعویض قالبی در این برنامه ثبت نشده است.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="panel panel-items-scroll">
   {% if plan.items.all %}
-  <table class="table">
-    <thead><tr><th>کد کالا</th><th>نام محصول</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th>{% if editable %}<th></th>{% endif %}</tr></thead>
-    <tbody>
-      {% for item in plan.items.all %}
-      <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
-        <td>{{ item.product.code }}</td>
-        <td>{{ item.product.name }}{% if item.history_alarm %} <span class="badge badge-rejected">بدون سابقه</span>{% endif %}</td>
-        <td>واحد {{ item.unit.number }}</td>
-        <td>{{ item.machine.number }}</td>
-        <td>{{ item.get_mold_change_weekday_display }}</td>
-        <td class="num">{{ item.mold_change_date }}</td>
-        <td class="num">{{ item.active_cavities }}</td>
-        <td>
-          {% for line in item.lines.all %}
-            <div>{{ line.production_type }}{% if line.mold %} · قالب {{ line.mold }}{% endif %} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
-          {% empty %}—{% endfor %}
-        </td>
-        {% if editable %}
-        <td class="row-actions"><a class="link-edit" href="{% url 'plan_detail' plan.pk %}?edit={{ item.pk }}">ویرایش</a></td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="items-scroll">
+    <table class="table">
+      <thead><tr><th>#</th><th>کد کالا</th><th>نام محصول</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th>{% if editable %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for item in plan.items.all %}
+        <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
+          <td class="num">{{ forloop.counter }}</td>
+          <td>{{ item.product.code }}</td>
+          <td>{{ item.product.name }}{% if item.history_alarm %} <span class="badge badge-rejected">بدون سابقه</span>{% endif %}</td>
+          <td>واحد {{ item.unit.number }}</td>
+          <td>{{ item.machine.number }}</td>
+          <td>{{ item.get_mold_change_weekday_display }}</td>
+          <td class="num">{{ item.mold_change_date }}</td>
+          <td class="num">{{ item.active_cavities }}</td>
+          <td>
+            {% for line in item.lines.all %}
+              <div>{{ line.production_type }}{% if line.mold %} · قالب {{ line.mold }}{% endif %} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
+            {% empty %}—{% endfor %}
+          </td>
+          {% if editable %}
+          <td class="row-actions"><a class="link-edit" href="{% url 'plan_detail' plan.pk %}?edit={{ item.pk }}">ویرایش</a></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}<p class="empty">هنوز کالایی اضافه نشده است.</p>{% endif %}
 </div>
 {% endblock %}
@@ -217,6 +231,36 @@
   if (wts) wts.on("change", function () { refresh(false); });
   else weekday.addEventListener("change", function () { refresh(false); });
   refresh(true);
+})();
+(function () {
+  var wrap = document.querySelector("[data-insights]");
+  if (!wrap) return;
+  var url = wrap.getAttribute("data-insights-url");
+  var body = wrap.querySelector("[data-insights-body]");
+  var prod = document.getElementById("id_product");
+  if (!url || !body || !prod) return;
+
+  function render(cards) {
+    if (!cards || !cards.length) {
+      body.innerHTML = '<p class="insight-empty muted">مقداری برای نمایش نیست.</p>';
+      return;
+    }
+    body.innerHTML = cards.map(function (c) {
+      return '<article class="insight-card"><p class="insight-label">' + c.label +
+        '</p><p class="insight-value">' + (c.value == null || c.value === "" ? "—" : c.value) + "</p></article>";
+    }).join("");
+  }
+
+  function load() {
+    var id = prod.tomselect ? prod.tomselect.getValue() : prod.value;
+    if (!id) { render([]); return; }
+    fetch(url + "?product=" + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { render(d.insights || []); });
+  }
+
+  if (prod.tomselect) prod.tomselect.on("change", load);
+  else prod.addEventListener("change", load);
 })();
 </script>
 {% endblock %}

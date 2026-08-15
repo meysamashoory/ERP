@@ -11,4 +11,5 @@ urlpatterns = [
     path("<int:pk>/status/", views.plan_set_status, name="plan_set_status"),
     path("mold-change-dates/", views.mold_change_dates, name="mold_change_dates"),
     path("product-insights/", views.product_insights, name="product_insights"),
+    path("calendar/", views.plan_calendar_json, name="plan_calendar_json"),
 ]

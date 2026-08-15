@@ -182,16 +182,27 @@ class PlanningUiTests(TestCase):
         self.assertContains(resp, "تعیین وضعیت")
         self.assertContains(resp, "تأیید برنامه")
         self.assertContains(resp, "در انتظار تأیید")
+        self.assertContains(resp, "تقویم برنامه")
+        self.assertContains(resp, "تغییر به قابل ویرایش")
         self.assertNotContains(resp, "تغییر وضعیت")
         self.assertNotContains(resp, "تأیید (تأییدشده)")
 
-    def test_plan_detail_mold_matrix(self):
+    def test_plan_detail_edit_has_matrix_and_blue_insights(self):
         self.client.login(username="admin", password="erp12345")
         plan = WeeklyPlan.objects.get(program_number="BP-1001")
         resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "روز تعویض")
-        self.assertContains(resp, "تاریخ تعویض")
-        self.assertContains(resp, "واحد 1")
         self.assertContains(resp, "plan-matrix")
+        self.assertContains(resp, "data-insights")
+        self.assertNotContains(resp, "کالاهای برنامه")
+        self.assertContains(resp, "items-scroll")
+
+    def test_plan_detail_view_has_green_glass_no_matrix(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1000")
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "mold-glass-green")
+        self.assertNotContains(resp, "plan-matrix-panel")
         self.assertContains(resp, "قالب")

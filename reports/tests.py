@@ -188,50 +188,31 @@ class PrintFormFlowTests(TestCase):
         self.client.login(username="viewer", password="erp12345")
         self.assertEqual(self.client.get(reverse("print_form_create")).status_code, 403)
 
-    def test_excel_import_creates_forms(self):
-        from io import BytesIO
-        from openpyxl import Workbook
-
-        wb = Workbook()
-        ws1 = wb.active
-        ws1.title = "فرم کنترل کیفیت"
-        ws1["A1"] = "عنوان فرم کنترل"
-        ws1["A2"] = "نام اپراتور"
-        ws1["B2"] = "تاریخ"
-        ws2 = wb.create_sheet("فرم توقف")
-        ws2["A1"] = "فرم ثبت توقف"
-        ws2["A3"] = "کد دستگاه"
-        buf = BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        buf.name = "forms.xlsx"
-
+    def test_create_form_opens_designer(self):
         self.client.login(username="expert", password="erp12345")
-        before = PrintForm.objects.filter(owner=self.expert).count()
-        resp = self.client.post(
-            reverse("print_form_import_excel"),
-            {"excel_file": buf},
-        )
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(PrintForm.objects.filter(owner=self.expert).count(), before + 2)
-        self.assertTrue(PrintForm.objects.filter(owner=self.expert, title="فرم کنترل کیفیت").exists())
+        resp = self.client.get(reverse("print_form_create"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "امتداد دیتا")
+        self.assertContains(resp, "لوگو")
+        self.assertContains(resp, "حاشیه بالا")
+        self.assertNotContains(resp, "وارد کردن فرم از اکسل")
 
-    def test_report_detail_actions_in_topbar(self):
+    def test_report_edit_shows_existing_columns(self):
         self.client.login(username="admin", password="erp12345")
         report = SavedReport.objects.filter(owner=self.admin).first()
         if report is None:
             report = SavedReport.objects.create(
                 owner=self.admin,
                 created_by=self.admin,
-                title="تست",
-                number=99,
+                title="تست ویرایش",
+                number=88,
                 columns=[{"key": "date", "source": "fitting", "level": 1, "label": "تاریخ"}],
             )
-        resp = self.client.get(reverse("report_detail", args=[report.pk]))
+        resp = self.client.get(reverse("report_edit", args=[report.pk]))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "لیست گزارش‌ها")
-        self.assertContains(resp, "خروجی")
-        self.assertContains(resp, "topbar-actions")
+        self.assertContains(resp, "ویرایش گزارش")
+        self.assertContains(resp, report.title)
+        self.assertContains(resp, "نحوه نمایش")
 
     def test_sidebar_labels(self):
         self.client.login(username="admin", password="erp12345")

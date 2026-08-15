@@ -16,7 +16,7 @@
 <form method="post" id="report-builder-form" class="builder-compact">
   {% csrf_token %}
   {{ form.columns_json }}
-  <input type="hidden" name="source_links_json" id="id_source_links_json" value="{{ source_links_json|default:'[]' }}">
+  <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
   {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
 
   <div class="meta-strip" id="meta-summary" hidden>
@@ -109,8 +109,8 @@
 
 {% block scripts %}
 {{ column_groups|json_script:"column-groups" }}
-<script id="columns-initial" type="application/json">{{ columns_initial|safe }}</script>
-<script id="links-initial" type="application/json">{{ source_links_json|default:'[]'|safe }}</script>
+{{ columns_data|json_script:"columns-initial" }}
+{{ source_links_data|json_script:"links-initial" }}
 <script>
 (function () {
   var mode = "{{ mode }}";

@@ -98,6 +98,12 @@ class PrintForm(models.Model):
     frames = models.JSONField("کادرها و چیدمان", default=list)
     page_width_mm = models.PositiveIntegerField("عرض صفحه (مم)", default=210)
     page_height_mm = models.PositiveIntegerField("ارتفاع صفحه (مم)", default=297)
+    page_settings = models.JSONField(
+        "تنظیمات صفحه",
+        default=dict,
+        blank=True,
+        help_text="حاشیه چاپ، حساسیت اسنپ لبه و …",
+    )
     is_standard = models.BooleanField("فرم استاندارد", default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

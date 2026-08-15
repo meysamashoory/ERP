@@ -397,10 +397,10 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 /* Plan detail: form+glass | mold matrix */
 .plan-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 260px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 12px;
   align-items: stretch;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .plan-workspace-main {
   display: flex;
@@ -410,6 +410,11 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 }
 .plan-workspace-main > .panel,
 .plan-workspace-main > .panel-compact { margin-bottom: 0; }
+.plan-workspace-main .form-grid-compact,
+.plan-workspace-main .panel-compact .repeat-row {
+  gap: 8px 10px !important;
+}
+.plan-workspace-main .panel-body-compact { padding: 10px 12px 10px; }
 .plan-matrix-panel {
   min-width: 0;
   display: flex;
@@ -429,18 +434,34 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   height: 100%;
   margin: 0;
   font-size: 12px;
+  table-layout: fixed;
 }
 .plan-matrix-table th,
 .plan-matrix-table td {
-  padding: 6px 8px;
+  padding: 6px 6px;
   white-space: nowrap;
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .plan-matrix-table th:first-child,
 .plan-matrix-table td:first-child,
 .plan-matrix-table th:nth-child(2),
 .plan-matrix-table td:nth-child(2) {
   text-align: right;
+}
+.calendar-dialog-body { padding: 8px 0 4px; max-height: 60vh; overflow: auto; }
+.panel-items-scroll { padding: 0; overflow: hidden; }
+.panel-items-scroll .items-scroll {
+  max-height: min(420px, 55vh);
+  overflow: auto;
+}
+.panel-items-scroll .table { margin: 0; }
+.panel-items-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 1;
 }
 @media (max-width: 980px) {
   .plan-workspace {
@@ -469,6 +490,18 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   border: 1px solid rgba(255,255,255,.55);
   min-height: calc(64px * var(--insight-scale, 1));
 }
+.mold-glass-green {
+  margin: 16px 0 20px;
+  background: linear-gradient(135deg, rgba(134,239,172,.8), rgba(74,222,128,.4), rgba(34,197,94,.55));
+  box-shadow: 0 8px 28px rgba(22,163,74,.18);
+}
+.mold-glass-green .insight-glass-inner {
+  background: linear-gradient(180deg, rgba(220,252,231,.78), rgba(187,247,208,.58));
+  border-color: rgba(255,255,255,.55);
+}
+.mold-glass-green .insight-label { color: #166534; }
+.mold-glass-green .insight-value { color: #14532d; }
+.mold-glass-green .mold-group-list { color: #166534; }
 .mold-glass-inner {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   align-content: start;
@@ -845,5 +878,46 @@ input[type=number].spin {
   .form-canvas-wrap { background: transparent; padding: 0; }
   .print-sheet { box-shadow: none; }
 }
+
+/* Form designer v2 */
+.designer-body {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 300px !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+  max-height: calc(100vh - 170px);
+}
+.designer-scroll {
+  max-height: calc(100vh - 200px);
+  overscroll-behavior: contain;
+}
+.props-panel-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 200px);
+  overscroll-behavior: contain;
+}
+.print-margin-guide {
+  position: absolute;
+  border: 1.5px dashed #22c55e;
+  pointer-events: none;
+  box-sizing: border-box;
+  z-index: 1;
+}
+.form-frame.kind-data_extend {
+  border: none !important;
+  background: transparent !important;
+  border-top: 2px solid #0f172a !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+.form-frame.kind-logo { display: flex; overflow: hidden; background: #fff; }
+.frame-logo-img { max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
+.form-frame.kind-field { background: #eff6ff; border-style: dashed; }
+.align-toolbar { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.align-btn {
+  width: 30px; height: 28px; border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px;
+}
+.align-btn.active { background: #e0e7ff; border-color: var(--brand, #4f46e5); }
 
 

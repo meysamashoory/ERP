@@ -8,83 +8,30 @@
 {% block topbar_actions %}
 <div class="topbar-actions">
   <a class="btn btn-sm btn-ghost" href="{% url 'print_form_list' %}">بازگشت به لیست</a>
-  <button class="btn btn-sm" type="submit" form="print-form-builder" id="top-submit" hidden>ثبت فرم</button>
+  <button class="btn btn-sm" type="submit" form="print-form-builder" id="top-submit">ثبت فرم</button>
 </div>
 {% endblock %}
 
 {% block content %}
-{% if mode == 'create' and import_form %}
-<div class="panel panel-compact">
-  <div class="panel-body panel-body-compact">
-    <h2 class="import-heading">وارد کردن فرم از اکسل</h2>
-    <p class="muted" style="margin:0 0 10px">فایل اکسلی که چند فرم A4 در شیت‌های جدا دارد را انتخاب کنید؛ هر شیت بلافاصله به یک فرم چاپی تبدیل می‌شود و می‌توانید جزئیات را در طراح فرم ویرایش کنید.</p>
-    <form method="post" action="{% url 'print_form_import_excel' %}" enctype="multipart/form-data" class="excel-import-form">
-      {% csrf_token %}
-      <div class="field">
-        <label>{{ import_form.excel_file.label }}</label>
-        {{ import_form.excel_file }}
-      </div>
-      <button class="btn btn-sm" type="submit">ایجاد فرم از اکسل</button>
-    </form>
-  </div>
-</div>
-{% endif %}
-
-<form method="post" id="print-form-builder" class="builder-compact">
+<form method="post" id="print-form-builder" class="builder-compact designer-only">
   {% csrf_token %}
   {{ form.frames_json }}
+  {{ form.page_settings_json }}
   {{ form.page_width_mm }}
   {{ form.page_height_mm }}
-  {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
+  {{ form.title }}
+  {{ form.number }}
+  {{ form.description }}
+  {% if form.is_manager %}{{ form.is_standard }}{% else %}{{ form.is_standard }}{% endif %}
 
-  <div class="meta-strip" id="meta-summary" hidden>
-    <div class="meta-text">
-      <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
-      <div class="meta-sub">شماره <span id="sum-number">{{ form.number.value|default:"" }}</span>
-        {% if form.is_manager %}<span id="sum-standard-wrap">{% if form.is_standard.value %} · استاندارد{% endif %}</span>{% endif %}
-      </div>
-      <div class="meta-desc" id="sum-desc">{% if form.description.value %}({{ form.description.value }}){% endif %}</div>
-    </div>
-    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
-  </div>
-
-  <div class="panel panel-compact" id="meta-editor">
-    <div class="panel-body panel-body-compact">
-      <div class="form-grid form-grid-compact form-grid-3">
-        <div class="field">
-          <label>{{ form.title.label }}</label>
-          {{ form.title }}
-          {{ form.title.errors }}
-        </div>
-        <div class="field">
-          <label>{{ form.number.label }} (۱–۹۹۹)</label>
-          {{ form.number }}
-          {{ form.number.errors }}
-        </div>
-        {% if form.is_manager %}
-        <div class="field field-check">
-          <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
-        </div>
-        {% endif %}
-      </div>
-      <div class="field">
-        <label>{{ form.description.label }}</label>
-        {{ form.description }}
-      </div>
-      <div class="line-actions">
-        <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" hidden>انصراف</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel panel-compact designer-first" id="builder-panel" hidden>
+  <div class="panel panel-compact designer-first" id="builder-panel">
     <div class="designer-toolbar-bar">
       <button type="button" class="btn btn-sm" data-add="header">عنوان</button>
       <button type="button" class="btn btn-sm" data-add="box">کادر</button>
       <button type="button" class="btn btn-sm" data-add="field">فیلد</button>
       <button type="button" class="btn btn-sm" data-add="line">خط</button>
-      <button type="button" class="btn btn-sm" data-add="footer">پاورقی</button>
+      <button type="button" class="btn btn-sm" data-add="logo">لوگو</button>
+      <button type="button" class="btn btn-sm" data-add="data_extend">امتداد دیتا</button>
       <span class="toolbar-sep"></span>
       <button type="button" class="btn btn-sm btn-ghost" data-zoom="-">−</button>
       <span class="zoom-label" id="zoom-label">۱۰۰٪</span>
@@ -102,9 +49,9 @@
           </div>
         </div>
       </div>
-      <div class="props-panel" id="frame-props">
+      <div class="props-panel props-panel-scroll" id="frame-props">
         <details class="props-section" open>
-          <summary>کاغذ و شبکه</summary>
+          <summary>کاغذ و حاشیه چاپ</summary>
           <div class="field">
             <label>اندازه کاغذ</label>
             <select id="paper-preset">
@@ -116,61 +63,89 @@
             </select>
           </div>
           <div class="form-grid form-grid-2">
-            <div class="field">
-              <label>عرض (میلی‌متر)</label>
-              <input class="input spin" type="number" id="prop-page-w" min="50" max="600" step="1">
-            </div>
-            <div class="field">
-              <label>ارتفاع (میلی‌متر)</label>
-              <input class="input spin" type="number" id="prop-page-h" min="50" max="600" step="1">
-            </div>
+            <div class="field"><label>عرض (مم)</label><input class="input spin" type="number" id="prop-page-w" min="50" max="600" step="1"></div>
+            <div class="field"><label>ارتفاع (مم)</label><input class="input spin" type="number" id="prop-page-h" min="50" max="600" step="1"></div>
+          </div>
+          <div class="form-grid form-grid-2">
+            <div class="field"><label>حاشیه بالا</label><input class="input spin" type="number" id="margin-top" min="0" max="80" step="0.5"></div>
+            <div class="field"><label>حاشیه پایین</label><input class="input spin" type="number" id="margin-bottom" min="0" max="80" step="0.5"></div>
+            <div class="field"><label>حاشیه راست</label><input class="input spin" type="number" id="margin-right" min="0" max="80" step="0.5"></div>
+            <div class="field"><label>حاشیه چپ</label><input class="input spin" type="number" id="margin-left" min="0" max="80" step="0.5"></div>
           </div>
           <div class="field">
-            <label>شبکه (میلی‌متر واقعی از صفر)</label>
+            <label>شبکه (میلی‌متر)</label>
             <select id="snap-mm">
-              <option value="0.5">۰٫۵ میلی‌متر</option>
-              <option value="1">۱ میلی‌متر</option>
-              <option value="2" selected>۲ میلی‌متر</option>
-              <option value="5">۵ میلی‌متر</option>
-              <option value="10">۱۰ میلی‌متر</option>
+              <option value="0.5">۰٫۵</option>
+              <option value="1">۱</option>
+              <option value="2" selected>۲</option>
+              <option value="5">۵</option>
+              <option value="10">۱۰</option>
             </select>
+          </div>
+          <div class="field">
+            <label>اسنپ به لبه‌ها (حساسیت مم)</label>
+            <input class="input spin" type="number" id="snap-edge" min="0" max="30" step="0.5" value="2">
+            <p class="muted" style="margin:4px 0 0;font-size:11px">۰ = خاموش. عدد بالاتر = جذب قوی‌تر به لبه کاغذ/حاشیه.</p>
           </div>
         </details>
 
         <details class="props-section" open>
-          <summary>ویژگی‌های کادر</summary>
+          <summary>ویژگی‌های انتخاب</summary>
           <p class="muted" id="props-empty">یک کادر را انتخاب کنید.</p>
           <div id="props-fields" hidden>
-            <div class="field"><label>برچسب</label><input class="input" id="prop-label"></div>
+            <div class="field"><label>برچسب / متن</label><input class="input" id="prop-label"></div>
             <div class="field"><label>نوع</label>
               <select id="prop-kind">
                 <option value="header">عنوان</option>
                 <option value="box">کادر</option>
                 <option value="field">فیلد</option>
                 <option value="line">خط</option>
-                <option value="footer">پاورقی</option>
+                <option value="logo">لوگو</option>
+                <option value="data_extend">امتداد دیتا</option>
               </select>
             </div>
-            <div class="field"><label>X (میلی‌متر از چپ)</label>
-              <input class="input spin" type="number" step="0.5" id="prop-x" min="0">
+            <div class="align-toolbar" title="تراز متن (شبیه اکسل)">
+              <button type="button" class="align-btn" data-align="right" title="راست">⇤</button>
+              <button type="button" class="align-btn" data-align="center" title="وسط">☰</button>
+              <button type="button" class="align-btn" data-align="left" title="چپ">⇥</button>
+              <span class="toolbar-sep"></span>
+              <button type="button" class="align-btn" data-valign="top" title="بالا">⤒</button>
+              <button type="button" class="align-btn" data-valign="middle" title="وسط عمودی">≡</button>
+              <button type="button" class="align-btn" data-valign="bottom" title="پایین">⤓</button>
             </div>
-            <div class="field"><label>Y (میلی‌متر از بالا)</label>
-              <input class="input spin" type="number" step="0.5" id="prop-y" min="0">
+            <div class="form-grid form-grid-2">
+              <div class="field"><label>X</label><input class="input spin" type="number" step="0.5" id="prop-x" min="0"></div>
+              <div class="field"><label>Y</label><input class="input spin" type="number" step="0.5" id="prop-y" min="0"></div>
+              <div class="field"><label>عرض</label><input class="input spin" type="number" step="0.5" id="prop-w" min="0.5"></div>
+              <div class="field"><label>ارتفاع</label><input class="input spin" type="number" step="0.5" id="prop-h" min="0.5"></div>
             </div>
-            <div class="field"><label>عرض (میلی‌متر)</label>
-              <input class="input spin" type="number" step="0.5" id="prop-w" min="0.5">
+            <div class="field"><label>چرخش</label><input class="input spin" type="number" step="1" id="prop-rot" min="-180" max="180" value="0"></div>
+            <div class="field"><label>ضخامت خط</label><input class="input spin" type="number" step="0.1" id="prop-stroke" min="0.1" max="5" value="0.5"></div>
+            <div id="logo-props" hidden>
+              <div class="field">
+                <label>تصویر لوگو</label>
+                <input type="file" id="prop-logo-file" accept="image/*,.png,.jpg,.jpeg,.gif,.webp,.svg">
+              </div>
             </div>
-            <div class="field"><label>ارتفاع (میلی‌متر)</label>
-              <input class="input spin" type="number" step="0.5" id="prop-h" min="0.5">
-            </div>
-            <div class="field"><label>چرخش (درجه)</label>
-              <input class="input spin" type="number" step="1" id="prop-rot" min="-180" max="180" value="0">
-            </div>
-            <div class="field"><label>ضخامت خط (میلی‌متر)</label>
-              <input class="input spin" type="number" step="0.1" id="prop-stroke" min="0.1" max="5" value="0.5">
+            <div id="field-bind-props" hidden>
+              <div class="field">
+                <label>منبع داده</label>
+                <select id="prop-source"></select>
+              </div>
+              <div class="field">
+                <label>ستون / آدرس دقیق</label>
+                <select id="prop-source-key"></select>
+              </div>
+              <p class="muted" id="field-bind-path" style="font-size:11px;margin:0"></p>
             </div>
           </div>
         </details>
+        {% if form.is_manager %}
+        <details class="props-section">
+          <summary>استاندارد</summary>
+          <label class="chk">{{ form.is_standard }} فرم استاندارد</label>
+        </details>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -178,90 +153,62 @@
 {% endblock %}
 
 {% block scripts %}
+{{ column_groups|json_script:"column-groups" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
+<script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
 <script>
 (function () {
-  var mode = "{{ mode }}";
-  var MM = 3.7795275591; // CSS px per mm at 96dpi
+  var MM = 3.7795275591;
   var zoom = 1;
   var snap = 2;
   var frames = [];
+  var pageSettings = { margin_top: 10, margin_bottom: 10, margin_left: 10, margin_right: 10, snap_edge: 2 };
   try { frames = JSON.parse(document.getElementById("frames-initial").textContent || "[]"); } catch (e) { frames = []; }
-  // Migrate old right-based coords: keep as-is; new frames use left
+  try {
+    var ps = JSON.parse(document.getElementById("page-settings-initial").textContent || "{}");
+    pageSettings = Object.assign(pageSettings, ps || {});
+  } catch (e) {}
   frames.forEach(function (f) {
-    if (f.left == null && f.x != null) {
-      // Prefer explicit left; if only x existed (was right-offset), leave as left for new system
-      f.left = f.x;
-    }
+    if (f.left == null && f.x != null) f.left = f.x;
     if (f.left == null) f.left = 0;
+    if (!f.align) f.align = "center";
+    if (!f.valign) f.valign = "middle";
   });
   var selectedId = null;
   var hidden = document.getElementById("id_frames_json");
+  var settingsHidden = document.getElementById("id_page_settings_json");
   var pageWInput = document.getElementById("id_page_width_mm") || document.querySelector('[name="page_width_mm"]');
   var pageHInput = document.getElementById("id_page_height_mm") || document.querySelector('[name="page_height_mm"]');
   var canvas = document.getElementById("form-canvas");
   var rulerH = document.getElementById("ruler-h");
   var rulerV = document.getElementById("ruler-v");
+  var designerScroll = document.getElementById("designer-scroll");
+  var propsPanel = document.getElementById("frame-props");
   var uid = 1;
-  var confirmedOnce = (mode === "edit");
-
-  var titleInput = document.getElementById("id_title");
-  var numberInput = document.getElementById("id_number");
-  var descInput = document.getElementById("id_description");
-  var stdInput = document.getElementById("id_is_standard");
-  var metaEditor = document.getElementById("meta-editor");
-  var metaSummary = document.getElementById("meta-summary");
-  var builderPanel = document.getElementById("builder-panel");
-  var topSubmit = document.getElementById("top-submit");
-  var cancelBtn = document.getElementById("cancel-meta-btn");
-
-  function syncSummary() {
-    document.getElementById("sum-title").textContent = titleInput.value || "—";
-    document.getElementById("sum-number").textContent = numberInput.value || "—";
-    var desc = (descInput.value || "").trim();
-    document.getElementById("sum-desc").textContent = desc ? "(" + desc + ")" : "";
-    var wrap = document.getElementById("sum-standard-wrap");
-    if (wrap && stdInput) wrap.textContent = stdInput.checked ? " · استاندارد" : "";
-  }
-  function showBuilder() {
-    confirmedOnce = true;
-    metaEditor.hidden = true;
-    metaSummary.hidden = false;
-    builderPanel.hidden = false;
-    topSubmit.hidden = false;
-    cancelBtn.hidden = false;
-    syncSummary();
-    render();
-  }
-  function showMetaEditor() {
-    metaEditor.hidden = false;
-    metaSummary.hidden = true;
-    builderPanel.hidden = true;
-    topSubmit.hidden = true;
-    cancelBtn.hidden = !confirmedOnce;
-  }
-  document.getElementById("confirm-meta-btn").addEventListener("click", function () {
-    if (!titleInput.value.trim()) { alert("عنوان فرم را وارد کنید."); return; }
-    if (!numberInput.value) { alert("شماره فرم را وارد کنید."); return; }
-    showBuilder();
-  });
-  document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
-  cancelBtn.addEventListener("click", showBuilder);
+  var groups = [];
+  try { groups = JSON.parse(document.getElementById("column-groups").textContent || "[]"); } catch (e) { groups = []; }
 
   function pageW() { return parseFloat(pageWInput.value) || 210; }
   function pageH() { return parseFloat(pageHInput.value) || 297; }
   function px(mm) { return mm * MM * zoom; }
   function mmFromPx(v) { return v / (MM * zoom); }
   function snapMm(v) { return Math.round(v / snap) * snap; }
+  function edgeSnap(v, size, margins) {
+    var s = parseFloat(pageSettings.snap_edge) || 0;
+    if (s <= 0) return v;
+    var anchors = [0, margins[0], size - margins[1], size];
+    for (var i = 0; i < anchors.length; i++) {
+      if (Math.abs(v - anchors[i]) <= s) return anchors[i];
+    }
+    return v;
+  }
   function syncHidden() {
-    frames.forEach(function (f) { f.x = f.left; }); // keep x synced for older readers
+    frames.forEach(function (f) { f.x = f.left; });
     hidden.value = JSON.stringify(frames);
+    settingsHidden.value = JSON.stringify(pageSettings);
   }
 
-  var PRESETS = {
-    "A4-P": [210, 297], "A4-L": [297, 210],
-    "A5-P": [148, 210], "A5-L": [210, 148]
-  };
+  var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
 
   function syncPresetSelect() {
     var w = pageW(), h = pageH();
@@ -273,6 +220,11 @@
     sel.value = found;
     document.getElementById("prop-page-w").value = w;
     document.getElementById("prop-page-h").value = h;
+    document.getElementById("margin-top").value = pageSettings.margin_top;
+    document.getElementById("margin-bottom").value = pageSettings.margin_bottom;
+    document.getElementById("margin-left").value = pageSettings.margin_left;
+    document.getElementById("margin-right").value = pageSettings.margin_right;
+    document.getElementById("snap-edge").value = pageSettings.snap_edge;
   }
 
   document.getElementById("paper-preset").addEventListener("change", function () {
@@ -280,8 +232,6 @@
     if (PRESETS[v]) {
       pageWInput.value = PRESETS[v][0];
       pageHInput.value = PRESETS[v][1];
-      document.getElementById("prop-page-w").value = PRESETS[v][0];
-      document.getElementById("prop-page-h").value = PRESETS[v][1];
       render();
     }
   });
@@ -292,11 +242,10 @@
     rulerV.innerHTML = "";
     rulerH.style.width = px(w) + "px";
     rulerV.style.height = px(h) + "px";
-    // 0 at LEFT of paper
     for (var x = 0; x <= w; x += 1) {
       if (x % 5 !== 0 && snap > 1) continue;
       var tick = document.createElement("div");
-      tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : (x % 5 === 0 ? "" : " minor"));
+      tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : "");
       tick.style.left = px(x) + "px";
       if (x % 10 === 0) {
         var lab = document.createElement("span");
@@ -308,7 +257,7 @@
     for (var y = 0; y <= h; y += 1) {
       if (y % 5 !== 0 && snap > 1) continue;
       var tick2 = document.createElement("div");
-      tick2.className = "ruler-tick" + (y % 10 === 0 ? " major" : (y % 5 === 0 ? "" : " minor"));
+      tick2.className = "ruler-tick" + (y % 10 === 0 ? " major" : "");
       tick2.style.top = px(y) + "px";
       if (y % 10 === 0) {
         var lab2 = document.createElement("span");
@@ -319,31 +268,59 @@
     }
   }
 
+  function renderMargins() {
+    var mt = pageSettings.margin_top || 0;
+    var mb = pageSettings.margin_bottom || 0;
+    var ml = pageSettings.margin_left || 0;
+    var mr = pageSettings.margin_right || 0;
+    var box = document.createElement("div");
+    box.className = "print-margin-guide";
+    box.style.top = px(mt) + "px";
+    box.style.left = px(ml) + "px";
+    box.style.width = px(Math.max(1, pageW() - ml - mr)) + "px";
+    box.style.height = px(Math.max(1, pageH() - mt - mb)) + "px";
+    canvas.appendChild(box);
+  }
+
   function render() {
-    if (builderPanel.hidden) return;
     var w = pageW(), h = pageH();
     canvas.style.width = px(w) + "px";
     canvas.style.height = px(h) + "px";
     canvas.innerHTML = "";
     var grid = document.createElement("div");
     grid.className = "designer-grid";
-    // Real mm grid from origin (0,0) top-left
     var g = px(snap);
     grid.style.backgroundSize = g + "px " + g + "px";
-    grid.style.backgroundPosition = "0 0";
     canvas.appendChild(grid);
+    renderMargins();
     frames.forEach(function (f) {
       var el = document.createElement("div");
       el.className = "form-frame kind-" + (f.kind || "box") + (f.id === selectedId ? " selected" : "");
       el.style.left = px(f.left || 0) + "px";
-      el.style.right = "auto";
       el.style.top = px(f.y || 0) + "px";
       el.style.width = px(f.width || 20) + "px";
       el.style.height = px(f.height || 10) + "px";
       el.style.transform = "rotate(" + (f.rotation || 0) + "deg)";
       if (f.stroke) el.style.borderWidth = px(f.stroke) + "px";
-      el.textContent = f.label || f.kind;
+      el.style.textAlign = f.align || "center";
+      el.style.alignItems = f.valign === "top" ? "flex-start" : (f.valign === "bottom" ? "flex-end" : "center");
       el.dataset.id = f.id;
+      if (f.kind === "logo" && f.image_data) {
+        var img = document.createElement("img");
+        img.src = f.image_data;
+        img.alt = f.label || "لوگو";
+        img.className = "frame-logo-img";
+        el.appendChild(img);
+      } else if (f.kind === "data_extend") {
+        el.classList.add("kind-data-extend");
+        el.textContent = "";
+      } else if (f.kind === "field") {
+        var label = f.label || "فیلد";
+        if (f.source && f.source_key) label += " ⟨" + f.source + "." + f.source_key + "⟩";
+        el.textContent = label;
+      } else {
+        el.textContent = f.label || f.kind;
+      }
       el.addEventListener("mousedown", startDrag);
       if (f.id === selectedId) {
         ["nw","ne","sw","se"].forEach(function (c) {
@@ -365,6 +342,46 @@
 
   function find(id) { return frames.find(function (f) { return f.id === id; }); }
 
+  function fillSourceSelects(f) {
+    var srcSel = document.getElementById("prop-source");
+    var keySel = document.getElementById("prop-source-key");
+    srcSel.innerHTML = '<option value="">— انتخاب منبع —</option>';
+    groups.forEach(function (g) {
+      var o = document.createElement("option");
+      o.value = g.id; o.textContent = g.label;
+      srcSel.appendChild(o);
+    });
+    srcSel.value = f.source || "";
+    function fillKeys() {
+      keySel.innerHTML = '<option value="">— انتخاب ستون —</option>';
+      var g = groups.find(function (x) { return x.id === srcSel.value; });
+      if (g) {
+        (g.columns || []).forEach(function (c) {
+          var o = document.createElement("option");
+          o.value = c[0]; o.textContent = c[1];
+          keySel.appendChild(o);
+        });
+      }
+      keySel.value = f.source_key || "";
+      var path = document.getElementById("field-bind-path");
+      path.textContent = (f.source && f.source_key)
+        ? ("آدرس: " + f.source + " → " + f.source_key)
+        : "هنوز به ستونی وصل نشده است.";
+    }
+    fillKeys();
+    srcSel.onchange = function () {
+      f.source = srcSel.value;
+      f.source_key = "";
+      fillKeys();
+      render();
+    };
+    keySel.onchange = function () {
+      f.source_key = keySel.value;
+      fillKeys();
+      render();
+    };
+  }
+
   function renderProps() {
     var empty = document.getElementById("props-empty");
     var fields = document.getElementById("props-fields");
@@ -379,6 +396,15 @@
     document.getElementById("prop-h").value = f.height;
     document.getElementById("prop-rot").value = f.rotation || 0;
     document.getElementById("prop-stroke").value = f.stroke || 0.5;
+    document.getElementById("logo-props").hidden = f.kind !== "logo";
+    document.getElementById("field-bind-props").hidden = f.kind !== "field";
+    document.querySelectorAll(".align-btn").forEach(function (btn) {
+      btn.classList.toggle("active",
+        (btn.dataset.align && btn.dataset.align === f.align) ||
+        (btn.dataset.valign && btn.dataset.valign === f.valign)
+      );
+    });
+    if (f.kind === "field") fillSourceSelects(f);
   }
 
   function applyPropInputs() {
@@ -391,10 +417,31 @@
     f.height = Math.max(0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
     f.rotation = parseFloat(document.getElementById("prop-rot").value) || 0;
     f.stroke = parseFloat(document.getElementById("prop-stroke").value) || 0.5;
+    if (f.kind === "data_extend") {
+      f.left = 0; f.width = pageW(); f.height = Math.max(0.5, f.height);
+    }
     render();
   }
   ["prop-label","prop-kind","prop-x","prop-y","prop-w","prop-h","prop-rot","prop-stroke"].forEach(function (id) {
     document.getElementById(id).addEventListener("change", applyPropInputs);
+  });
+
+  document.querySelectorAll(".align-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var f = find(selectedId); if (!f) return;
+      if (btn.dataset.align) f.align = btn.dataset.align;
+      if (btn.dataset.valign) f.valign = btn.dataset.valign;
+      render();
+    });
+  });
+
+  document.getElementById("prop-logo-file").addEventListener("change", function (e) {
+    var f = find(selectedId); if (!f || f.kind !== "logo") return;
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { f.image_data = reader.result; render(); };
+    reader.readAsDataURL(file);
   });
 
   ["prop-page-w", "prop-page-h"].forEach(function (id) {
@@ -402,6 +449,16 @@
       pageWInput.value = document.getElementById("prop-page-w").value;
       pageHInput.value = document.getElementById("prop-page-h").value;
       document.getElementById("paper-preset").value = "custom";
+      render();
+    });
+  });
+  ["margin-top","margin-bottom","margin-left","margin-right","snap-edge"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      pageSettings.margin_top = parseFloat(document.getElementById("margin-top").value) || 0;
+      pageSettings.margin_bottom = parseFloat(document.getElementById("margin-bottom").value) || 0;
+      pageSettings.margin_left = parseFloat(document.getElementById("margin-left").value) || 0;
+      pageSettings.margin_right = parseFloat(document.getElementById("margin-right").value) || 0;
+      pageSettings.snap_edge = parseFloat(document.getElementById("snap-edge").value) || 0;
       render();
     });
   });
@@ -430,10 +487,14 @@
     var f = find(drag.id); if (!f) return;
     var dx = mmFromPx(e.clientX - drag.startX);
     var dy = mmFromPx(e.clientY - drag.startY);
-    // LTR coords: mouse right increases left
+    var mt = pageSettings.margin_top || 0, mb = pageSettings.margin_bottom || 0;
+    var ml = pageSettings.margin_left || 0, mr = pageSettings.margin_right || 0;
     if (drag.mode === "move") {
       f.left = snapMm(Math.max(0, drag.ox + dx));
       f.y = snapMm(Math.max(0, drag.oy + dy));
+      f.left = edgeSnap(f.left, pageW(), [ml, mr]);
+      f.y = edgeSnap(f.y, pageH(), [mt, mb]);
+      if (f.kind === "data_extend") { f.left = 0; f.width = pageW(); }
     } else {
       var c = drag.corner;
       if (c === "se") { f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
@@ -449,7 +510,7 @@
   window.addEventListener("mouseup", function () { drag = null; });
 
   canvas.addEventListener("mousedown", function (e) {
-    if (e.target === canvas || e.target.classList.contains("designer-grid")) {
+    if (e.target === canvas || e.target.classList.contains("designer-grid") || e.target.classList.contains("print-margin-guide")) {
       selectedId = null; render();
     }
   });
@@ -459,12 +520,14 @@
       var kind = btn.getAttribute("data-add");
       var f = {
         id: "f" + Date.now() + "-" + (uid++),
-        label: kind === "header" ? "عنوان فرم" : kind === "footer" ? "پاورقی" : kind === "field" ? "فیلد" : kind === "line" ? "" : "کادر",
-        kind: kind, left: 10, x: 10, y: 15 + frames.length * 12,
-        width: kind === "line" || kind === "header" ? Math.max(40, pageW() - 20) : 70,
-        height: kind === "line" ? 1 : kind === "header" ? 12 : 16,
-        rotation: 0, stroke: 0.5
+        label: kind === "header" ? "عنوان" : kind === "field" ? "فیلد" : kind === "logo" ? "لوگو" : kind === "data_extend" ? "" : kind === "line" ? "" : "کادر",
+        kind: kind, left: 10, x: 10, y: 15 + frames.length * 10,
+        width: (kind === "line" || kind === "header" || kind === "data_extend") ? Math.max(40, pageW() - 20) : (kind === "logo" ? 40 : 70),
+        height: kind === "line" || kind === "data_extend" ? 1 : kind === "header" ? 12 : kind === "logo" ? 30 : 16,
+        rotation: 0, stroke: 0.5, align: "center", valign: "middle"
       };
+      if (kind === "data_extend") { f.left = 0; f.width = pageW(); f.height = 0.8; }
+      if (kind === "field") { f.source = ""; f.source_key = ""; }
       frames.push(f); selectedId = f.id; render();
     });
   });
@@ -483,11 +546,11 @@
     snap = parseFloat(e.target.value) || 2; render();
   });
 
-  document.getElementById("designer-scroll").style.padding = "0";
+  // Independent scroll: props panel vs paper canvas
+  propsPanel.addEventListener("wheel", function (e) { e.stopPropagation(); }, { passive: true });
+  designerScroll.addEventListener("wheel", function (e) { e.stopPropagation(); }, { passive: true });
 
-  if (mode === "edit") showBuilder();
-  else showMetaEditor();
-  {% if form.errors %}showMetaEditor();{% endif %}
+  render();
 })();
 </script>
 {% endblock %}
