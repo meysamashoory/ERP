@@ -124,6 +124,15 @@ class WeeklyPlanItemForm(forms.ModelForm):
         return obj
 
 
+class EmptyZeroNumberInput(forms.NumberInput):
+    """Render 0 as blank so typing a new number is not blocked by a leading zero."""
+
+    def format_value(self, value):
+        if value in (0, "0", None, ""):
+            return ""
+        return super().format_value(value)
+
+
 class WeeklyPlanLineForm(forms.ModelForm):
     class Meta:
         model = WeeklyPlanLine
@@ -131,6 +140,8 @@ class WeeklyPlanLineForm(forms.ModelForm):
         widgets = {
             "production_type": combo(),
             "mold": combo(),
+            "quantity": EmptyZeroNumberInput(attrs={"class": "input", "min": "0"}),
+            "cycle": EmptyZeroNumberInput(attrs={"class": "input", "min": "0"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -138,7 +149,21 @@ class WeeklyPlanLineForm(forms.ModelForm):
         self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
         self.fields["mold"].required = False
         self.fields["mold"].empty_label = "—"
+        # Blank out zeros on new/empty rows (and when stored value is 0).
+        for name in ("quantity", "cycle"):
+            field = self.fields[name]
+            field.required = False
+            if not self.is_bound:
+                current = getattr(self.instance, name, None) if self.instance else None
+                if not self.instance.pk or current in (0, None):
+                    field.initial = None
         style_fields(self)
+
+    def clean_quantity(self):
+        return self.cleaned_data.get("quantity") or 0
+
+    def clean_cycle(self):
+        return self.cleaned_data.get("cycle") or 0
 
 
 WeeklyPlanLineFormSet = inlineformset_factory(

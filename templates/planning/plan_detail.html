@@ -130,8 +130,11 @@
 
   function setDates(dates, keep) {
     var ts = dateSel.tomselect;
+    var prev = ts ? ts.getValue() : dateSel.value;
     if (ts) {
-      var prev = ts.getValue();
+      // clearOptions() keeps the currently selected option — clear value first
+      // so a previous weekday's date never lingers as a 3rd choice.
+      ts.clear(true);
       ts.clearOptions();
       dates.forEach(function (d) { ts.addOption({ value: d, text: d }); });
       ts.refreshOptions(false);
@@ -142,6 +145,8 @@
       dates.forEach(function (d) {
         var o = document.createElement("option"); o.value = d; o.textContent = d; dateSel.appendChild(o);
       });
+      if (keep && prev && dates.indexOf(prev) !== -1) dateSel.value = prev;
+      else dateSel.value = "";
     }
   }
 

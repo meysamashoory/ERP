@@ -32,5 +32,21 @@ class MoldChangeDateLogicTests(TestCase):
         self.assertEqual(len(dates), 1)
         self.assertEqual(dates[0].weekday(), 0)
 
+    def test_candidates_for_different_weekdays_are_disjoint(self):
+        plan_date = jdatetime.date(1403, 5, 15)
+        mon = {d.strftime("%Y-%m-%d") for d in mold_change_date_candidates(plan_date, Weekday.DOSHANBE)}
+        wed = {d.strftime("%Y-%m-%d") for d in mold_change_date_candidates(plan_date, Weekday.CHAHARSHANBE)}
+        self.assertTrue(mon)
+        self.assertTrue(wed)
+        self.assertFalse(mon & wed)
+
     def test_persian_weekday_name(self):
         self.assertEqual(persian_weekday(jdatetime.date(1403, 5, 13)), "شنبه")
+
+
+class EmptyZeroWidgetTests(TestCase):
+    def test_line_form_renders_blank_for_zero(self):
+        from .forms import WeeklyPlanLineForm
+        form = WeeklyPlanLineForm()
+        html = str(form["quantity"]) + str(form["cycle"])
+        self.assertNotIn('value="0"', html)

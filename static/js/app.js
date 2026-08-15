@@ -51,7 +51,12 @@
       if (sel.tomselect) return;
       // Prevent double border: Tom Select copies select.className onto .ts-wrapper.
       sel.classList.remove("input");
+      // Search lives inside the open menu (dropdown_input) so:
+      // - selected label stays visible in the control
+      // - control size never changes on focus
+      // - typing still filters options
       var ts = new TomSelect(sel, {
+        plugins: ["dropdown_input"],
         create: false,
         allowEmptyOption: true,
         maxOptions: 2000,
@@ -63,6 +68,9 @@
           pinDropdown(self);
           requestAnimationFrame(function () { pinDropdown(self); });
           setTimeout(function () { pinDropdown(self); }, 20);
+          // Focus the in-dropdown search box for typing.
+          var inp = self.dropdown && self.dropdown.querySelector("input");
+          if (inp) setTimeout(function () { inp.focus(); }, 0);
         },
       });
       // Override library positioning so menus never jump to the page bottom.

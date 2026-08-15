@@ -298,6 +298,25 @@ input[type=time]:focus, select:focus, textarea:focus {
 .ts-dropdown .option { padding: 8px 12px; }
 .ts-dropdown .active { background: #eef2ff; color: var(--ink); }
 .no-results { padding: 8px 12px; color: var(--muted); }
+/* In-menu search (dropdown_input): typing without changing control size */
+.ts-dropdown .dropdown-input,
+.ts-dropdown [type=text] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0 !important;
+  border-bottom: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  padding: 10px 12px !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  font-family: inherit;
+  font-size: 14px;
+  background: #f8fafc !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 
 /* Jalali datepicker: fixed under the input; inside dialog top-layer when needed */
 jdp-container, .jdp-container {
