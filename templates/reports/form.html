@@ -154,6 +154,7 @@
   if (cancelBtn) cancelBtn.addEventListener("click", showBuilder);
 
   if (mode === "edit") showBuilder();
+  {% if form.errors %}showMetaEditor();{% endif %}
 
   var sourceSelect = document.getElementById("source-select");
   var trees = document.getElementById("source-trees");
