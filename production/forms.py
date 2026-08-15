@@ -31,9 +31,27 @@ def jdate_field(label="تاریخ"):
     )
 
 
+def style_fields(form):
+    """Apply ``input`` class to non-combo widgets only.
+
+    Combo selects must stay class-free: Tom Select copies classes onto the
+    wrapper and a copied ``input`` class creates a double border.
+    """
+    for field in form.fields.values():
+        if field.widget.attrs.get("data-combo"):
+            field.widget.attrs.pop("class", None)
+            continue
+        field.widget.attrs.setdefault("class", "input")
+
+
 def combo(attrs=None):
-    """A <select> widget enhanced into a searchable/typeable combobox."""
-    base = {"class": "input", "data-combo": "1"}
+    """A <select> widget enhanced into a searchable/typeable combobox.
+
+    Note: do NOT add the ``input`` CSS class here — Tom Select copies the
+    original select's classes onto ``.ts-wrapper``, which would create a
+    second outer border around ``.ts-control``.
+    """
+    base = {"data-combo": "1"}
     if attrs:
         base.update(attrs)
     return forms.Select(attrs=base)
@@ -52,7 +70,7 @@ class _ProductionFormBase(forms.ModelForm):
     code = forms.CharField(
         required=False,
         label="کد کالا",
-        widget=forms.Select(attrs={"class": "input", "data-role": "code", "data-combo": "1"}),
+        widget=forms.Select(attrs={"data-role": "code", "data-combo": "1"}),
     )
 
     def __init__(self, *args, **kwargs):
@@ -73,8 +91,7 @@ class _ProductionFormBase(forms.ModelForm):
         # Pre-select subgroup when editing an existing record.
         if self.instance and self.instance.pk and self.instance.product_id:
             self.fields["subgroup"].initial = self.instance.product.subgroup_id
-        for field in self.fields.values():
-            field.widget.attrs.setdefault("class", "input")
+        style_fields(self)
 
     def clean(self):
         cleaned = super().clean()
@@ -284,8 +301,7 @@ class DayEntryForm(forms.ModelForm):
         if program and not self.instance.pk:
             self.fields["cycle"].initial = program.default_cycle
             self.fields["active_cavities"].initial = program.item.active_cavities
-        for f in self.fields.values():
-            f.widget.attrs.setdefault("class", "input")
+        style_fields(self)
 
     def clean_date(self):
         d = self.cleaned_data["date"]

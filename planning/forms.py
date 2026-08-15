@@ -11,8 +11,19 @@ from .utils import mold_change_date_candidates
 JDATE_FORMATS = ["%Y/%m/%d", "%Y-%m-%d"]
 
 
+def style_fields(form):
+    """Apply ``input`` class to non-combo widgets only (avoid double borders)."""
+    for field in form.fields.values():
+        if field.widget.attrs.get("data-combo"):
+            field.widget.attrs.pop("class", None)
+            continue
+        field.widget.attrs.setdefault("class", "input")
+
+
 def combo(attrs=None):
-    base = {"class": "input", "data-combo": "1"}
+    # Avoid class="input" — Tom Select copies it onto .ts-wrapper and that
+    # creates a second outer border around the control.
+    base = {"data-combo": "1"}
     if attrs:
         base.update(attrs)
     return forms.Select(attrs=base)
@@ -45,7 +56,7 @@ class WeeklyPlanItemForm(forms.ModelForm):
     )
     code = forms.CharField(
         required=False, label="کد کالا",
-        widget=forms.Select(attrs={"class": "input", "data-role": "code", "data-combo": "1"}),
+        widget=forms.Select(attrs={"data-role": "code", "data-combo": "1"}),
     )
     mold_change_date = forms.ChoiceField(choices=[], label="تاریخ تعویض قالب",
                                          widget=combo())
@@ -71,8 +82,7 @@ class WeeklyPlanItemForm(forms.ModelForm):
             subgroup__group__kind=ProductKind.FITTING, is_active=True
         )
         self.fields["product"].label = "نام محصول"
-        for field in self.fields.values():
-            field.widget.attrs.setdefault("class", "input")
+        style_fields(self)
 
         # Candidate mold-change dates (for validation and initial display).
         weekday = None
@@ -128,8 +138,7 @@ class WeeklyPlanLineForm(forms.ModelForm):
         self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
         self.fields["mold"].required = False
         self.fields["mold"].empty_label = "—"
-        for field in self.fields.values():
-            field.widget.attrs.setdefault("class", "input")
+        style_fields(self)
 
 
 WeeklyPlanLineFormSet = inlineformset_factory(

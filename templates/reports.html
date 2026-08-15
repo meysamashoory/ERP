@@ -11,14 +11,14 @@
       <div class="filters">
         <div class="field">
           <label>نوع گزارش</label>
-          <select name="type" class="input" data-combo="1">
+          <select name="type" data-combo="1">
             <option value="fitting" {% if report_type == 'fitting' %}selected{% endif %}>اتصالات</option>
             <option value="pipe" {% if report_type == 'pipe' %}selected{% endif %}>لوله‌ها</option>
           </select>
         </div>
         <div class="field">
           <label>واحد تولیدی</label>
-          <select name="unit" class="input" data-combo="1">
+          <select name="unit" data-combo="1">
             <option value="">همه</option>
             {% for u in units %}
             <option value="{{ u.id }}" {% if filters.unit == u.id|stringformat:'s' %}selected{% endif %}>واحد {{ u.number }}</option>

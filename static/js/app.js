@@ -15,6 +15,8 @@
     if (!window.TomSelect) return;
     root.querySelectorAll("select[data-combo]").forEach(function (sel) {
       if (sel.tomselect) return;
+      // Prevent double border: Tom Select copies select.className onto .ts-wrapper.
+      sel.classList.remove("input");
       // Keep dropdown attached to the field (default). Setting dropdownParent to
       // body/dialog breaks positioning and dumps the menu at the window bottom.
       // controlInput:null => single-border select look (no nested search box).

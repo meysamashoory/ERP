@@ -197,7 +197,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ts-wrapper,
 .ts-wrapper.single,
 .ts-wrapper.single.focus,
-.ts-wrapper.single.input-active {
+.ts-wrapper.single.input-active,
+.ts-wrapper.input,
+.ts-wrapper.single.input {
   font-family: inherit;
   width: 100%;
   border: 0 !important;
@@ -206,6 +208,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   background: transparent !important;
   box-shadow: none !important;
   outline: none !important;
+  border-radius: 0 !important;
   position: relative;
 }
 .ts-wrapper .ts-control,
