@@ -155,7 +155,7 @@ class PlanningUiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, "ویرایش شماره و تاریخ")
         self.assertNotContains(resp, "صفحه اصلی")
-        self.assertNotContains(resp, "ثبت نهایی")
+        self.assertNotContains(resp, "تأیید برنامه")
 
     def test_edit_mode_shows_finalize(self):
         self.client.login(username="admin", password="erp12345")
@@ -163,9 +163,10 @@ class PlanningUiTests(TestCase):
         resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "ویرایش شماره و تاریخ")
-        self.assertContains(resp, "ثبت نهایی")
+        self.assertContains(resp, "تأیید برنامه")
         self.assertNotContains(resp, "صفحه اصلی")
         self.assertContains(resp, "انتخاب قالب")
+        self.assertContains(resp, "در انتظار تأیید")
 
     def test_sidebar_branding_and_logout(self):
         self.client.login(username="admin", password="erp12345")
@@ -174,3 +175,23 @@ class PlanningUiTests(TestCase):
         self.assertContains(resp, "خروج از سامانه")
         self.assertNotContains(resp, "مدیر سامانه")
         self.assertContains(resp, "(admin)")
+
+    def test_plan_list_status_labels(self):
+        self.client.login(username="admin", password="erp12345")
+        resp = self.client.get(reverse("plan_list"))
+        self.assertContains(resp, "تعیین وضعیت")
+        self.assertContains(resp, "تأیید برنامه")
+        self.assertContains(resp, "در انتظار تأیید")
+        self.assertNotContains(resp, "تغییر وضعیت")
+        self.assertNotContains(resp, "تأیید (تأییدشده)")
+
+    def test_plan_detail_mold_matrix(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1001")
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "روز تعویض")
+        self.assertContains(resp, "تاریخ تعویض")
+        self.assertContains(resp, "واحد 1")
+        self.assertContains(resp, "plan-matrix")
+        self.assertContains(resp, "قالب")

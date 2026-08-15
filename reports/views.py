@@ -27,12 +27,14 @@ from .access import (
 )
 from .columns import COLUMN_GROUPS, run_report
 from .forms import (
+    ExcelFormImportForm,
     PrintFormForm,
     SavedReportForm,
     SendOrCopyPrintFormForm,
     SendOrCopyReportForm,
 )
 from .models import PrintForm, SavedReport
+from .excel_import import import_forms_from_excel
 
 User = get_user_model()
 
@@ -404,8 +406,36 @@ def form_create(request: HttpRequest) -> HttpResponse:
             "mode": "create",
             "page_title": "ایجاد فرم",
             "frames_json": "[]",
+            "import_form": ExcelFormImportForm(),
         },
     )
+
+
+@login_required
+def form_import_excel(request: HttpRequest) -> HttpResponse:
+    """Create print forms immediately from an uploaded Excel workbook."""
+    if not can_create_form(request.user):
+        return HttpResponseForbidden("مشاهده‌گر مجاز به ایجاد فرم نیست.")
+    if request.method != "POST":
+        return redirect("print_form_create")
+    form = ExcelFormImportForm(request.POST, request.FILES)
+    if not form.is_valid():
+        for err in form.errors.get("excel_file", form.errors.get("__all__", [])):
+            messages.error(request, err)
+        return redirect("print_form_create")
+    try:
+        created = import_forms_from_excel(
+            form.cleaned_data["excel_file"],
+            owner=request.user,
+            created_by=request.user,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface parse errors to the user
+        messages.error(request, f"خطا در وارد کردن اکسل: {exc}")
+        return redirect("print_form_create")
+    messages.success(request, f"{len(created)} فرم از اکسل ایجاد شد.")
+    if len(created) == 1:
+        return redirect("print_form_edit", pk=created[0].pk)
+    return redirect("print_form_list")
 
 
 @login_required

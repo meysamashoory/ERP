@@ -4,6 +4,7 @@ from .models import (
     DeviationReason,
     Machine,
     MoldOption,
+    PlanningDisplaySettings,
     PlanningInsightField,
     Product,
     ProductGroup,
@@ -122,3 +123,32 @@ class PlanningInsightFieldAdmin(admin.ModelAdmin):
     list_filter = ("source", "is_active")
     search_fields = ("label", "source_key")
     ordering = ("order", "id")
+
+
+@admin.register(PlanningDisplaySettings)
+class PlanningDisplaySettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "height_coefficient", "matrix_unit_numbers", "show_group_breakdown")
+    list_display_links = ("id",)
+    list_editable = ("height_coefficient", "matrix_unit_numbers", "show_group_breakdown")
+    fieldsets = (
+        (
+            "کادر آبی و ماتریس تعویض قالب",
+            {
+                "fields": (
+                    "height_coefficient",
+                    "matrix_unit_numbers",
+                    "show_group_breakdown",
+                ),
+                "description": (
+                    "ضریب ارتفاع ۱٫۰ = پایه؛ ۱٫۲ یعنی ۲۰٪ بلندتر. "
+                    "واحدهای ماتریس را با ویرگول مشخص کنید (مثلاً ۱,۲,۴)."
+                ),
+            },
+        ),
+    )
+
+    def has_add_permission(self, request):
+        # Keep a single settings row when possible.
+        if PlanningDisplaySettings.objects.exists():
+            return False
+        return super().has_add_permission(request)

@@ -11,6 +11,7 @@ from production.models import FittingProduction
 from .forms import WeeklyPlanForm, WeeklyPlanItemForm, WeeklyPlanLineFormSet
 from .insights import resolve_insights
 from .models import WeeklyPlan, WeeklyPlanItem
+from .mold_stats import mold_change_stats
 from .utils import mold_change_date_candidates
 from catalog.models import Product
 
@@ -68,7 +69,13 @@ def plan_edit(request, pk):
 @login_required
 def plan_detail(request, pk):
     plan = get_object_or_404(
-        WeeklyPlan.objects.prefetch_related("items__lines", "items__product"), pk=pk
+        WeeklyPlan.objects.prefetch_related(
+            "items__lines",
+            "items__product",
+            "items__unit",
+            "items__subgroup__group",
+        ),
+        pk=pk,
     )
     profile = get_profile(request.user)
     editable = _can_edit_plan(profile, plan)
@@ -81,8 +88,7 @@ def plan_detail(request, pk):
     item_form = WeeklyPlanItemForm(plan_date=plan.date, instance=editing_item)
     line_formset = WeeklyPlanLineFormSet(instance=editing_item, prefix="lines")
     edit_form = WeeklyPlanForm(instance=plan)
-    insight_product = editing_item.product if editing_item else None
-    insights = resolve_insights(insight_product)
+    mold_stats = mold_change_stats(plan)
 
     return render(
         request,
@@ -95,7 +101,7 @@ def plan_detail(request, pk):
             "line_formset": line_formset,
             "editing_item": editing_item,
             "edit_form": edit_form,
-            "insights": insights,
+            "mold_stats": mold_stats,
         },
     )
 
@@ -106,7 +112,7 @@ def item_save(request, pk):
     plan = get_object_or_404(WeeklyPlan, pk=pk)
     profile = get_profile(request.user)
     if not _can_edit_plan(profile, plan):
-        raise PermissionDenied("برنامه در حالت موقت نیست یا اجازه ویرایش ندارید.")
+        raise PermissionDenied("برنامه در حالت «در انتظار تأیید» نیست یا اجازه ویرایش ندارید.")
     if request.method != "POST":
         return redirect("plan_detail", pk=pk)
 
@@ -134,9 +140,6 @@ def item_save(request, pk):
 
     messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
     line_formset = WeeklyPlanLineFormSet(request.POST, instance=instance, prefix="lines")
-    insight_product = form.cleaned_data.get("product") if getattr(form, "cleaned_data", None) else None
-    if insight_product is None and instance:
-        insight_product = instance.product
     return render(
         request,
         "planning/plan_detail.html",
@@ -148,7 +151,7 @@ def item_save(request, pk):
             "line_formset": line_formset,
             "editing_item": instance,
             "edit_form": WeeklyPlanForm(instance=plan),
-            "insights": resolve_insights(insight_product),
+            "mold_stats": mold_change_stats(plan),
         },
     )
 
@@ -163,11 +166,11 @@ def product_insights(request):
 
 @login_required
 def plan_set_status(request, pk):
-    """Toggle a plan between «موقت» (draft) and «تأییدشده» (approved)."""
+    """Toggle a plan between «در انتظار تأیید» (draft) and «تأییدشده» (approved)."""
     plan = get_object_or_404(WeeklyPlan, pk=pk)
     profile = get_profile(request.user)
     if not profile or not profile.can_create_plans:
-        raise PermissionDenied("اجازه تغییر وضعیت ندارید.")
+        raise PermissionDenied("اجازه تعیین وضعیت ندارید.")
     if request.method != "POST":
         return redirect("plan_list")
     target = request.POST.get("status")
@@ -184,7 +187,7 @@ def plan_set_status(request, pk):
         plan.status = WeeklyPlan.Status.DRAFT
         plan.approved_by = None
         plan.approved_at = None
-        messages.info(request, f"برنامه {plan.program_number} به حالت موقت درآمد.")
+        messages.info(request, f"برنامه {plan.program_number} به حالت «در انتظار تأیید» درآمد.")
     plan.save()
     return redirect(request.POST.get("next") or "plan_list")
 

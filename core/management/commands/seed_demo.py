@@ -118,6 +118,13 @@ class Command(BaseCommand):
                 label=label,
                 defaults={"source": source, "source_key": key, "order": order, "is_active": True},
             )
+        from catalog.models import PlanningDisplaySettings
+        if not PlanningDisplaySettings.objects.exists():
+            PlanningDisplaySettings.objects.create(
+                height_coefficient=1,
+                matrix_unit_numbers="1,2,4",
+                show_group_breakdown=True,
+            )
 
     def _seed_units_and_machines(self):
         specs = {

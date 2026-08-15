@@ -293,3 +293,21 @@ class SendOrCopyPrintFormForm(forms.Form):
             if PrintForm.objects.filter(owner=owner, number=number).exists():
                 self.add_error("number", "شماره فرم وجود دارد")
         return cleaned
+
+
+class ExcelFormImportForm(forms.Form):
+    """Upload an .xlsx workbook; each sheet becomes one A4 PrintForm."""
+
+    excel_file = forms.FileField(
+        label="فایل اکسل فرم‌ها",
+        help_text="هر شیت به یک فرم A4 تبدیل می‌شود. سلول‌های پر و ادغام‌شده به کادر تبدیل می‌شوند.",
+    )
+
+    def clean_excel_file(self):
+        f = self.cleaned_data["excel_file"]
+        name = (getattr(f, "name", "") or "").lower()
+        if not (name.endswith(".xlsx") or name.endswith(".xlsm")):
+            raise forms.ValidationError("فقط فایل Excel با پسوند xlsx پذیرفته می‌شود.")
+        if f.size and f.size > 15 * 1024 * 1024:
+            raise forms.ValidationError("حجم فایل نباید بیشتر از ۱۵ مگابایت باشد.")
+        return f

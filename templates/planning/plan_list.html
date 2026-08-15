@@ -14,7 +14,7 @@
 <div class="panel">
   {% if plans %}
   <table class="table">
-    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th>عملیات</th><th>تغییر وضعیت</th></tr></thead>
+    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th>عملیات</th><th>تعیین وضعیت</th></tr></thead>
     <tbody>
       {% for plan in plans %}
       <tr>
@@ -33,9 +33,9 @@
           <form method="post" action="{% url 'plan_set_status' plan.pk %}" class="inline-form">
             {% csrf_token %}
             {% if plan.status == 'approved' %}
-              <button class="btn btn-sm btn-ghost" name="status" value="draft" type="submit">تغییر به موقت</button>
+              <button class="btn btn-sm btn-ghost" name="status" value="draft" type="submit">تغییر به در انتظار تأیید</button>
             {% else %}
-              <button class="btn btn-sm btn-ok" name="status" value="approved" type="submit">تأیید (تأییدشده)</button>
+              <button class="btn btn-sm btn-ok" name="status" value="approved" type="submit">تأیید برنامه</button>
             {% endif %}
           </form>
           {% else %}—{% endif %}

@@ -45,7 +45,7 @@ class Weekday(models.IntegerChoices):
 
 class WeeklyPlan(models.Model):
     class Status(models.TextChoices):
-        DRAFT = "draft", "موقت"
+        DRAFT = "draft", "در انتظار تأیید"
         APPROVED = "approved", "تأییدشده"
 
     program_number = models.CharField("شماره برنامه", max_length=30, unique=True)

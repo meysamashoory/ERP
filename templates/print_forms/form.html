@@ -13,6 +13,23 @@
 {% endblock %}
 
 {% block content %}
+{% if mode == 'create' and import_form %}
+<div class="panel panel-compact">
+  <div class="panel-body panel-body-compact">
+    <h2 class="import-heading">وارد کردن فرم از اکسل</h2>
+    <p class="muted" style="margin:0 0 10px">فایل اکسلی که چند فرم A4 در شیت‌های جدا دارد را انتخاب کنید؛ هر شیت بلافاصله به یک فرم چاپی تبدیل می‌شود و می‌توانید جزئیات را در طراح فرم ویرایش کنید.</p>
+    <form method="post" action="{% url 'print_form_import_excel' %}" enctype="multipart/form-data" class="excel-import-form">
+      {% csrf_token %}
+      <div class="field">
+        <label>{{ import_form.excel_file.label }}</label>
+        {{ import_form.excel_file }}
+      </div>
+      <button class="btn btn-sm" type="submit">ایجاد فرم از اکسل</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <form method="post" id="print-form-builder" class="builder-compact">
   {% csrf_token %}
   {{ form.frames_json }}

@@ -4,6 +4,20 @@
 {% block nav_reports %}open{% endblock %}
 {% block nav_report_list %}active{% endblock %}
 
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
+  <div class="menu-drop">
+    <button type="button" class="btn btn-sm" data-menu-toggle>خروجی ▾</button>
+    <div class="menu-panel" hidden>
+      <a href="?export=excel&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی Excel</a>
+      <a href="?export=pdf&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی PDF</a>
+      <button type="button" data-print-report>چاپ گزارش</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="page-head report-detail-head">
   <div>
@@ -12,17 +26,6 @@
       {% if report.description %}<span class="report-desc">({{ report.description }})</span>{% endif %}
     </h1>
     <p class="muted">شماره {{ report.number }}{% if report.is_standard %} — <span class="badge badge-approved">استاندارد</span>{% endif %}</p>
-  </div>
-  <div class="row-actions">
-    <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
-    <div class="menu-drop">
-      <button type="button" class="btn btn-sm" data-menu-toggle>خروجی ▾</button>
-      <div class="menu-panel" hidden>
-        <a href="?export=excel&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی Excel</a>
-        <a href="?export=pdf&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی PDF</a>
-        <button type="button" data-print-report>چاپ گزارش</button>
-      </div>
-    </div>
   </div>
 </div>
 

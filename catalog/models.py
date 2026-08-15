@@ -282,3 +282,56 @@ class PlanningInsightField(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+
+class PlanningDisplaySettings(models.Model):
+    """Singleton-style settings for the planning detail glass strip and matrix.
+
+    Manage via «مدیریت داده‌ها». Prefer a single row; ``load()`` returns the first
+    row or sensible defaults.
+    """
+
+    height_coefficient = models.DecimalField(
+        "ضریب ارتفاع کادر آبی",
+        max_digits=4,
+        decimal_places=2,
+        default=1,
+        help_text="مثلاً ۱٫۲ یعنی ارتفاع کادر آبی ۲۰٪ بیشتر از حالت پایه.",
+    )
+    matrix_unit_numbers = models.CharField(
+        "واحدهای جدول ماتریس",
+        max_length=40,
+        default="1,2,4",
+        help_text="شماره واحدها با ویرگول؛ مثلاً ۱,۲,۴",
+    )
+    show_group_breakdown = models.BooleanField(
+        "نمایش تفکیک گروه در کادر آبی",
+        default=True,
+        help_text="زیر هر واحد، تعداد قالب هر گروه محصول نمایش داده شود.",
+    )
+
+    class Meta:
+        verbose_name = "تنظیمات نمایش برنامه‌ریزی"
+        verbose_name_plural = "تنظیمات نمایش برنامه‌ریزی (کادر آبی و ماتریس)"
+
+    def __str__(self) -> str:
+        return f"ضریب ارتفاع {self.height_coefficient} · واحدها {self.matrix_unit_numbers}"
+
+    @classmethod
+    def load(cls) -> "PlanningDisplaySettings":
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls(height_coefficient=1, matrix_unit_numbers="1,2,4", show_group_breakdown=True)
+        return obj
+
+    def unit_numbers(self) -> list[int]:
+        nums: list[int] = []
+        for part in (self.matrix_unit_numbers or "").replace("،", ",").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                nums.append(int(part))
+            except ValueError:
+                continue
+        return nums or [1, 2, 4]

@@ -14,6 +14,7 @@ urlpatterns = [
     # Print forms
     path("forms/", views.form_list, name="print_form_list"),
     path("forms/create/", views.form_create, name="print_form_create"),
+    path("forms/import-excel/", views.form_import_excel, name="print_form_import_excel"),
     path("forms/<int:pk>/", views.form_detail, name="print_form_detail"),
     path("forms/<int:pk>/edit/", views.form_edit, name="print_form_edit"),
     path("forms/<int:pk>/delete/", views.form_delete, name="print_form_delete"),
