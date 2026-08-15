@@ -11,23 +11,65 @@
   function tsOf(el) { return el ? el.tomselect : null; }
   function valOf(el) { var ts = tsOf(el); return ts ? ts.getValue() : (el ? el.value : ""); }
 
+  function dropdownLayerHost(el) {
+    // <dialog> is in the top layer; menus appended to body stay behind it.
+    return (el && el.closest("dialog")) || document.body;
+  }
+
+  function pinDropdown(ts) {
+    if (!ts || !ts.dropdown || !ts.control) return;
+    var control = ts.control;
+    var dropdown = ts.dropdown;
+    var host = dropdownLayerHost(control);
+    if (dropdown.parentElement !== host) host.appendChild(dropdown);
+
+    var rect = control.getBoundingClientRect();
+    var gap = 4;
+    var maxH = Math.min(280, Math.max(120, window.innerHeight - rect.bottom - 16));
+    // If not enough space below, open upward.
+    var openUp = rect.bottom + Math.min(maxH, 180) > window.innerHeight - 8 && rect.top > 160;
+    dropdown.style.position = "fixed";
+    dropdown.style.left = Math.round(rect.left) + "px";
+    dropdown.style.width = Math.round(rect.width) + "px";
+    dropdown.style.right = "auto";
+    dropdown.style.zIndex = "100002";
+    dropdown.style.maxHeight = maxH + "px";
+    dropdown.style.overflowY = "auto";
+    dropdown.style.display = "block";
+    if (openUp) {
+      dropdown.style.top = "auto";
+      dropdown.style.bottom = Math.round(window.innerHeight - rect.top + gap) + "px";
+    } else {
+      dropdown.style.top = Math.round(rect.bottom + gap) + "px";
+      dropdown.style.bottom = "auto";
+    }
+  }
+
   function initCombos(root) {
     if (!window.TomSelect) return;
     root.querySelectorAll("select[data-combo]").forEach(function (sel) {
       if (sel.tomselect) return;
       // Prevent double border: Tom Select copies select.className onto .ts-wrapper.
       sel.classList.remove("input");
-      // Keep dropdown attached to the field (default). Setting dropdownParent to
-      // body/dialog breaks positioning and dumps the menu at the window bottom.
-      // controlInput:null => single-border select look (no nested search box).
-      new TomSelect(sel, {
+      var ts = new TomSelect(sel, {
         create: false,
         allowEmptyOption: true,
         maxOptions: 2000,
         controlInput: null,
         placeholder: sel.getAttribute("placeholder") || "انتخاب...",
         render: { no_results: function () { return '<div class="no-results">موردی یافت نشد</div>'; } },
+        onDropdownOpen: function () {
+          var self = this;
+          pinDropdown(self);
+          requestAnimationFrame(function () { pinDropdown(self); });
+          setTimeout(function () { pinDropdown(self); }, 20);
+        },
       });
+      // Override library positioning so menus never jump to the page bottom.
+      ts.positionDropdown = function () { pinDropdown(ts); };
+      var repin = function () { if (ts.isOpen) pinDropdown(ts); };
+      window.addEventListener("scroll", repin, true);
+      window.addEventListener("resize", repin);
     });
   }
 
@@ -42,19 +84,22 @@
     var els = jdpEls();
     var container = els.container;
     if (!input || !container) return;
-    var dialog = input.closest("dialog");
-    var host = dialog || document.body;
+    var host = dropdownLayerHost(input);
     if (container.parentElement !== host) host.appendChild(container);
     if (els.overlay && els.overlay.parentElement !== host) host.appendChild(els.overlay);
 
-    // Library uses absolute coords that break inside <dialog>; pin under the input.
     var rect = input.getBoundingClientRect();
     var width = container.offsetWidth || 308;
-    var left = rect.right - width;
-    if (left < 8) left = 8;
+    var left = rect.left;
     if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+    if (left < 8) left = 8;
+    var top = rect.bottom + 4;
+    var height = container.offsetHeight || 280;
+    if (top + height > window.innerHeight - 8 && rect.top > height + 8) {
+      top = rect.top - height - 4;
+    }
     container.style.position = "fixed";
-    container.style.top = Math.round(rect.bottom + 4) + "px";
+    container.style.top = Math.round(top) + "px";
     container.style.left = Math.round(left) + "px";
     container.style.right = "auto";
     container.style.bottom = "auto";
@@ -82,7 +127,6 @@
       if (inp.dataset.jdpHostWired) return;
       inp.dataset.jdpHostWired = "1";
       function fix() {
-        // Run after the library shows/positions the calendar.
         placeDatepicker(inp);
         requestAnimationFrame(function () {
           placeDatepicker(inp);
@@ -93,7 +137,6 @@
       inp.addEventListener("click", fix);
     });
 
-    // If the library repositions later, keep the calendar under the active input.
     if (!window.__jdpPlaceObserver && typeof MutationObserver !== "undefined") {
       window.__jdpPlaceObserver = new MutationObserver(function () {
         var active = document.activeElement;
@@ -272,7 +315,6 @@
         clone.querySelectorAll(".ts-wrapper").forEach(function (w) { w.remove(); });
         clone.querySelectorAll("input, select, textarea").forEach(function (inp) {
           inp.style.display = ""; if (inp.type !== "hidden") inp.value = "";
-          // Keep data-combo so enhance() can re-init Tom Select on the clone.
           inp.removeAttribute("data-wired");
         });
         container.appendChild(clone);

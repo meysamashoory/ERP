@@ -11,6 +11,7 @@
   --warn: #b45309;
   --warn-bg: #fef3c7;
   --danger: #dc2626;
+  --field-h: 42px;
 }
 
 * { box-sizing: border-box; }
@@ -164,11 +165,31 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .field label { font-size: 13px; font-weight: 600; color: #334155; }
 .field .helptext { font-size: 12px; color: var(--muted); }
 .field .errorlist { color: var(--danger); font-size: 12px; margin: 0; padding: 0; list-style: none; }
-.input, input[type=text], input[type=number], input[type=password], select, textarea {
-  width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px;
-  font-family: inherit; font-size: 14px; background: #fff; color: var(--ink);
+.input, input[type=text], input[type=number], input[type=password], input[type=time], select, textarea {
+  width: 100%;
+  height: var(--field-h);
+  min-height: var(--field-h);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: calc(var(--field-h) - 2px);
+  background: #fff;
+  color: var(--ink);
+  box-sizing: border-box;
 }
-.input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+textarea {
+  height: auto;
+  min-height: 72px;
+  max-height: none;
+  padding: 9px 12px;
+  line-height: 1.7;
+}
+.input:focus, input[type=text]:focus, input[type=number]:focus, input[type=password]:focus,
+input[type=time]:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+}
 .form-actions { margin-top: 16px; display: flex; gap: 10px; }
 
 .empty { padding: 26px 20px; color: var(--muted); text-align: center; }
@@ -193,7 +214,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Row being edited (planning) */
 .row-edit, tr.row-edit td { background: #fef9c3 !important; }
 
-/* Tom Select: one border, same size as native .input — no nested search box */
+/* Tom Select: identical height/border to native .input */
 .ts-wrapper,
 .ts-wrapper.single,
 .ts-wrapper.single.focus,
@@ -210,6 +231,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   outline: none !important;
   border-radius: 0 !important;
   position: relative;
+  height: var(--field-h);
+  min-height: var(--field-h);
 }
 .ts-wrapper .ts-control,
 .ts-wrapper.single .ts-control,
@@ -217,10 +240,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ts-wrapper.single.input-active .ts-control {
   border: 1px solid var(--line) !important;
   border-radius: 9px !important;
-  padding: 9px 12px !important;
-  min-height: 0 !important;
+  padding: 0 12px !important;
+  height: var(--field-h) !important;
+  min-height: var(--field-h) !important;
+  max-height: var(--field-h) !important;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: calc(var(--field-h) - 2px) !important;
   box-shadow: none !important;
   outline: none !important;
   background: #fff !important;
@@ -228,6 +253,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   align-items: center;
   overflow: hidden;
   cursor: pointer;
+  box-sizing: border-box !important;
 }
 .ts-wrapper.single.focus .ts-control,
 .ts-wrapper.single.input-active .ts-control,
@@ -254,18 +280,22 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   background: transparent !important;
   margin: 0 !important;
   padding: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
 }
-/* Dropdown anchored under the field (default Tom Select: top:100%) */
-.ts-wrapper .ts-dropdown,
-.ts-dropdown {
+/* Dropdown is pinned with position:fixed in JS; keep styles consistent */
+.ts-dropdown,
+.ts-wrapper .ts-dropdown {
   border: 1px solid var(--line) !important;
   border-radius: 9px !important;
   border-top: 1px solid var(--line) !important;
   font-size: 14px;
-  margin-top: 4px !important;
-  z-index: 40 !important;
+  margin: 0 !important;
+  z-index: 100002 !important;
   box-shadow: 0 8px 24px rgba(15,23,42,.12);
+  background: #fff;
 }
+.ts-dropdown .option { padding: 8px 12px; }
 .ts-dropdown .active { background: #eef2ff; color: var(--ink); }
 .no-results { padding: 8px 12px; color: var(--muted); }
 
