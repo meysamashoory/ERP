@@ -119,6 +119,11 @@ body.designer-app {
 }
 .dz-align-group button:hover:not(:disabled) { background: #3a4250; }
 .dz-align-group button:disabled { opacity: .35; cursor: not-allowed; }
+.dz-align-group button:not(:disabled) {
+  color: #fff;
+  border-color: #5b6578;
+  background: #3a4250;
+}
 .dz-align-group button.active {
   background: #3d8bfd;
   border-color: #3d8bfd;
@@ -528,19 +533,22 @@ body.designer-app {
   transform: translateX(-50%) translateY(0);
 }
 
-/* Preview mode: only paper */
-body.preview-mode .dz-titlebar,
-body.preview-mode .dz-topbar,
-body.preview-mode .dz-left,
-body.preview-mode .dz-right,
-body.preview-mode .dz-ruler-corner,
-body.preview-mode .dz-ruler-h,
-body.preview-mode .dz-ruler-v,
-.dz-canvas-wrap.preview-mode .dz-ruler-corner,
-.dz-canvas-wrap.preview-mode .dz-ruler-h,
-.dz-canvas-wrap.preview-mode .dz-ruler-v {
-  display: none !important;
+/* Keep a floating exit control when chrome is hidden in preview */
+.dz-exit-preview {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 2000;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #3a4250;
+  border-radius: 6px;
+  background: #2f3540;
+  color: #fff;
+  font-size: 12px;
 }
+body.preview-mode .dz-exit-preview { display: inline-flex; align-items: center; }
 body.preview-mode .dz-main { display: block; }
 body.preview-mode .dz-canvas-wrap,
 body.preview-mode .dz-scroll {

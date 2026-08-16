@@ -596,21 +596,24 @@
     previewMode = on;
     document.body.classList.toggle("preview-mode", on);
     wrap.classList.toggle("preview-mode", on);
+    var exitBtn = document.getElementById("btn-exit-preview");
+    if (exitBtn) exitBtn.hidden = !on;
+    var prevBtn = document.getElementById("btn-preview");
+    if (prevBtn) prevBtn.textContent = on ? "بازگشت به طراحی" : "پیش‌نمایش چاپ";
     render();
   }
   document.getElementById("btn-preview").addEventListener("click", function () {
     setPreview(!previewMode);
-    this.textContent = previewMode ? "بازگشت به طراحی" : "پیش‌نمایش چاپ";
+  });
+  document.getElementById("btn-exit-preview").addEventListener("click", function () {
+    setPreview(false);
   });
   document.getElementById("btn-print").addEventListener("click", function () {
     var was = previewMode;
     setPreview(true);
     setTimeout(function () {
       window.print();
-      if (!was) {
-        setPreview(false);
-        document.getElementById("btn-preview").textContent = "پیش‌نمایش چاپ";
-      }
+      if (!was) setPreview(false);
     }, 50);
   });
 
