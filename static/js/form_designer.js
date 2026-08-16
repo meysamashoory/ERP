@@ -117,7 +117,20 @@
   }
 
   function kindLabel(k) {
-    return ({ header: "عنوان", box: "کادر", field: "فیلد", line: "خط", logo: "لوگو", row_number: "شمارش" })[k] || k;
+    return ({ header: "عنوان", box: "کادر", field: "کلید منابع", line: "خط", logo: "لوگو", row_number: "ردیف" })[k] || k;
+  }
+
+  function updateClipboardButtons() {
+    var copyBtn = document.getElementById("btn-copy");
+    var pasteBtn = document.getElementById("btn-paste");
+    if (copyBtn) {
+      copyBtn.disabled = !selectedId;
+      copyBtn.classList.toggle("is-ready", !!selectedId);
+    }
+    if (pasteBtn) {
+      pasteBtn.disabled = !clipboard;
+      pasteBtn.classList.toggle("is-ready", !!clipboard);
+    }
   }
 
   function syncUiChecks() {
@@ -214,24 +227,30 @@
   function renderLayers() {
     var list = document.getElementById("layers-list");
     list.innerHTML = "";
-    // Top of list = topmost layer (last in frames array)
     frames.slice().reverse().forEach(function (f) {
       var row = document.createElement("div");
-      row.className = "dz-clip" + (f.id === selectedId ? " is-active" : "") + (f.hidden ? " is-hidden" : "") + (f.locked ? " is-locked" : "");
+      row.className = "dz-clip" + (f.id === selectedId ? " is-active" : "") + (f.hidden ? " is-layer-hidden" : "") + (f.locked ? " is-locked" : "");
       row.draggable = true;
       row.dataset.id = f.id;
       row.innerHTML =
         '<span class="dz-drag-handle" title="جابجایی لایه">⋮⋮</span>' +
         '<span class="name">' + kindLabel(f.kind) + " — " + (f.label || "بدون نام") + "</span>" +
-        '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="قفل">' + (f.locked ? "🔒" : "🔓") + "</button>" +
-        '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش">👁</button>' +
-        '<button type="button" class="dz-icon-btn del" title="حذف">×</button>';
+        '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="قفل">' +
+          '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7V5.2A3 3 0 0 1 11 5.2V7h1.2A1.3 1.3 0 0 1 13.5 8.3v5A1.3 1.3 0 0 1 12.2 14.5H3.8A1.3 1.3 0 0 1 2.5 13.3v-5A1.3 1.3 0 0 1 3.8 7zm1.3 0h3.4V5.2a1.7 1.7 0 0 0-3.4 0z"/></svg>' +
+        "</button>" +
+        '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش"' + (f.locked ? " disabled" : "") + ">" +
+          '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2C4.2 3.2 1.3 6.1.5 8c.8 1.9 3.7 4.8 7.5 4.8S14.7 9.9 15.5 8C14.7 6.1 11.8 3.2 8 3.2zm0 7.6A2.8 2.8 0 1 1 8 5.2a2.8 2.8 0 0 1 0 5.6z"/></svg>' +
+        "</button>" +
+        '<button type="button" class="dz-icon-btn del" title="حذف"' + (f.locked ? " disabled" : "") + ">" +
+          '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 4.2 8 8l3.8-3.8 1.2 1.2L9.2 9.2l3.8 3.8-1.2 1.2L8 10.4l-3.8 3.8-1.2-1.2 3.8-3.8-3.8-3.8z"/></svg>' +
+        "</button>";
       row.addEventListener("click", function (e) {
         if (e.target.closest(".dz-icon-btn")) return;
         selectedId = f.id; selectedGuideIdx = null; render();
       });
       row.querySelector(".dz-eye").addEventListener("click", function (e) {
         e.stopPropagation();
+        if (f.locked) return;
         pushHistory();
         f.hidden = !f.hidden;
         render();
@@ -244,6 +263,7 @@
       });
       row.querySelector(".del").addEventListener("click", function (e) {
         e.stopPropagation();
+        if (f.locked) return;
         pushHistory();
         frames = frames.filter(function (x) { return x.id !== f.id; });
         if (selectedId === f.id) selectedId = null;
@@ -397,7 +417,7 @@
     if (guidesEnabled && !previewMode) {
       pageSettings.guides.forEach(function (g, gi) {
         var el = document.createElement("div");
-        el.className = "dz-guide " + g.axis + (selectedGuideIdx === gi ? " selected" : "");
+        el.className = "dz-guide " + g.axis;
         el.dataset.guideIndex = String(gi);
         if (g.axis === "h") el.style.top = px(g.pos) + "px";
         else el.style.left = px(g.pos) + "px";
@@ -411,10 +431,9 @@
         });
         canvas.appendChild(el);
       });
-      // Temporary guide while dragging from ruler
       if (dragGuide && !dragGuide.moving) {
         var tmp = document.createElement("div");
-        tmp.className = "dz-guide " + dragGuide.axis + " selected";
+        tmp.className = "dz-guide " + dragGuide.axis;
         if (dragGuide.axis === "h") tmp.style.top = px(dragGuide.pos) + "px";
         else tmp.style.left = px(dragGuide.pos) + "px";
         canvas.appendChild(tmp);
@@ -425,6 +444,7 @@
     var rowStep = masterRowHeight();
 
     frames.forEach(function (f, zi) {
+      if (f.hidden) return;
       if (previewMode && f.hidden) return;
 
       var copies = 1;
@@ -436,7 +456,6 @@
         var el = document.createElement("div");
         el.className = "dz-frame kind-" + (f.kind || "box") +
           (f.id === selectedId && i === 0 && !previewMode ? " selected" : "") +
-          (f.hidden ? " is-hidden" : "") +
           (f.locked ? " is-locked" : "");
         el.style.zIndex = String(2 + zi);
         el.style.left = px(f.left || 0) + "px";
@@ -461,9 +480,9 @@
         } else if (f.kind === "line") {
           /* border-top only */
         } else if (f.kind === "row_number") {
-          inner.textContent = previewMode ? String(i + 1) : (f.label || "شمارش");
+          inner.textContent = previewMode ? String(i + 1) : (f.label || "ردیف");
         } else if (f.kind === "field") {
-          var txt = f.label || "فیلد";
+          var txt = f.label || "کلید منابع";
           if (f.source && f.source_key && !previewMode) txt += " ⟨" + f.source + "." + f.source_key + "⟩";
           if (previewMode && f.source_key) txt = "{" + f.source_key + "}";
           inner.textContent = txt;
@@ -506,6 +525,7 @@
     drawRulers();
     renderLayers();
     renderProps();
+    updateClipboardButtons();
   }
 
   function applyProps() {
@@ -720,7 +740,7 @@
       var kind = btn.getAttribute("data-add");
       var f = {
         id: "f" + Date.now() + "-" + (uid++),
-        label: kind === "header" ? "عنوان" : kind === "field" ? "فیلد" : kind === "logo" ? "لوگو" : kind === "row_number" ? "ردیف" : kind === "line" ? "" : "کادر",
+        label: kind === "header" ? "عنوان" : kind === "field" ? "کلید منابع" : kind === "logo" ? "لوگو" : kind === "row_number" ? "ردیف" : kind === "line" ? "" : "کادر",
         kind: kind, left: 15, x: 15, y: 20 + frames.length * 8,
         width: (kind === "line" || kind === "header") ? Math.max(40, pageW() - 30) : (kind === "logo" ? 40 : 60),
         height: kind === "line" ? 1 : kind === "header" ? 12 : kind === "logo" ? 28 : 14,
@@ -782,6 +802,7 @@
     var f = find(selectedId);
     if (!f) return;
     clipboard = JSON.parse(JSON.stringify(f));
+    updateClipboardButtons();
     toast("کپی شد");
   }
   function cutSelected() {
@@ -805,8 +826,15 @@
     f.locked = false;
     frames.push(f);
     selectedId = f.id;
+    clipboard = null;
     render();
+    toast("جای‌گذاری شد");
   }
+
+  var copyBtnEl = document.getElementById("btn-copy");
+  var pasteBtnEl = document.getElementById("btn-paste");
+  if (copyBtnEl) copyBtnEl.addEventListener("click", function () { copySelected(); });
+  if (pasteBtnEl) pasteBtnEl.addEventListener("click", function () { pasteClipboard(); });
 
   window.addEventListener("keydown", function (e) {
     if (previewMode) return;

@@ -201,7 +201,10 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(resp, "حاشیه بالا")
         self.assertContains(resp, "designer-app")
         self.assertContains(resp, "Gridlines")
-        self.assertContains(resp, "فیلد شمارش ردیف")
+        self.assertContains(resp, "ردیف")
+        self.assertContains(resp, "کلید منابع")
+        self.assertContains(resp, "btn-copy")
+        self.assertContains(resp, "btn-paste")
         self.assertNotContains(resp, "اسنپ به لبه‌ها")
         self.assertNotContains(resp, "وارد کردن فرم از اکسل")
         # No main app sidebar in designer window

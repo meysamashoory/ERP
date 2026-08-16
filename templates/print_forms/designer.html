@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=7">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -37,28 +37,31 @@
       <span class="sep"></span>
       <div class="dz-align-group" id="align-group">
         <button type="button" data-align="right" disabled title="تراز راست">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v1.2H2zm4 3h8v1.2H6zm0 3h8v1.2H6zm-4 3h12v1.2H2z"/></svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="1.8" rx=".4"/><rect x="6" y="7.2" width="12" height="1.8" rx=".4"/><rect x="6" y="11.4" width="12" height="1.8" rx=".4"/><rect x="2" y="15.6" width="16" height="1.8" rx=".4"/></svg>
         </button>
         <button type="button" data-align="center" disabled title="تراز وسط">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v1.2H2zm3 3h8v1.2H5zm0 3h8v1.2H5zm-3 3h12v1.2H2z"/></svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="1.8" rx=".4"/><rect x="5" y="7.2" width="10" height="1.8" rx=".4"/><rect x="5" y="11.4" width="10" height="1.8" rx=".4"/><rect x="2" y="15.6" width="16" height="1.8" rx=".4"/></svg>
         </button>
         <button type="button" data-align="left" disabled title="تراز چپ">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v1.2H2zm0 3h8v1.2H2zm0 3h8v1.2H2zm0 3h12v1.2H2z"/></svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="1.8" rx=".4"/><rect x="2" y="7.2" width="12" height="1.8" rx=".4"/><rect x="2" y="11.4" width="12" height="1.8" rx=".4"/><rect x="2" y="15.6" width="16" height="1.8" rx=".4"/></svg>
         </button>
         <button type="button" data-valign="top" disabled title="بالا">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h12v1.2H2zm3 3h8v3H5zm0 5h8v3H5z"/></svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2.5" width="16" height="1.8" rx=".4"/><rect x="5.5" y="6" width="9" height="4.2" rx=".6"/><rect x="5.5" y="12.5" width="9" height="4.2" rx=".6"/></svg>
         </button>
         <button type="button" data-valign="middle" disabled title="وسط عمودی">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7.4h12v1.2H2zM5 3h8v3H5zm0 7h8v3H5z"/></svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="9.1" width="16" height="1.8" rx=".4"/><rect x="5.5" y="3.2" width="9" height="4.2" rx=".6"/><rect x="5.5" y="12.6" width="9" height="4.2" rx=".6"/></svg>
         </button>
         <button type="button" data-valign="bottom" disabled title="پایین">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 12.8h12V14H2zm3-9h8v3H5zm0 5h8v3H5z"/></svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="15.7" width="16" height="1.8" rx=".4"/><rect x="5.5" y="3.2" width="9" height="4.2" rx=".6"/><rect x="5.5" y="9.3" width="9" height="4.2" rx=".6"/></svg>
         </button>
       </div>
       <span class="sep"></span>
       <label class="dz-chk"><input type="checkbox" id="chk-grid" checked> Gridlines</label>
       <label class="dz-chk"><input type="checkbox" id="chk-ruler" checked> Ruler</label>
       <label class="dz-chk"><input type="checkbox" id="chk-guides" checked> Guides</label>
+      <span class="sep"></span>
+      <button type="button" class="dz-btn" id="btn-copy" disabled>Copy</button>
+      <button type="button" class="dz-btn" id="btn-paste" disabled>Paste</button>
       <span class="sep"></span>
       <button type="button" class="dz-btn" id="btn-preview">پیش‌نمایش چاپ</button>
       <button type="button" class="dz-btn" id="btn-print">چاپ</button>
@@ -165,8 +168,8 @@
           <div class="dz-tool-list">
             <button type="button" class="dz-tool" data-add="header">عنوان</button>
             <button type="button" class="dz-tool" data-add="box">کادر</button>
-            <button type="button" class="dz-tool" data-add="field">فیلد</button>
-            <button type="button" class="dz-tool" data-add="row_number">فیلد شمارش ردیف</button>
+            <button type="button" class="dz-tool" data-add="field">کلید منابع</button>
+            <button type="button" class="dz-tool" data-add="row_number">ردیف</button>
             <button type="button" class="dz-tool" data-add="line">خط</button>
             <button type="button" class="dz-tool" data-add="logo">لوگو</button>
           </div>
@@ -186,6 +189,6 @@
 {{ column_groups|json_script:"column-groups" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_designer.js' %}?v=6"></script>
+<script src="{% static 'js/form_designer.js' %}?v=7"></script>
 </body>
 </html>

@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block title %}{{ report.title }}{% endblock %}
-{% block heading %}گزارش‌ها{% endblock %}
+{% block heading %}{{ report.title }}{% endblock %}
 {% block nav_reports %}open{% endblock %}
 {% block nav_report_list %}active{% endblock %}
 
 {% block topbar_actions %}
-<div class="topbar-actions">
+<div class="topbar-actions topbar-actions-pair">
+  <span class="topbar-meta-num">شماره {{ report.number }}</span>
+  {% if report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
+  <span class="level-chip" title="سطح فعلی">{{ path_label }}</span>
+  {% if can_go_back %}
+  <a class="btn btn-sm btn-ghost" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
+  {% endif %}
   <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
   <div class="menu-drop">
-    <button type="button" class="btn btn-sm" data-menu-toggle>خروجی ▾</button>
+    <button type="button" class="btn btn-sm btn-primary-soft" data-menu-toggle>خروجی گزارش ▾</button>
     <div class="menu-panel" hidden>
       <a href="?export=excel&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی Excel</a>
       <a href="?export=pdf&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی PDF</a>
@@ -19,35 +25,20 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-head report-detail-head">
-  <div>
-    <h1>
-      {{ report.title }}
-      {% if report.description %}<span class="report-desc">({{ report.description }})</span>{% endif %}
-    </h1>
-    <p class="muted">شماره {{ report.number }}{% if report.is_standard %} — <span class="badge badge-approved">استاندارد</span>{% endif %}</p>
-  </div>
-</div>
-
-<div class="level-bar">
-  <div class="level-path">{{ path_label }}</div>
-  {% if can_go_back %}
-  <a class="btn btn-sm btn-ghost level-back" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
-  {% endif %}
-</div>
-
 <div class="panel" id="report-print-area">
-  <div class="panel-head">
-    <h2>نتایج ({{ rows|length }} ردیف){% if deeper %} — برای ورود به سطح بعد روی ردیف کلیک کنید{% endif %}</h2>
+  <div class="panel-head panel-head-compact no-print">
+    <h2>نتایج ({{ rows|length }} ردیف){% if deeper %} — برای ورود به سطح بعد روی ردیف دوبار کلیک کنید{% endif %}</h2>
   </div>
   {% if rows %}
   <div class="table-scroll">
-    <table class="table {% if deeper %}table-drill{% endif %}" id="report-data-table">
+    <table class="table table-nav-cells {% if deeper %}table-drill{% endif %}" id="report-data-table" tabindex="0">
       <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
       <tbody>
         {% for row in rows %}
-        <tr {% if deeper %}data-drill-index="{{ forloop.counter0 }}" class="drill-row"{% endif %}>
-          {% for cell in row %}<td class="num">{{ cell }}</td>{% endfor %}
+        <tr class="data-row {% if deeper %}drill-row{% endif %}"
+            {% if deeper %}data-drill-index="{{ forloop.counter0 }}"{% endif %}
+            data-row-index="{{ forloop.counter0 }}">
+          {% for cell in row %}<td class="num" data-col="{{ forloop.counter0 }}">{{ cell }}</td>{% endfor %}
         </tr>
         {% endfor %}
       </tbody>
@@ -79,13 +70,47 @@
   var printBtn = document.querySelector("[data-print-report]");
   if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
 
-  var deeper = {{ deeper|yesno:"true,false" }};
-  if (!deeper) return;
-  var payloads = JSON.parse(document.getElementById("report-payloads").textContent);
-  var filters = JSON.parse(document.getElementById("report-filters").textContent || "{}");
-  var level = {{ level }};
-  document.querySelectorAll("[data-drill-index]").forEach(function (tr) {
-    tr.addEventListener("click", function () {
+  var table = document.getElementById("report-data-table");
+  if (!table) return;
+  var rows = Array.prototype.slice.call(table.querySelectorAll("tbody tr"));
+  var selRow = 0;
+  var selCol = 0;
+
+  function paint() {
+    rows.forEach(function (tr, ri) {
+      tr.classList.toggle("is-row-selected", ri === selRow);
+      Array.prototype.forEach.call(tr.children, function (td, ci) {
+        td.classList.toggle("is-cell-focus", ri === selRow && ci === selCol);
+      });
+    });
+    if (rows[selRow]) {
+      var cell = rows[selRow].children[selCol];
+      if (cell && cell.scrollIntoView) cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }
+
+  function selectAt(ri, ci) {
+    if (!rows.length) return;
+    selRow = Math.max(0, Math.min(rows.length - 1, ri));
+    var cols = rows[selRow].children.length;
+    selCol = Math.max(0, Math.min(cols - 1, ci));
+    paint();
+  }
+
+  rows.forEach(function (tr, ri) {
+    tr.addEventListener("click", function (e) {
+      var td = e.target.closest("td");
+      var ci = td ? Array.prototype.indexOf.call(tr.children, td) : 0;
+      selectAt(ri, ci);
+      table.focus();
+    });
+    tr.addEventListener("dblclick", function () {
+      if (!tr.hasAttribute("data-drill-index")) return;
+      var deeper = {{ deeper|yesno:"true,false" }};
+      if (!deeper) return;
+      var payloads = JSON.parse(document.getElementById("report-payloads").textContent);
+      var filters = JSON.parse(document.getElementById("report-filters").textContent || "{}");
+      var level = {{ level }};
       var idx = parseInt(tr.getAttribute("data-drill-index"), 10);
       var payload = payloads[idx] || {};
       var params = new URLSearchParams();
@@ -95,6 +120,21 @@
       window.location = "?" + params.toString();
     });
   });
+
+  table.addEventListener("keydown", function (e) {
+    if (!rows.length) return;
+    var cols = rows[selRow] ? rows[selRow].children.length : 0;
+    if (e.key === "ArrowDown") { e.preventDefault(); selectAt(selRow + 1, selCol); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); selectAt(selRow - 1, selCol); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); selectAt(selRow, selCol + 1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); selectAt(selRow, selCol - 1); }
+    else if (e.key === "Enter" && rows[selRow] && rows[selRow].hasAttribute("data-drill-index")) {
+      rows[selRow].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    }
+  });
+
+  if (rows.length) selectAt(0, 0);
+  table.focus();
 })();
 </script>
 {% endblock %}

@@ -5,13 +5,9 @@
 {% block nav_report_list %}active{% endblock %}
 
 {% block content %}
-<div class="page-head page-head-sm">
-  <h1>مشاهده گزارش‌ها</h1>
-</div>
-
 <div class="panel panel-compact">
   {% if rows %}
-  <table class="table table-compact" id="report-list-table">
+  <table class="table table-compact table-list-nav" id="report-list-table">
     <thead>
       <tr>
         <th style="width:72px">
@@ -33,32 +29,34 @@
             </form>
           </div>
         </th>
-        <th style="width:90px">
+        <th class="col-type" style="width:100px">
           <a class="th-sort" href="?sort=type&dir={% if sort == 'type' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
             نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
-        <th style="width:210px">عملیات</th>
+        <th style="width:200px">عملیات</th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr data-report-id="{{ row.report.pk }}"
+      <tr class="list-row" data-report-id="{{ row.report.pk }}"
+          data-href="{% url 'report_detail' row.report.pk %}"
           data-title="{{ row.report.title }}"
           data-number="{{ row.report.number }}"
-          data-description="{{ row.report.description }}">
-        <td class="num">{{ row.report.number }}</td>
-        <td>
-          <a class="list-title" href="{% url 'report_detail' row.report.pk %}">{{ row.report.title }}</a>
+          data-description="{{ row.report.description }}"
+          tabindex="0">
+        <td class="num cell-nav">{{ row.report.number }}</td>
+        <td class="cell-nav">
+          <span class="list-title">{{ row.report.title }}</span>
           {% if row.report.description %}
           <div class="list-desc">({{ row.report.description }})</div>
           {% endif %}
         </td>
-        <td>{% if row.report.is_standard %}<span class="badge badge-approved">استاندارد</span>{% else %}<span class="badge">شخصی</span>{% endif %}</td>
-        <td>
+        <td class="col-type cell-nav">{% if row.report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% else %}<span class="type-label">شخصی</span>{% endif %}</td>
+        <td class="col-ops">
           <div class="ops-inline">
             <select class="ops-select" data-ops>
-              <option value="">عملیات…</option>
+              <option value="">…</option>
               {% if row.can_edit %}<option value="edit">ویرایش</option>{% endif %}
               {% if row.can_send %}<option value="send">ارسال به کاربر</option>{% endif %}
               {% if row.can_copy %}<option value="copy">ایجاد کپی</option>{% endif %}
@@ -136,6 +134,14 @@
   var filterBtn = document.getElementById("title-filter-toggle");
   var filterPanel = document.getElementById("title-filter-panel");
   if (filterBtn) filterBtn.addEventListener("click", function () { filterPanel.hidden = !filterPanel.hidden; });
+
+  document.querySelectorAll("#report-list-table tbody tr").forEach(function (tr) {
+    tr.addEventListener("click", function (e) {
+      if (e.target.closest(".col-ops") || e.target.closest("select") || e.target.closest("button")) return;
+      var href = tr.getAttribute("data-href");
+      if (href) window.location = href;
+    });
+  });
 
   document.querySelectorAll("[data-ops]").forEach(function (sel) {
     var apply = sel.parentElement.querySelector("[data-ops-apply]");

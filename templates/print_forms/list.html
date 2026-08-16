@@ -5,13 +5,9 @@
 {% block nav_form_list %}active{% endblock %}
 
 {% block content %}
-<div class="page-head page-head-sm">
-  <h1>مشاهده فرم‌ها</h1>
-</div>
-
 <div class="panel panel-compact">
   {% if rows %}
-  <table class="table table-compact">
+  <table class="table table-compact table-list-nav" id="form-list-table">
     <thead>
       <tr>
         <th style="width:72px">
@@ -31,30 +27,32 @@
             </form>
           </div>
         </th>
-        <th style="width:90px">
+        <th class="col-type" style="width:100px">
           <a class="th-sort" href="?sort=type&dir={% if sort == 'type' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
             نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
-        <th style="width:210px">عملیات</th>
+        <th style="width:200px">عملیات</th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr data-form-id="{{ row.form.pk }}"
+      <tr class="list-row" data-form-id="{{ row.form.pk }}"
+          data-href="{% url 'print_form_detail' row.form.pk %}"
           data-title="{{ row.form.title }}"
           data-number="{{ row.form.number }}"
-          data-description="{{ row.form.description }}">
-        <td class="num">{{ row.form.number }}</td>
-        <td>
-          <a class="list-title" href="{% url 'print_form_detail' row.form.pk %}">{{ row.form.title }}</a>
+          data-description="{{ row.form.description }}"
+          tabindex="0">
+        <td class="num cell-nav">{{ row.form.number }}</td>
+        <td class="cell-nav">
+          <span class="list-title">{{ row.form.title }}</span>
           {% if row.form.description %}<div class="list-desc">({{ row.form.description }})</div>{% endif %}
         </td>
-        <td>{% if row.form.is_standard %}<span class="badge badge-approved">استاندارد</span>{% else %}<span class="badge">شخصی</span>{% endif %}</td>
-        <td>
+        <td class="col-type cell-nav">{% if row.form.is_standard %}<span class="type-label type-standard">استاندارد</span>{% else %}<span class="type-label">شخصی</span>{% endif %}</td>
+        <td class="col-ops">
           <div class="ops-inline">
             <select class="ops-select" data-ops>
-              <option value="">عملیات…</option>
+              <option value="">…</option>
               {% if row.can_edit %}<option value="edit">ویرایش</option>{% endif %}
               {% if row.can_send %}<option value="send">ارسال به کاربر</option>{% endif %}
               {% if row.can_copy %}<option value="copy">ایجاد کپی</option>{% endif %}
@@ -132,6 +130,14 @@
   var filterBtn = document.getElementById("title-filter-toggle");
   var filterPanel = document.getElementById("title-filter-panel");
   if (filterBtn) filterBtn.addEventListener("click", function () { filterPanel.hidden = !filterPanel.hidden; });
+
+  document.querySelectorAll("#form-list-table tbody tr").forEach(function (tr) {
+    tr.addEventListener("click", function (e) {
+      if (e.target.closest(".col-ops") || e.target.closest("select") || e.target.closest("button")) return;
+      var href = tr.getAttribute("data-href");
+      if (href) window.location = href;
+    });
+  });
 
   document.querySelectorAll("[data-ops]").forEach(function (sel) {
     var apply = sel.parentElement.querySelector("[data-ops-apply]");
