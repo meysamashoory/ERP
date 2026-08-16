@@ -580,7 +580,7 @@ body.preview-mode .dz-guide { display: none !important; }
   .dz-titlebar, .dz-topbar, .dz-left, .dz-right,
   .dz-ruler-corner, .dz-ruler-h, .dz-ruler-v,
   .dz-grid, .dz-margin, .dz-guide, .dz-handle,
-  .badge-extend, .dz-toast { display: none !important; }
+  .badge-extend, .dz-toast, .dz-exit-preview { display: none !important; }
   .dz-main { display: block !important; }
   .dz-canvas-wrap, .dz-scroll {
     overflow: visible !important;
