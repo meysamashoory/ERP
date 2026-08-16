@@ -14,8 +14,10 @@ urlpatterns = [
     # Print forms
     path("forms/", views.form_list, name="print_form_list"),
     path("forms/create/", views.form_create, name="print_form_create"),
+    path("forms/save/", views.form_save_ajax, name="print_form_save_ajax_new"),
     path("forms/<int:pk>/", views.form_detail, name="print_form_detail"),
     path("forms/<int:pk>/edit/", views.form_edit, name="print_form_edit"),
+    path("forms/<int:pk>/save/", views.form_save_ajax, name="print_form_save_ajax"),
     path("forms/<int:pk>/delete/", views.form_delete, name="print_form_delete"),
     path("forms/<int:pk>/send/", views.form_send, name="print_form_send"),
     path("forms/<int:pk>/copy/", views.form_copy, name="print_form_copy"),

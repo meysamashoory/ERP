@@ -1,0 +1,169 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=3">
+</head>
+<body class="designer-app">
+<form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
+      data-save-url="{% if print_form %}{% url 'print_form_save_ajax' print_form.pk %}{% else %}{% url 'print_form_save_ajax_new' %}{% endif %}"
+      data-list-url="{% url 'print_form_list' %}">
+  {% csrf_token %}
+  {{ form.frames_json }}
+  {{ form.page_settings_json }}
+  {{ form.page_width_mm }}
+  {{ form.page_height_mm }}
+  {{ form.title }}
+  {{ form.number }}
+  {{ form.description }}
+  {{ form.is_standard }}
+
+  <div class="dz-shell">
+    <div class="dz-titlebar">
+      <span class="dz-title" id="dz-window-title">{{ page_title }}</span>
+      <div class="dz-win-btns">
+        <button type="button" id="dz-minimize" title="کوچک‌سازی">—</button>
+        <button type="button" id="dz-maximize" title="بزرگ‌سازی">□</button>
+        <button type="button" class="dz-close" id="dz-close" title="بستن">×</button>
+      </div>
+    </div>
+
+    <div class="dz-topbar">
+      <button type="button" class="dz-btn" id="btn-undo" title="بازگشت">↶ بکوارد</button>
+      <button type="button" class="dz-btn" id="btn-redo" title="جلو">↷ فوروارد</button>
+      <span class="sep"></span>
+      <div class="dz-align-group" id="align-group">
+        <button type="button" data-align="right" disabled title="تراز راست">⇤</button>
+        <button type="button" data-align="center" disabled title="تراز وسط">☰</button>
+        <button type="button" data-align="left" disabled title="تراز چپ">⇥</button>
+        <button type="button" data-valign="top" disabled title="بالا">⤒</button>
+        <button type="button" data-valign="middle" disabled title="وسط">≡</button>
+        <button type="button" data-valign="bottom" disabled title="پایین">⤓</button>
+      </div>
+      <span class="sep"></span>
+      <label class="dz-chk"><input type="checkbox" id="chk-grid" checked> Gridlines</label>
+      <label class="dz-chk"><input type="checkbox" id="chk-ruler" checked> Ruler</label>
+      <label class="dz-chk"><input type="checkbox" id="chk-guides" checked> Guides</label>
+      <span class="sep"></span>
+      <button type="button" class="dz-btn" id="btn-preview">پیش‌نمایش چاپ</button>
+      <button type="button" class="dz-btn" id="btn-print">چاپ</button>
+      <span class="sep"></span>
+      <button type="button" class="dz-btn ok" id="btn-save">ذخیره</button>
+      <button type="button" class="dz-btn primary" id="btn-register">ثبت فرم</button>
+    </div>
+
+    <div class="dz-main">
+      <aside class="dz-left" id="props-panel">
+        <div class="dz-section">
+          <h3>مشخصات فرم</h3>
+          <div class="dz-field">
+            <label>عنوان فرم</label>
+            <input type="text" id="ui-form-title" maxlength="200" placeholder="نام فرم">
+          </div>
+          <div class="dz-field">
+            <label>شماره فرم</label>
+            <input type="number" id="ui-form-number" min="1" max="999" step="1">
+          </div>
+        </div>
+        <div class="dz-section">
+          <h3>کاغذ و حاشیه چاپ</h3>
+          <div class="dz-field">
+            <label>اندازه کاغذ</label>
+            <select id="paper-preset">
+              <option value="A4-P">A4 عمودی</option>
+              <option value="A4-L">A4 افقی</option>
+              <option value="A5-P">A5 عمودی</option>
+              <option value="A5-L">A5 افقی</option>
+              <option value="custom">سفارشی</option>
+            </select>
+          </div>
+          <div class="dz-grid-2">
+            <div class="dz-field"><label>عرض</label><input type="number" id="prop-page-w" min="50" max="600" step="1"></div>
+            <div class="dz-field"><label>ارتفاع</label><input type="number" id="prop-page-h" min="50" max="600" step="1"></div>
+            <div class="dz-field"><label>حاشیه بالا</label><input type="number" id="margin-top" min="0" max="80" step="0.5"></div>
+            <div class="dz-field"><label>حاشیه پایین</label><input type="number" id="margin-bottom" min="0" max="80" step="0.5"></div>
+            <div class="dz-field"><label>حاشیه راست</label><input type="number" id="margin-right" min="0" max="80" step="0.5"></div>
+            <div class="dz-field"><label>حاشیه چپ</label><input type="number" id="margin-left" min="0" max="80" step="0.5"></div>
+          </div>
+          <div class="dz-field">
+            <label>شبکه (مم)</label>
+            <select id="snap-mm">
+              <option value="0.5">۰٫۵</option>
+              <option value="1">۱</option>
+              <option value="2" selected>۲</option>
+              <option value="5">۵</option>
+              <option value="10">۱۰</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="dz-section">
+          <h3>ویژگی شیء</h3>
+          <p class="muted" id="props-empty" style="font-size:12px;color:#64748b">یک آیتم را انتخاب کنید.</p>
+          <div id="props-fields" hidden>
+            <div class="dz-field"><label>برچسب</label><input id="prop-label"></div>
+            <div class="dz-grid-2">
+              <div class="dz-field"><label>X</label><input type="number" step="0.5" id="prop-x"></div>
+              <div class="dz-field"><label>Y</label><input type="number" step="0.5" id="prop-y"></div>
+              <div class="dz-field"><label>عرض</label><input type="number" step="0.5" id="prop-w"></div>
+              <div class="dz-field"><label>ارتفاع</label><input type="number" step="0.5" id="prop-h"></div>
+            </div>
+            <div id="logo-props" hidden>
+              <div class="dz-field"><label>تصویر لوگو</label><input type="file" id="prop-logo-file" accept="image/*"></div>
+            </div>
+            <div id="field-bind-props" hidden>
+              <div class="dz-field"><label>منبع</label><select id="prop-source"></select></div>
+              <div class="dz-field"><label>ستون</label><select id="prop-source-key"></select></div>
+              <label class="dz-chk" style="margin-top:6px"><input type="checkbox" id="prop-data-extend"> امتداد دیتا تا پایین صفحه</label>
+              <p id="field-bind-path" style="font-size:11px;color:#64748b;margin:4px 0 0"></p>
+            </div>
+            <div id="row-number-props" hidden>
+              <label class="dz-chk"><input type="checkbox" id="prop-row-extend"> امتداد شمارش ردیف</label>
+              <p style="font-size:11px;color:#64748b;margin:4px 0 0">با امتداد یک فیلد دیتا، شماره‌ها ۱…N ساخته می‌شوند.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="dz-canvas-wrap" id="canvas-wrap">
+        <div class="dz-ruler-corner" id="ruler-corner"></div>
+        <div class="dz-ruler-h" id="ruler-h"></div>
+        <div class="dz-ruler-v" id="ruler-v"></div>
+        <div class="dz-scroll" id="designer-scroll">
+          <div class="dz-stage" id="designer-stage">
+            <div class="dz-page" id="form-canvas"></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="dz-right">
+        <div class="dz-section">
+          <h3>ابزارها</h3>
+          <div class="dz-tool-list">
+            <button type="button" class="dz-tool" data-add="header">عنوان</button>
+            <button type="button" class="dz-tool" data-add="box">کادر</button>
+            <button type="button" class="dz-tool" data-add="field">فیلد</button>
+            <button type="button" class="dz-tool" data-add="row_number">فیلد شمارش ردیف</button>
+            <button type="button" class="dz-tool" data-add="line">خط</button>
+            <button type="button" class="dz-tool" data-add="logo">لوگو</button>
+          </div>
+        </div>
+        <div class="dz-section">
+          <h3>لایه‌ها / کلیپس</h3>
+          <div id="layers-list"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</form>
+<div class="dz-toast" id="dz-toast"></div>
+
+{{ column_groups|json_script:"column-groups" }}
+<script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
+<script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
+<script src="{% static 'js/form_designer.js' %}?v=3"></script>
+</body>
+</html>

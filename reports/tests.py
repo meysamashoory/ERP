@@ -167,17 +167,21 @@ class PrintFormFlowTests(TestCase):
     def test_create_form_with_frames(self):
         self.client.login(username="expert", password="erp12345")
         resp = self.client.post(
-            reverse("print_form_create"),
+            reverse("print_form_save_ajax_new"),
             {
                 "title": "فرم کنترل",
                 "description": "نسخه تست",
                 "number": 1,
                 "page_width_mm": 210,
                 "page_height_mm": 297,
-                "frames_json": '[{"id":"1","label":"عنوان","kind":"header","x":10,"y":10,"width":190,"height":20}]',
+                "frames_json": '[{"id":"1","label":"عنوان","kind":"header","left":10,"x":10,"y":10,"width":190,"height":20}]',
+                "page_settings_json": '{"margin_top":10,"margin_bottom":10,"margin_left":10,"margin_right":10,"show_grid":true,"show_ruler":true,"guides":[],"snap_mm":2}',
             },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
         form_obj = PrintForm.objects.get(number=1, owner=self.expert)
         self.assertEqual(len(form_obj.frames), 1)
         list_resp = self.client.get(reverse("print_form_list"))
@@ -195,7 +199,13 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(resp, "امتداد دیتا")
         self.assertContains(resp, "لوگو")
         self.assertContains(resp, "حاشیه بالا")
+        self.assertContains(resp, "designer-app")
+        self.assertContains(resp, "Gridlines")
+        self.assertContains(resp, "فیلد شمارش ردیف")
+        self.assertNotContains(resp, "اسنپ به لبه‌ها")
         self.assertNotContains(resp, "وارد کردن فرم از اکسل")
+        # No main app sidebar in designer window
+        self.assertNotContains(resp, "خروج از سامانه")
 
     def test_report_edit_shows_existing_columns(self):
         self.client.login(username="admin", password="erp12345")

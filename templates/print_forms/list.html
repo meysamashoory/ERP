@@ -140,7 +140,12 @@
       var row = sel.closest("tr");
       var op = sel.value;
       var id = row.getAttribute("data-form-id");
-      if (op === "edit") { window.location = "/forms/" + id + "/edit/"; return; }
+      if (op === "edit") {
+        var url = "/forms/" + id + "/edit/";
+        if (window.ERPOpenFormDesigner) window.ERPOpenFormDesigner(url);
+        else window.open(url, "erp-form-designer");
+        return;
+      }
       var tpl = document.getElementById(op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete");
       body.innerHTML = "";
       body.appendChild(tpl.content.cloneNode(true));

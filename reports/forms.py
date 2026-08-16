@@ -186,8 +186,8 @@ class PrintFormForm(forms.ModelForm):
         self.user = user
         super().__init__(*args, **kwargs)
         profile = get_profile(user) if user else None
+        self.fields["is_standard"].widget = forms.HiddenInput()
         if not (profile and profile.is_manager):
-            self.fields["is_standard"].widget = forms.HiddenInput()
             self.fields["is_standard"].initial = False
         # Page size is edited in the designer props panel.
         self.fields["page_width_mm"].widget = forms.HiddenInput()
@@ -203,7 +203,8 @@ class PrintFormForm(forms.ModelForm):
             self.fields["page_settings_json"].initial = json.dumps({
                 "margin_top": 10, "margin_bottom": 10,
                 "margin_left": 10, "margin_right": 10,
-                "snap_edge": 2,
+                "show_grid": True, "show_ruler": True,
+                "guides": [], "snap_mm": 2,
             })
         self.is_manager = bool(profile and profile.is_manager)
         _style_fields(self)
@@ -247,12 +248,13 @@ class PrintFormForm(forms.ModelForm):
                 "stroke": float(item.get("stroke") or 0.5),
                 "align": str(item.get("align") or "center")[:20],
                 "valign": str(item.get("valign") or "middle")[:20],
+                "hidden": bool(item.get("hidden")),
             }
-            if kind == "field":
+            if kind in ("field", "row_number"):
                 frame["source"] = str(item.get("source") or "")[:40]
                 frame["source_key"] = str(item.get("source_key") or "")[:80]
+                frame["data_extend"] = bool(item.get("data_extend"))
             if kind == "logo" and item.get("image_data"):
-                # Cap data-URL size (~1.5MB) to keep form JSON manageable.
                 img = str(item.get("image_data") or "")
                 frame["image_data"] = img[:2_000_000]
             cleaned.append(frame)
@@ -273,12 +275,30 @@ class PrintFormForm(forms.ModelForm):
             except (TypeError, ValueError):
                 return default
 
+        guides = data.get("guides") or []
+        clean_guides = []
+        if isinstance(guides, list):
+            for g in guides:
+                if not isinstance(g, dict):
+                    continue
+                axis = str(g.get("axis") or "h")
+                if axis not in ("h", "v"):
+                    continue
+                try:
+                    pos = float(g.get("pos") or 0)
+                except (TypeError, ValueError):
+                    continue
+                clean_guides.append({"axis": axis, "pos": pos})
+
         return {
             "margin_top": num("margin_top", 10),
             "margin_bottom": num("margin_bottom", 10),
             "margin_left": num("margin_left", 10),
             "margin_right": num("margin_right", 10),
-            "snap_edge": num("snap_edge", 2),
+            "show_grid": bool(data.get("show_grid", True)),
+            "show_ruler": bool(data.get("show_ruler", True)),
+            "guides": clean_guides,
+            "snap_mm": num("snap_mm", 2),
         }
 
     def clean_is_standard(self):

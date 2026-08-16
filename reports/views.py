@@ -384,7 +384,8 @@ def form_list(request: HttpRequest) -> HttpResponse:
 def form_create(request: HttpRequest) -> HttpResponse:
     if not can_create_form(request.user):
         return HttpResponseForbidden("مشاهده‌گر مجاز به ایجاد فرم نیست.")
-    if request.method == "POST":
+    if request.method == "POST" and request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        # Non-AJAX fallback
         form = PrintFormForm(request.POST, user=request.user)
         if form.is_valid():
             obj = form.save(commit=False)
@@ -394,7 +395,7 @@ def form_create(request: HttpRequest) -> HttpResponse:
             obj.page_settings = form.cleaned_data.get("page_settings_json") or {}
             obj.save()
             messages.success(request, "فرم ایجاد شد.")
-            return redirect("print_form_detail", pk=obj.pk)
+            return redirect("print_form_list")
     else:
         form = PrintFormForm(user=request.user)
         used = set(PrintForm.objects.filter(owner=request.user).values_list("number", flat=True))
@@ -403,7 +404,7 @@ def form_create(request: HttpRequest) -> HttpResponse:
         form.fields["number"].initial = form.fields["number"].initial or n
     return render(
         request,
-        "print_forms/form.html",
+        "print_forms/designer.html",
         {
             "form": form,
             "mode": "create",
@@ -420,7 +421,7 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
     form_obj = get_object_or_404(PrintForm, pk=pk)
     if not can_edit_form(request.user, form_obj):
         return HttpResponseForbidden("مجاز به ویرایش این فرم نیستید.")
-    if request.method == "POST":
+    if request.method == "POST" and request.headers.get("X-Requested-With") != "XMLHttpRequest":
         form = PrintFormForm(request.POST, instance=form_obj, user=request.user)
         if form.is_valid():
             obj = form.save(commit=False)
@@ -428,12 +429,12 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
             obj.page_settings = form.cleaned_data.get("page_settings_json") or {}
             obj.save()
             messages.success(request, "فرم به‌روزرسانی شد.")
-            return redirect("print_form_detail", pk=obj.pk)
+            return redirect("print_form_list")
     else:
         form = PrintFormForm(instance=form_obj, user=request.user)
     return render(
         request,
-        "print_forms/form.html",
+        "print_forms/designer.html",
         {
             "form": form,
             "mode": "edit",
@@ -444,6 +445,48 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
             "column_groups": COLUMN_GROUPS,
         },
     )
+
+
+@login_required
+@require_POST
+def form_save_ajax(request: HttpRequest, pk: int | None = None) -> HttpResponse:
+    """AJAX save for the fullscreen designer (stay on page or close after register)."""
+    from django.http import JsonResponse
+
+    if not can_create_form(request.user):
+        return JsonResponse({"ok": False, "error": "مجاز نیستید."}, status=403)
+
+    form_obj = None
+    if pk is not None:
+        form_obj = get_object_or_404(PrintForm, pk=pk)
+        if not can_edit_form(request.user, form_obj):
+            return JsonResponse({"ok": False, "error": "مجاز به ویرایش نیستید."}, status=403)
+        form = PrintFormForm(request.POST, instance=form_obj, user=request.user)
+    else:
+        form = PrintFormForm(request.POST, user=request.user)
+
+    if not form.is_valid():
+        errs = []
+        for field, messages_list in form.errors.items():
+            for msg in messages_list:
+                errs.append(f"{field}: {msg}")
+        return JsonResponse({"ok": False, "error": " | ".join(errs) or "مقادیر نامعتبر"}, status=400)
+
+    obj = form.save(commit=False)
+    if form_obj is None:
+        obj.owner = request.user
+        obj.created_by = request.user
+    obj.frames = form.cleaned_data.get("frames_json") or []
+    obj.page_settings = form.cleaned_data.get("page_settings_json") or {}
+    obj.save()
+    from django.urls import reverse
+    return JsonResponse({
+        "ok": True,
+        "pk": obj.pk,
+        "title": obj.title,
+        "save_url": reverse("print_form_save_ajax", args=[obj.pk]),
+        "edit_url": reverse("print_form_edit", args=[obj.pk]),
+    })
 
 
 @login_required

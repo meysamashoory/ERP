@@ -33,7 +33,8 @@
         <div class="nav-group-title">فرم‌ها</div>
         <a href="{% url 'print_form_list' %}" class="{% block nav_form_list %}{% endblock %}">مشاهده فرم‌ها</a>
         {% if profile.can_create_reports %}
-        <a href="{% url 'print_form_create' %}" class="{% block nav_form_create %}{% endblock %}">ایجاد فرم</a>
+        <a href="{% url 'print_form_create' %}" class="{% block nav_form_create %}{% endblock %}"
+           data-designer-open="{% url 'print_form_create' %}">ایجاد فرم</a>
         {% endif %}
       </div>
       {% if profile.can_manage_users or user.is_superuser %}
@@ -76,6 +77,26 @@
 <script src="{% static 'vendor/tom-select/tom-select.complete.min.js' %}?v=9"></script>
 <script src="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.js' %}?v=9"></script>
 <script src="{% static 'js/app.js' %}?v=9"></script>
+<script>
+(function () {
+  function openDesigner(url) {
+    var w = screen.availWidth || 1200;
+    var h = screen.availHeight || 800;
+    var feat = "popup=yes,width=" + w + ",height=" + h + ",left=0,top=0,resizable=yes,scrollbars=yes";
+    var win = window.open(url, "erp-form-designer", feat);
+    if (!win) window.location.href = url;
+    else try { win.focus(); } catch (e) {}
+    return false;
+  }
+  window.ERPOpenFormDesigner = openDesigner;
+  document.querySelectorAll("[data-designer-open]").forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      openDesigner(a.getAttribute("data-designer-open") || a.href);
+    });
+  });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
