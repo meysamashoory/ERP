@@ -9,7 +9,6 @@
   var pk = formEl.getAttribute("data-pk") || "";
   var saveUrl = formEl.getAttribute("data-save-url");
   var listUrl = formEl.getAttribute("data-list-url");
-  var csrf = (formEl.querySelector("[name=csrfmiddlewaretoken]") || {}).value || "";
 
   var frames = [];
   var pageSettings = {
@@ -26,12 +25,16 @@
     if (!f.align) f.align = "center";
     if (!f.valign) f.valign = "middle";
     if (f.hidden == null) f.hidden = false;
+    if (f.locked == null) f.locked = false;
+    if (f.rotation == null) f.rotation = 0;
+    if (f.data_extend == null) f.data_extend = false;
   });
 
   var groups = [];
   try { groups = JSON.parse(document.getElementById("column-groups").textContent || "[]"); } catch (e) {}
 
   var selectedId = null;
+  var selectedGuideIdx = null;
   var zoom = 1;
   var snap = pageSettings.snap_mm || 2;
   var uid = 1;
@@ -40,6 +43,9 @@
   var previewMode = false;
   var guidesEnabled = true;
   var dragGuide = null;
+  var clipboard = null;
+  var drag = null;
+  var layerDragId = null;
 
   var hiddenFrames = document.getElementById("id_frames_json");
   var hiddenSettings = document.getElementById("id_page_settings_json");
@@ -57,6 +63,7 @@
   function mmFromPx(v) { return v / (MM * zoom); }
   function snapMm(v) { return Math.round(v / snap) * snap; }
   function find(id) { return frames.find(function (f) { return f.id === id; }); }
+  function findIndex(id) { return frames.findIndex(function (f) { return f.id === id; }); }
   function toast(msg) {
     var t = document.getElementById("dz-toast");
     t.textContent = msg; t.classList.add("show");
@@ -70,26 +77,37 @@
     history.push(cloneState());
     if (history.length > 80) history.shift();
     future = [];
+    updateHistoryButtons();
   }
   function restoreState(raw) {
     var s = JSON.parse(raw);
     frames = s.frames || [];
     pageSettings = Object.assign(pageSettings, s.pageSettings || {});
+    if (!Array.isArray(pageSettings.guides)) pageSettings.guides = [];
     pageWInput.value = s.pageW; pageHInput.value = s.pageH;
     snap = pageSettings.snap_mm || 2;
     selectedId = null;
+    selectedGuideIdx = null;
     syncUiChecks();
     render();
+  }
+  function updateHistoryButtons() {
+    var u = document.getElementById("btn-undo");
+    var r = document.getElementById("btn-redo");
+    if (u) u.disabled = !history.length;
+    if (r) r.disabled = !future.length;
   }
   function undo() {
     if (!history.length) return;
     future.push(cloneState());
     restoreState(history.pop());
+    updateHistoryButtons();
   }
   function redo() {
     if (!future.length) return;
     history.push(cloneState());
     restoreState(future.pop());
+    updateHistoryButtons();
   }
 
   function syncHidden() {
@@ -118,23 +136,35 @@
     var found = "custom", w = pageW(), h = pageH();
     Object.keys(PRESETS).forEach(function (k) { if (PRESETS[k][0] === w && PRESETS[k][1] === h) found = k; });
     document.getElementById("paper-preset").value = found;
+    updateHistoryButtons();
   }
 
+  /* RTL: 0 at right edge → left; vertical ruler on left */
   function drawRulers() {
     if (!pageSettings.show_ruler) { rulerH.innerHTML = ""; rulerV.innerHTML = ""; return; }
     var w = pageW(), h = pageH();
     var scrollLeft = scrollEl.scrollLeft;
     var scrollTop = scrollEl.scrollTop;
-    var pad = 24; // stage padding
+    var paper = canvas.getBoundingClientRect();
+    var wrapRect = wrap.getBoundingClientRect();
+    var paperLeftInScroll = canvas.offsetLeft;
+    var paperTopInScroll = canvas.offsetTop;
+
     rulerH.innerHTML = "";
     rulerV.innerHTML = "";
-    rulerH.style.width = px(w) + pad * 2 + "px";
-    rulerV.style.height = px(h) + pad * 2 + "px";
+
+    // Position ticks relative to paper within the fixed ruler strip
+    var paperOffsetX = paper.left - wrapRect.left - 24; // relative to ruler-h which starts after corner
+    var paperOffsetY = paper.top - wrapRect.top - 24;
+
     for (var x = 0; x <= w; x += 1) {
       if (x % 5 !== 0 && snap > 1) continue;
       var tick = document.createElement("div");
       tick.className = "dz-tick" + (x % 10 === 0 ? " major" : "");
-      tick.style.left = (pad + px(x) - scrollLeft) + "px";
+      // 0 at right edge of paper
+      var fromRightPx = px(x);
+      var leftPos = paperOffsetX + px(w) - fromRightPx;
+      tick.style.left = leftPos + "px";
       if (x % 10 === 0) {
         var lab = document.createElement("span");
         lab.textContent = String(x);
@@ -146,7 +176,7 @@
       if (y % 5 !== 0 && snap > 1) continue;
       var tick2 = document.createElement("div");
       tick2.className = "dz-tick" + (y % 10 === 0 ? " major" : "");
-      tick2.style.top = (pad + px(y) - scrollTop) + "px";
+      tick2.style.top = (paperOffsetY + px(y)) + "px";
       if (y % 10 === 0) {
         var lab2 = document.createElement("span");
         lab2.textContent = String(y);
@@ -163,32 +193,60 @@
     return Math.max(1, Math.floor(avail / rowH));
   }
 
+  /** Row count comes from the first extended data field (not page bottom alone). */
   function extendMasterRows() {
     var masters = frames.filter(function (f) {
-      return !f.hidden && (f.kind === "field") && f.data_extend;
+      return !f.hidden && f.kind === "field" && f.data_extend;
     });
     if (!masters.length) return 0;
     return estimateExtendRows(masters[0]);
   }
 
+  function masterRowHeight() {
+    var masters = frames.filter(function (f) {
+      return !f.hidden && f.kind === "field" && f.data_extend;
+    });
+    if (!masters.length) return 14;
+    return Math.max(masters[0].height || 8, 6);
+  }
+
+  function copiesForFrame(f, masterRows) {
+    if (!f.data_extend) return 1;
+    if (f.kind === "field") return estimateExtendRows(f);
+    // row_number / box / line / others with extend follow master data field count
+    if (masterRows > 0) return masterRows;
+    return 1;
+  }
+
   function renderLayers() {
     var list = document.getElementById("layers-list");
     list.innerHTML = "";
+    // Top of list = topmost layer (last in frames array)
     frames.slice().reverse().forEach(function (f) {
       var row = document.createElement("div");
-      row.className = "dz-clip" + (f.id === selectedId ? " is-active" : "") + (f.hidden ? " is-hidden" : "");
+      row.className = "dz-clip" + (f.id === selectedId ? " is-active" : "") + (f.hidden ? " is-hidden" : "") + (f.locked ? " is-locked" : "");
+      row.draggable = true;
+      row.dataset.id = f.id;
       row.innerHTML =
+        '<span class="dz-drag-handle" title="جابجایی لایه">⋮⋮</span>' +
         '<span class="name">' + kindLabel(f.kind) + " — " + (f.label || "بدون نام") + "</span>" +
-        '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش" aria-label="مخفی">👁</button>' +
+        '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="قفل">' + (f.locked ? "🔒" : "🔓") + "</button>" +
+        '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش">👁</button>' +
         '<button type="button" class="dz-icon-btn del" title="حذف">×</button>';
       row.addEventListener("click", function (e) {
         if (e.target.closest(".dz-icon-btn")) return;
-        selectedId = f.id; render();
+        selectedId = f.id; selectedGuideIdx = null; render();
       });
       row.querySelector(".dz-eye").addEventListener("click", function (e) {
         e.stopPropagation();
         pushHistory();
         f.hidden = !f.hidden;
+        render();
+      });
+      row.querySelector(".dz-lock").addEventListener("click", function (e) {
+        e.stopPropagation();
+        pushHistory();
+        f.locked = !f.locked;
         render();
       });
       row.querySelector(".del").addEventListener("click", function (e) {
@@ -198,13 +256,37 @@
         if (selectedId === f.id) selectedId = null;
         render();
       });
+      row.addEventListener("dragstart", function (e) {
+        layerDragId = f.id;
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", function () {
+        layerDragId = null;
+        row.classList.remove("dragging");
+      });
+      row.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      });
+      row.addEventListener("drop", function (e) {
+        e.preventDefault();
+        if (!layerDragId || layerDragId === f.id) return;
+        pushHistory();
+        var from = findIndex(layerDragId);
+        var to = findIndex(f.id);
+        if (from < 0 || to < 0) return;
+        var item = frames.splice(from, 1)[0];
+        frames.splice(to, 0, item);
+        selectedId = layerDragId;
+        render();
+      });
       list.appendChild(row);
     });
   }
 
   function updateAlignButtons() {
     var f = find(selectedId);
-    // Alignment like Word/Excel: only for title / text field / box / row number
     var textish = f && (f.kind === "header" || f.kind === "field" || f.kind === "box" || f.kind === "row_number");
     document.querySelectorAll("#align-group button").forEach(function (btn) {
       btn.disabled = !textish;
@@ -250,15 +332,20 @@
     document.getElementById("prop-y").value = f.y || 0;
     document.getElementById("prop-w").value = f.width;
     document.getElementById("prop-h").value = f.height;
+    document.getElementById("prop-rotation").value = f.rotation || 0;
     document.getElementById("logo-props").hidden = f.kind !== "logo";
     document.getElementById("field-bind-props").hidden = f.kind !== "field";
     document.getElementById("row-number-props").hidden = f.kind !== "row_number";
+    document.getElementById("shape-extend-props").hidden = !(f.kind === "box" || f.kind === "line");
     if (f.kind === "field") {
       document.getElementById("prop-data-extend").checked = !!f.data_extend;
       fillSources(f);
     }
     if (f.kind === "row_number") {
       document.getElementById("prop-row-extend").checked = !!f.data_extend;
+    }
+    if (f.kind === "box" || f.kind === "line") {
+      document.getElementById("prop-shape-extend").checked = !!f.data_extend;
     }
   }
 
@@ -297,8 +384,8 @@
     if (pageSettings.show_grid && !previewMode) {
       var grid = document.createElement("div");
       grid.className = "dz-grid";
-      var g = px(snap);
-      grid.style.backgroundSize = g + "px " + g + "px";
+      var gsz = px(snap);
+      grid.style.backgroundSize = gsz + "px " + gsz + "px";
       canvas.appendChild(grid);
     }
 
@@ -315,31 +402,45 @@
     }
 
     if (guidesEnabled && !previewMode) {
-      pageSettings.guides.forEach(function (g) {
+      pageSettings.guides.forEach(function (g, gi) {
         var el = document.createElement("div");
-        el.className = "dz-guide " + g.axis;
+        el.className = "dz-guide " + g.axis + (selectedGuideIdx === gi ? " selected" : "");
+        el.dataset.guideIndex = String(gi);
         if (g.axis === "h") el.style.top = px(g.pos) + "px";
         else el.style.left = px(g.pos) + "px";
+        el.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          selectedGuideIdx = gi;
+          selectedId = null;
+          dragGuide = { axis: g.axis, pos: g.pos, index: gi, moving: true };
+          render();
+        });
         canvas.appendChild(el);
       });
     }
 
     var masterRows = extendMasterRows();
+    var rowStep = masterRowHeight();
 
-    frames.forEach(function (f) {
+    frames.forEach(function (f, zi) {
       if (previewMode && f.hidden) return;
 
-      // Preview expansion for extend fields / row numbers
       var copies = 1;
-      if (previewMode && f.data_extend && (f.kind === "field" || f.kind === "row_number")) {
-        copies = f.kind === "row_number" ? (masterRows || estimateExtendRows(f)) : estimateExtendRows(f);
+      if (previewMode && f.data_extend) {
+        copies = copiesForFrame(f, masterRows);
       }
 
       for (var i = 0; i < copies; i++) {
         var el = document.createElement("div");
-        el.className = "dz-frame kind-" + (f.kind || "box") + (f.id === selectedId && i === 0 ? " selected" : "") + (f.hidden ? " is-hidden" : "");
+        el.className = "dz-frame kind-" + (f.kind || "box") +
+          (f.id === selectedId && i === 0 && !previewMode ? " selected" : "") +
+          (f.hidden ? " is-hidden" : "") +
+          (f.locked ? " is-locked" : "");
+        el.style.zIndex = String(2 + zi);
         el.style.left = px(f.left || 0) + "px";
-        el.style.top = px((f.y || 0) + i * (f.height || 8)) + "px";
+        var step = (f.kind === "field") ? (f.height || 8) : rowStep;
+        el.style.top = px((f.y || 0) + i * step) + "px";
         el.style.width = px(f.width || 20) + "px";
         el.style.height = px(f.height || 10) + "px";
         el.style.transform = "rotate(" + (f.rotation || 0) + "deg)";
@@ -373,7 +474,7 @@
         if (!previewMode && f.data_extend && i === 0) {
           var badge = document.createElement("span");
           badge.className = "badge-extend";
-          badge.textContent = "امتداد";
+          badge.textContent = f.kind === "row_number" ? "وابسته به فیلد" : "امتداد";
           el.appendChild(badge);
         }
 
@@ -389,6 +490,11 @@
                 hndl.addEventListener("mousedown", startResize);
                 el.appendChild(hndl);
               });
+              var rot = document.createElement("span");
+              rot.className = "dz-handle rotate";
+              rot.title = "چرخش";
+              rot.addEventListener("mousedown", startRotate);
+              el.appendChild(rot);
             }
           }
         }
@@ -403,17 +509,20 @@
 
   function applyProps() {
     var f = find(selectedId); if (!f) return;
+    if (f.locked) return;
     pushHistory();
     f.label = document.getElementById("prop-label").value;
     f.left = snapMm(Math.max(0, parseFloat(document.getElementById("prop-x").value) || 0));
     f.y = snapMm(Math.max(0, parseFloat(document.getElementById("prop-y").value) || 0));
     f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
     f.height = Math.max(0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+    f.rotation = parseFloat(document.getElementById("prop-rotation").value) || 0;
     if (f.kind === "line") { f.height = Math.max(0.5, f.height); }
     render();
   }
-  ["prop-label","prop-x","prop-y","prop-w","prop-h"].forEach(function (id) {
-    document.getElementById(id).addEventListener("change", applyProps);
+  ["prop-label","prop-x","prop-y","prop-w","prop-h","prop-rotation"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("change", applyProps);
   });
   document.getElementById("prop-data-extend").addEventListener("change", function () {
     var f = find(selectedId); if (!f || f.kind !== "field") return;
@@ -421,6 +530,10 @@
   });
   document.getElementById("prop-row-extend").addEventListener("change", function () {
     var f = find(selectedId); if (!f || f.kind !== "row_number") return;
+    pushHistory(); f.data_extend = this.checked; render();
+  });
+  document.getElementById("prop-shape-extend").addEventListener("change", function () {
+    var f = find(selectedId); if (!f || (f.kind !== "box" && f.kind !== "line")) return;
     pushHistory(); f.data_extend = this.checked; render();
   });
   document.getElementById("prop-logo-file").addEventListener("change", function (e) {
@@ -433,7 +546,7 @@
 
   document.querySelectorAll("#align-group button").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var f = find(selectedId); if (!f || btn.disabled) return;
+      var f = find(selectedId); if (!f || btn.disabled || f.locked) return;
       pushHistory();
       if (btn.dataset.align) f.align = btn.dataset.align;
       if (btn.dataset.valign) f.valign = btn.dataset.valign;
@@ -441,7 +554,6 @@
     });
   });
 
-  // Paper / margins
   var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
   document.getElementById("paper-preset").addEventListener("change", function () {
     var v = this.value; if (!PRESETS[v]) return;
@@ -483,13 +595,14 @@
     guidesEnabled = this.checked; render();
   });
 
-  // Drag / resize
-  var drag = null;
   function startDrag(e) {
     if (e.target.classList.contains("dz-handle")) return;
     e.preventDefault();
     selectedId = e.currentTarget.dataset.id;
+    selectedGuideIdx = null;
     var f = find(selectedId);
+    if (!f) return;
+    if (f.locked) { render(); return; }
     pushHistory();
     drag = { mode: "move", id: selectedId, startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y || 0 };
     render();
@@ -497,13 +610,29 @@
   function startResize(e) {
     e.preventDefault(); e.stopPropagation();
     var id = e.currentTarget.parentElement.dataset.id;
-    var f = find(id); selectedId = id;
+    var f = find(id); if (!f || f.locked) return;
+    selectedId = id; selectedGuideIdx = null;
     pushHistory();
     drag = {
       mode: "resize", corner: e.currentTarget.dataset.corner, id: id,
       startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y || 0, ow: f.width, oh: f.height
     };
   }
+  function startRotate(e) {
+    e.preventDefault(); e.stopPropagation();
+    var id = e.currentTarget.parentElement.dataset.id;
+    var f = find(id); if (!f || f.locked) return;
+    selectedId = id;
+    pushHistory();
+    var rect = e.currentTarget.parentElement.getBoundingClientRect();
+    drag = {
+      mode: "rotate", id: id,
+      cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2,
+      startAngle: f.rotation || 0,
+      startMouse: Math.atan2(e.clientY - (rect.top + rect.height / 2), e.clientX - (rect.left + rect.width / 2)) * 180 / Math.PI
+    };
+  }
+
   window.addEventListener("mousemove", function (e) {
     if (dragGuide) {
       var rect = canvas.getBoundingClientRect();
@@ -512,11 +641,20 @@
       } else {
         dragGuide.pos = snapMm(Math.max(0, Math.min(pageW(), mmFromPx(e.clientX - rect.left))));
       }
+      if (dragGuide.moving && dragGuide.index != null) {
+        pageSettings.guides[dragGuide.index].pos = dragGuide.pos;
+      }
       render();
       return;
     }
     if (!drag) return;
     var f = find(drag.id); if (!f) return;
+    if (drag.mode === "rotate") {
+      var ang = Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx) * 180 / Math.PI;
+      f.rotation = Math.round((drag.startAngle + (ang - drag.startMouse)) / 5) * 5;
+      render();
+      return;
+    }
     var dx = mmFromPx(e.clientX - drag.startX);
     var dy = mmFromPx(e.clientY - drag.startY);
     if (drag.mode === "move") {
@@ -539,8 +677,11 @@
   });
   window.addEventListener("mouseup", function () {
     if (dragGuide) {
-      pushHistory();
-      pageSettings.guides.push({ axis: dragGuide.axis, pos: dragGuide.pos });
+      if (!dragGuide.moving) {
+        pushHistory();
+        pageSettings.guides.push({ axis: dragGuide.axis, pos: dragGuide.pos });
+        selectedGuideIdx = pageSettings.guides.length - 1;
+      }
       dragGuide = null;
       render();
     }
@@ -548,27 +689,29 @@
   });
 
   canvas.addEventListener("mousedown", function (e) {
-    if (e.target === canvas || e.target.classList.contains("dz-grid") || e.target.classList.contains("dz-margin") || e.target.classList.contains("dz-guide")) {
-      selectedId = null; render();
+    if (e.target === canvas || e.target.classList.contains("dz-grid") || e.target.classList.contains("dz-margin")) {
+      selectedId = null; selectedGuideIdx = null; render();
     }
   });
 
-  // Guides from rulers (Visio-like)
   function startGuideFromRuler(axis, e) {
     if (!guidesEnabled || !pageSettings.show_ruler) return;
     e.preventDefault();
     var rect = canvas.getBoundingClientRect();
+    selectedId = null;
     dragGuide = {
       axis: axis,
       pos: axis === "h"
         ? snapMm(Math.max(0, mmFromPx(e.clientY - rect.top)))
-        : snapMm(Math.max(0, mmFromPx(e.clientX - rect.left)))
+        : snapMm(Math.max(0, mmFromPx(e.clientX - rect.left))),
+      moving: false
     };
   }
   rulerH.addEventListener("mousedown", function (e) { startGuideFromRuler("h", e); });
   rulerV.addEventListener("mousedown", function (e) { startGuideFromRuler("v", e); });
 
   scrollEl.addEventListener("scroll", function () { drawRulers(); });
+  window.addEventListener("resize", function () { drawRulers(); });
 
   document.querySelectorAll("[data-add]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -580,10 +723,10 @@
         kind: kind, left: 15, x: 15, y: 20 + frames.length * 8,
         width: (kind === "line" || kind === "header") ? Math.max(40, pageW() - 30) : (kind === "logo" ? 40 : 60),
         height: kind === "line" ? 1 : kind === "header" ? 12 : kind === "logo" ? 28 : 14,
-        rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false
+        rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false, locked: false, data_extend: false
       };
       if (kind === "field" || kind === "row_number") {
-        f.source = ""; f.source_key = ""; f.data_extend = false;
+        f.source = ""; f.source_key = "";
       }
       frames.push(f); selectedId = f.id; render();
     });
@@ -593,13 +736,15 @@
   document.getElementById("btn-redo").addEventListener("click", redo);
 
   function setPreview(on) {
-    previewMode = on;
-    document.body.classList.toggle("preview-mode", on);
-    wrap.classList.toggle("preview-mode", on);
+    previewMode = !!on;
+    document.body.classList.toggle("preview-mode", previewMode);
+    wrap.classList.toggle("preview-mode", previewMode);
     var exitBtn = document.getElementById("btn-exit-preview");
-    if (exitBtn) exitBtn.hidden = !on;
+    if (exitBtn) exitBtn.hidden = !previewMode;
     var prevBtn = document.getElementById("btn-preview");
-    if (prevBtn) prevBtn.textContent = on ? "بازگشت به طراحی" : "پیش‌نمایش چاپ";
+    if (prevBtn) prevBtn.textContent = previewMode ? "بازگشت به طراحی" : "پیش‌نمایش چاپ";
+    selectedId = null;
+    selectedGuideIdx = null;
     render();
   }
   document.getElementById("btn-preview").addEventListener("click", function () {
@@ -617,10 +762,81 @@
     }, 50);
   });
 
+  function deleteSelected() {
+    if (selectedGuideIdx != null) {
+      pushHistory();
+      pageSettings.guides.splice(selectedGuideIdx, 1);
+      selectedGuideIdx = null;
+      render();
+      return;
+    }
+    var f = find(selectedId);
+    if (!f || f.locked) return;
+    pushHistory();
+    frames = frames.filter(function (x) { return x.id !== f.id; });
+    selectedId = null;
+    render();
+  }
+  function copySelected() {
+    var f = find(selectedId);
+    if (!f) return;
+    clipboard = JSON.parse(JSON.stringify(f));
+    toast("کپی شد");
+  }
+  function cutSelected() {
+    var f = find(selectedId);
+    if (!f || f.locked) return;
+    clipboard = JSON.parse(JSON.stringify(f));
+    pushHistory();
+    frames = frames.filter(function (x) { return x.id !== f.id; });
+    selectedId = null;
+    render();
+    toast("برش شد");
+  }
+  function pasteClipboard() {
+    if (!clipboard) return;
+    pushHistory();
+    var f = JSON.parse(JSON.stringify(clipboard));
+    f.id = "f" + Date.now() + "-" + (uid++);
+    f.left = snapMm((f.left || 0) + 5);
+    f.y = snapMm((f.y || 0) + 5);
+    f.x = f.left;
+    f.locked = false;
+    frames.push(f);
+    selectedId = f.id;
+    render();
+  }
+
+  window.addEventListener("keydown", function (e) {
+    if (previewMode) return;
+    var tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") { e.preventDefault(); copySelected(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "x") { e.preventDefault(); cutSelected(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") { e.preventDefault(); pasteClipboard(); return; }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelected(); return; }
+
+    var f = find(selectedId);
+    if (!f || f.locked) return;
+    var step = e.shiftKey ? snap : (snap / 2 || 0.5);
+    var moved = false;
+    if (e.key === "ArrowLeft") { f.left = snapMm(Math.max(0, (f.left || 0) - step)); moved = true; }
+    if (e.key === "ArrowRight") { f.left = snapMm((f.left || 0) + step); moved = true; }
+    if (e.key === "ArrowUp") { f.y = snapMm(Math.max(0, (f.y || 0) - step)); moved = true; }
+    if (e.key === "ArrowDown") { f.y = snapMm((f.y || 0) + step); moved = true; }
+    if (moved) {
+      e.preventDefault();
+      if (!drag) pushHistory();
+      render();
+    }
+  });
+
   function gatherPayload() {
     syncHidden();
-    var fd = new FormData(formEl);
-    return fd;
+    return new FormData(formEl);
   }
 
   function saveAjax(thenClose) {
@@ -645,6 +861,7 @@
         pk = String(data.pk);
         formEl.setAttribute("data-pk", pk);
         formEl.setAttribute("data-mode", "edit");
+        mode = "edit";
         saveUrl = data.save_url || saveUrl;
         formEl.setAttribute("data-save-url", saveUrl);
         if (data.title) document.getElementById("dz-window-title").textContent = "ویرایش فرم — " + data.title;
@@ -652,7 +869,7 @@
       toast("ذخیره شد");
       if (thenClose) {
         if (window.opener && !window.opener.closed) {
-          try { window.opener.location.href = listUrl; } catch (e) {}
+          try { window.opener.location.href = listUrl; } catch (err) {}
           window.close();
         } else {
           window.location.href = listUrl;
@@ -664,13 +881,11 @@
   document.getElementById("btn-save").addEventListener("click", function () { saveAjax(false); });
   document.getElementById("btn-register").addEventListener("click", function () { saveAjax(true); });
 
-  // Window chrome helpers
   document.getElementById("dz-close").addEventListener("click", function () {
     if (window.opener) window.close();
     else window.location.href = listUrl;
   });
   document.getElementById("dz-minimize").addEventListener("click", function () {
-    // Browsers restrict minimize; blur as soft minimize fallback.
     try { window.blur(); } catch (e) {}
     toast("از نوار وظیفه مرورگر می‌توانید بازگردید");
   });
@@ -683,7 +898,13 @@
     }
   });
 
-  // Init
+  // Force LTR number inputs so spinners stay put
+  document.querySelectorAll('input[type="number"]').forEach(function (inp) {
+    inp.setAttribute("lang", "en");
+    inp.setAttribute("dir", "ltr");
+    inp.style.unicodeBidi = "isolate";
+  });
+
   syncFormMetaUi();
   syncUiChecks();
   render();

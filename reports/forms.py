@@ -250,10 +250,12 @@ class PrintFormForm(forms.ModelForm):
                 "valign": str(item.get("valign") or "middle")[:20],
                 "hidden": bool(item.get("hidden")),
             }
+            if kind in ("field", "row_number", "box", "line"):
+                frame["data_extend"] = bool(item.get("data_extend"))
             if kind in ("field", "row_number"):
                 frame["source"] = str(item.get("source") or "")[:40]
                 frame["source_key"] = str(item.get("source_key") or "")[:80]
-                frame["data_extend"] = bool(item.get("data_extend"))
+            frame["locked"] = bool(item.get("locked"))
             if kind == "logo" and item.get("image_data"):
                 img = str(item.get("image_data") or "")
                 frame["image_data"] = img[:2_000_000]
