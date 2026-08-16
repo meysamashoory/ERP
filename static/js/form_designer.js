@@ -143,28 +143,21 @@
   function drawRulers() {
     if (!pageSettings.show_ruler) { rulerH.innerHTML = ""; rulerV.innerHTML = ""; return; }
     var w = pageW(), h = pageH();
-    var scrollLeft = scrollEl.scrollLeft;
-    var scrollTop = scrollEl.scrollTop;
-    var paper = canvas.getBoundingClientRect();
-    var wrapRect = wrap.getBoundingClientRect();
-    var paperLeftInScroll = canvas.offsetLeft;
-    var paperTopInScroll = canvas.offsetTop;
-
     rulerH.innerHTML = "";
     rulerV.innerHTML = "";
 
-    // Position ticks relative to paper within the fixed ruler strip
-    var paperOffsetX = paper.left - wrapRect.left - 24; // relative to ruler-h which starts after corner
-    var paperOffsetY = paper.top - wrapRect.top - 24;
+    var paperRect = canvas.getBoundingClientRect();
+    var hRect = rulerH.getBoundingClientRect();
+    var vRect = rulerV.getBoundingClientRect();
+    var paperLeftInH = paperRect.left - hRect.left;
+    var paperTopInV = paperRect.top - vRect.top;
 
     for (var x = 0; x <= w; x += 1) {
       if (x % 5 !== 0 && snap > 1) continue;
       var tick = document.createElement("div");
       tick.className = "dz-tick" + (x % 10 === 0 ? " major" : "");
-      // 0 at right edge of paper
-      var fromRightPx = px(x);
-      var leftPos = paperOffsetX + px(w) - fromRightPx;
-      tick.style.left = leftPos + "px";
+      // 0 at the right edge of the paper
+      tick.style.left = (paperLeftInH + px(w) - px(x)) + "px";
       if (x % 10 === 0) {
         var lab = document.createElement("span");
         lab.textContent = String(x);
@@ -176,7 +169,7 @@
       if (y % 5 !== 0 && snap > 1) continue;
       var tick2 = document.createElement("div");
       tick2.className = "dz-tick" + (y % 10 === 0 ? " major" : "");
-      tick2.style.top = (paperOffsetY + px(y)) + "px";
+      tick2.style.top = (paperTopInV + px(y)) + "px";
       if (y % 10 === 0) {
         var lab2 = document.createElement("span");
         lab2.textContent = String(y);
@@ -418,6 +411,14 @@
         });
         canvas.appendChild(el);
       });
+      // Temporary guide while dragging from ruler
+      if (dragGuide && !dragGuide.moving) {
+        var tmp = document.createElement("div");
+        tmp.className = "dz-guide " + dragGuide.axis + " selected";
+        if (dragGuide.axis === "h") tmp.style.top = px(dragGuide.pos) + "px";
+        else tmp.style.left = px(dragGuide.pos) + "px";
+        canvas.appendChild(tmp);
+      }
     }
 
     var masterRows = extendMasterRows();
