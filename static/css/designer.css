@@ -141,8 +141,13 @@ body.designer-app {
   flex: 1;
   min-height: 0;
   display: grid;
+  /* Keep LTR column order so tools stay on the visual right in RTL UI */
+  direction: ltr;
   grid-template-columns: 260px minmax(0, 1fr) 280px;
   overflow: hidden;
+}
+.dz-left, .dz-right, .dz-canvas-wrap {
+  direction: rtl;
 }
 
 .dz-left, .dz-right {
@@ -150,9 +155,9 @@ body.designer-app {
   overflow: auto;
   min-height: 0;
 }
-.dz-left { border-left: 1px solid #11141a; }
+.dz-left { border-right: 1px solid #11141a; }
 .dz-right {
-  border-right: 1px solid #11141a;
+  border-left: 1px solid #11141a;
   display: flex;
   flex-direction: column;
 }

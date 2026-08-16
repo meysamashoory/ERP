@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=4">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -164,6 +164,6 @@
 {{ column_groups|json_script:"column-groups" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_designer.js' %}?v=3"></script>
+<script src="{% static 'js/form_designer.js' %}?v=4"></script>
 </body>
 </html>
