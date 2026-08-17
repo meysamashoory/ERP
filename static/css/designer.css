@@ -304,7 +304,14 @@ body.designer-app {
 }
 .dz-lock { color: #94a3b8; }
 .dz-lock.on { color: #f59e0b; }
-.dz-lock svg { width: 15px; height: 15px; }
+.dz-lock svg { width: 16px; height: 15px; display: block; }
+.dz-field input:disabled,
+.dz-field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #1a1e26;
+  color: #8b93a7;
+}
 .dz-eye { color: #3d8bfd; position: relative; }
 .dz-eye.off { color: #3d8bfd; }
 .dz-eye.off::after {
