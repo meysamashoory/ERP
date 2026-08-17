@@ -227,6 +227,10 @@
     var isCustom = found === "custom";
     wEl.disabled = !isCustom;
     hEl.disabled = !isCustom;
+    wEl.readOnly = !isCustom;
+    hEl.readOnly = !isCustom;
+    wEl.classList.toggle("is-locked-size", !isCustom);
+    hEl.classList.toggle("is-locked-size", !isCustom);
     wEl.title = isCustom ? "" : "برای تغییر اندازه، «سفارشی» را انتخاب کنید";
     hEl.title = isCustom ? "" : "برای تغییر اندازه، «سفارشی» را انتخاب کنید";
     updateHistoryButtons();

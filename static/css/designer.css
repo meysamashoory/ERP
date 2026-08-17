@@ -306,11 +306,13 @@ body.designer-app {
 .dz-lock.on { color: #f59e0b; }
 .dz-lock svg { width: 16px; height: 15px; display: block; }
 .dz-field input:disabled,
-.dz-field select:disabled {
-  opacity: 0.55;
+.dz-field select:disabled,
+.dz-field input.is-locked-size {
+  opacity: 0.5;
   cursor: not-allowed;
-  background: #1a1e26;
+  background: #1a1e26 !important;
   color: #8b93a7;
+  pointer-events: none;
 }
 .dz-eye { color: #3d8bfd; position: relative; }
 .dz-eye.off { color: #3d8bfd; }
@@ -440,15 +442,16 @@ body.designer-app {
 .dz-ruler-v .dz-tick span {
   position: absolute;
   top: 0;
-  left: 1px;
-  width: 30px;
+  left: 2px;
+  width: 28px;
   transform: translateY(-50%);
   white-space: nowrap;
   color: #c5c9d2;
   text-align: left;
   font-size: 8px;
   letter-spacing: 0;
-  padding-left: 1px;
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .dz-canvas-wrap.no-ruler .dz-ruler-corner,
