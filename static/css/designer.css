@@ -112,6 +112,7 @@ body.designer-app {
   color: #c5c9d2;
   white-space: nowrap;
 }
+.dz-purpose-wrap[hidden] { display: none !important; }
 .dz-purpose-wrap select {
   min-width: 140px;
   max-width: 200px;
