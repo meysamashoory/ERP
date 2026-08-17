@@ -50,6 +50,18 @@
   var future = [];
   var previewMode = false;
   var guidesEnabled = true;
+  var paperCustomMode = false;
+  var formPurpose = "";
+  var linkedReportId = "";
+  var reportLevelFilter = "";
+  var purposeCatalogs = {};
+  var savedReports = [];
+  try { purposeCatalogs = JSON.parse(document.getElementById("purpose-catalogs").textContent || "{}") || {}; } catch (e) {}
+  try { savedReports = JSON.parse(document.getElementById("saved-reports").textContent || "[]") || []; } catch (e) {}
+  var purposeHidden = document.getElementById("id_purpose");
+  var linkedReportHidden = document.getElementById("id_linked_report");
+  if (purposeHidden) formPurpose = purposeHidden.value || "";
+  if (linkedReportHidden) linkedReportId = linkedReportHidden.value || "";
   var dragGuide = null;
   var clipboard = null;
   var drag = null;
@@ -59,6 +71,16 @@
   var hiddenSettings = document.getElementById("id_page_settings_json");
   var pageWInput = document.getElementById("id_page_width_mm");
   var pageHInput = document.getElementById("id_page_height_mm");
+  (function () {
+    var PRESETS0 = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
+    var w0 = parseFloat(pageWInput && pageWInput.value) || 210;
+    var h0 = parseFloat(pageHInput && pageHInput.value) || 297;
+    var match0 = false;
+    Object.keys(PRESETS0).forEach(function (k) {
+      if (PRESETS0[k][0] === w0 && PRESETS0[k][1] === h0) match0 = true;
+    });
+    paperCustomMode = !match0;
+  })();
   var canvas = document.getElementById("form-canvas");
   var scrollEl = document.getElementById("designer-scroll");
   var wrap = document.getElementById("canvas-wrap");
@@ -220,11 +242,14 @@
     document.getElementById("snap-mm").value = String(snap);
     var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
     var found = "custom", w = pageW(), h = pageH();
-    Object.keys(PRESETS).forEach(function (k) { if (PRESETS[k][0] === w && PRESETS[k][1] === h) found = k; });
+    if (!paperCustomMode) {
+      Object.keys(PRESETS).forEach(function (k) { if (PRESETS[k][0] === w && PRESETS[k][1] === h) found = k; });
+    }
     document.getElementById("paper-preset").value = found;
     var wEl = document.getElementById("prop-page-w");
     var hEl = document.getElementById("prop-page-h");
-    var isCustom = found === "custom";
+    var isCustom = found === "custom" || paperCustomMode;
+    if (isCustom) paperCustomMode = true;
     wEl.disabled = !isCustom;
     hEl.disabled = !isCustom;
     wEl.readOnly = !isCustom;
@@ -501,39 +526,129 @@
       document.getElementById("prop-border-right").value = bs.right || "solid";
       document.getElementById("prop-border-left").value = bs.left || "solid";
       document.getElementById("prop-last-line-enable").checked = !!f.last_line_enable;
-      document.getElementById("last-line-wrap").hidden = !f.last_line_enable;
       document.getElementById("prop-last-line-style").value = f.last_line_style || "solid";
+      document.getElementById("prop-last-line-style").disabled = !f.last_line_enable;
       renderFillPatternUI(f);
     }
+  }
+
+  function activeSourceGroups() {
+    if (formPurpose === "reports") {
+      var rep = savedReports.find(function (r) { return String(r.id) === String(linkedReportId); });
+      return (rep && rep.levels) ? rep.levels : [];
+    }
+    if (formPurpose && purposeCatalogs[formPurpose]) {
+      return purposeCatalogs[formPurpose];
+    }
+    return groups;
   }
 
   function fillSources(f) {
     var srcSel = document.getElementById("prop-source");
     var keySel = document.getElementById("prop-source-key");
+    var levelWrap = document.getElementById("report-level-wrap");
+    var levelSel = document.getElementById("prop-report-level");
+    var active = activeSourceGroups();
+
+    if (levelWrap && levelSel) {
+      var showLevel = formPurpose === "reports" && !!linkedReportId && active.length > 0;
+      levelWrap.hidden = !showLevel;
+      if (showLevel) {
+        levelSel.innerHTML = "";
+        active.forEach(function (g) {
+          var o = document.createElement("option");
+          o.value = g.id;
+          o.textContent = g.label;
+          levelSel.appendChild(o);
+        });
+        if (!reportLevelFilter && active[0]) reportLevelFilter = active[0].id;
+        levelSel.value = reportLevelFilter || (active[0] && active[0].id) || "";
+        reportLevelFilter = levelSel.value;
+        levelSel.onchange = function () {
+          reportLevelFilter = levelSel.value;
+          f.source = levelSel.value;
+          f.source_key = "";
+          fillSources(f);
+          render();
+        };
+      }
+    }
+
     srcSel.innerHTML = '<option value="">— منبع —</option>';
-    groups.forEach(function (g) {
+    active.forEach(function (g) {
+      if (g.enabled === false) {
+        var oDis = document.createElement("option");
+        oDis.value = g.id;
+        oDis.textContent = g.label + " (هنوز ایجاد نشده)";
+        oDis.disabled = true;
+        srcSel.appendChild(oDis);
+        return;
+      }
       var o = document.createElement("option");
-      o.value = g.id; o.textContent = g.label; srcSel.appendChild(o);
+      o.value = g.id;
+      o.textContent = g.label;
+      srcSel.appendChild(o);
     });
-    srcSel.value = f.source || "";
+
+    if (formPurpose === "reports" && reportLevelFilter) {
+      srcSel.value = reportLevelFilter;
+      f.source = reportLevelFilter;
+    } else {
+      srcSel.value = f.source || "";
+    }
+
     function fillKeys() {
       keySel.innerHTML = '<option value="">— ستون —</option>';
-      var g = groups.find(function (x) { return x.id === srcSel.value; });
+      var g = active.find(function (x) { return x.id === srcSel.value; });
       if (g) (g.columns || []).forEach(function (c) {
-        var o = document.createElement("option"); o.value = c[0]; o.textContent = c[1]; keySel.appendChild(o);
+        var o = document.createElement("option");
+        o.value = c[0];
+        o.textContent = c[1];
+        keySel.appendChild(o);
       });
       keySel.value = f.source_key || "";
       document.getElementById("field-bind-path").textContent =
         (f.source && f.source_key) ? ("آدرس: " + f.source + " → " + f.source_key) : "وصل نشده";
     }
     fillKeys();
-    srcSel.onchange = function () { pushHistory(); f.source = srcSel.value; f.source_key = ""; fillKeys(); render(); };
+    srcSel.onchange = function () {
+      pushHistory();
+      f.source = srcSel.value;
+      f.source_key = "";
+      if (formPurpose === "reports") reportLevelFilter = srcSel.value;
+      fillKeys();
+      render();
+    };
     keySel.onchange = function () { pushHistory(); f.source_key = keySel.value; fillKeys(); render(); };
+  }
+
+  function syncPurposeUi() {
+    var purposeSel = document.getElementById("ui-form-purpose");
+    var reportWrap = document.getElementById("report-name-wrap");
+    var reportSel = document.getElementById("ui-linked-report");
+    if (purposeSel) purposeSel.value = formPurpose || "";
+    if (purposeHidden) purposeHidden.value = formPurpose || "";
+    if (linkedReportHidden) linkedReportHidden.value = linkedReportId || "";
+    if (reportWrap && reportSel) {
+      var showRep = formPurpose === "reports";
+      reportWrap.hidden = !showRep;
+      if (showRep) {
+        reportSel.innerHTML = '<option value="">— انتخاب گزارش —</option>';
+        savedReports.forEach(function (r) {
+          var o = document.createElement("option");
+          o.value = String(r.id);
+          o.textContent = r.number + " — " + r.title;
+          reportSel.appendChild(o);
+        });
+        reportSel.value = linkedReportId || "";
+      }
+    }
   }
 
   function render() {
     syncHidden();
     syncUiChecks();
+    syncPurposeUi();
     var w = pageW(), h = pageH();
     canvas.style.width = px(w) + "px";
     canvas.style.height = px(h) + "px";
@@ -770,7 +885,7 @@
     var f = find(selectedId); if (!f || f.kind !== "box") return;
     pushHistory();
     f.last_line_enable = this.checked;
-    document.getElementById("last-line-wrap").hidden = !this.checked;
+    document.getElementById("prop-last-line-style").disabled = !this.checked;
     render();
   });
   document.getElementById("prop-last-line-style").addEventListener("change", function () {
@@ -798,8 +913,14 @@
   var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
   document.getElementById("paper-preset").addEventListener("change", function () {
     var v = this.value;
+    if (v === "custom") {
+      paperCustomMode = true;
+      render();
+      return;
+    }
     if (PRESETS[v]) {
       pushHistory();
+      paperCustomMode = false;
       pageWInput.value = PRESETS[v][0]; pageHInput.value = PRESETS[v][1];
     }
     render();
@@ -808,6 +929,7 @@
     document.getElementById(id).addEventListener("change", function () {
       if (this.disabled) return;
       pushHistory();
+      paperCustomMode = true;
       pageWInput.value = document.getElementById("prop-page-w").value;
       pageHInput.value = document.getElementById("prop-page-h").value;
       document.getElementById("paper-preset").value = "custom";
@@ -996,6 +1118,7 @@
 
   function setPreview(on) {
     previewMode = !!on;
+    document.documentElement.classList.toggle("preview-mode", previewMode);
     document.body.classList.toggle("preview-mode", previewMode);
     wrap.classList.toggle("preview-mode", previewMode);
     var exitBtn = document.getElementById("btn-exit-preview");
@@ -1005,6 +1128,9 @@
     selectedId = null;
     selectedGuideIdx = null;
     render();
+    if (previewMode) {
+      window.scrollTo(0, 0);
+    }
   }
   document.getElementById("btn-preview").addEventListener("click", function () {
     setPreview(!previewMode);
@@ -1074,6 +1200,29 @@
   if (copyBtnEl) copyBtnEl.addEventListener("click", function () { copySelected(); });
   if (pasteBtnEl) pasteBtnEl.addEventListener("click", function () { pasteClipboard(); });
 
+  var purposeSelEl = document.getElementById("ui-form-purpose");
+  if (purposeSelEl) {
+    purposeSelEl.addEventListener("change", function () {
+      formPurpose = this.value || "";
+      if (formPurpose !== "reports") {
+        linkedReportId = "";
+        reportLevelFilter = "";
+      }
+      if (purposeHidden) purposeHidden.value = formPurpose;
+      if (linkedReportHidden) linkedReportHidden.value = linkedReportId;
+      render();
+    });
+  }
+  var linkedReportSel = document.getElementById("ui-linked-report");
+  if (linkedReportSel) {
+    linkedReportSel.addEventListener("change", function () {
+      linkedReportId = this.value || "";
+      reportLevelFilter = "";
+      if (linkedReportHidden) linkedReportHidden.value = linkedReportId;
+      render();
+    });
+  }
+
   window.addEventListener("keydown", function (e) {
     if (previewMode) return;
     var tag = (e.target && e.target.tagName) || "";
@@ -1117,6 +1266,8 @@
     var numberHidden = document.getElementById("id_number");
     if (titleUi && title) title.value = titleUi.value || title.value;
     if (numberUi && numberHidden) numberHidden.value = numberUi.value || numberHidden.value;
+    if (purposeHidden) purposeHidden.value = formPurpose || "";
+    if (linkedReportHidden) linkedReportHidden.value = linkedReportId || "";
     if (title && !title.value) title.value = "فرم جدید";
     fetch(saveUrl, {
       method: "POST",

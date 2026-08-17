@@ -34,6 +34,7 @@
             نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
+        <th style="width:110px">فرم‌ها</th>
         <th style="width:200px">عملیات</th>
       </tr>
     </thead>
@@ -53,6 +54,14 @@
           {% endif %}
         </td>
         <td class="col-type cell-nav">{% if row.report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% else %}<span class="type-label">شخصی</span>{% endif %}</td>
+        <td class="forms-cell">
+          <span class="forms-label">فرم‌ها</span>
+          <button type="button" class="forms-count-btn" data-open-forms
+            data-forms-title="{{ row.report.title }}"
+            data-forms-ctx="report"
+            data-forms-id="{{ row.report.pk }}"
+            data-forms-json="{{ row.forms_json|escape }}">{{ row.forms_count }} فرم</button>
+        </td>
         <td class="col-ops">
           <div class="ops-inline">
             <select class="ops-select" data-ops>
@@ -181,4 +190,5 @@
   });
 })();
 </script>
+{% include "print_forms/_forms_dialog.html" %}
 {% endblock %}

@@ -18,11 +18,21 @@ from catalog.models import Product
 
 @login_required
 def plan_list(request):
+    from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
     plans = WeeklyPlan.objects.select_related("created_by", "approved_by").all()
+    forms_weekly = [
+        {"id": f.pk, "number": f.number, "title": f.title}
+        for f in forms_for_purpose(request.user, PURPOSE_WEEKLY)
+    ]
     return render(
         request,
         "planning/plan_list.html",
-        {"plans": plans, "profile": get_profile(request.user)},
+        {
+            "plans": plans,
+            "profile": get_profile(request.user),
+            "forms_weekly": forms_weekly,
+            "forms_weekly_json": __import__("json").dumps(forms_weekly, ensure_ascii=False),
+        },
     )
 
 

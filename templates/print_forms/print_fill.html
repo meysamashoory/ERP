@@ -1,0 +1,62 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>چاپ — {{ print_form.title }}</title>
+  <style>
+    html, body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { position: fixed; top: 10px; left: 10px; z-index: 10; }
+    .btn { padding: 6px 12px; border: 1px solid #94a3b8; background: #f8fafc; border-radius: 6px; cursor: pointer; }
+    #sheet { margin: 12px auto; }
+    @media print {
+      .no-print { display: none !important; }
+      #sheet { margin: 0 auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button type="button" class="btn" onclick="window.print()">چاپ</button>
+    <button type="button" class="btn" onclick="window.close()">بستن</button>
+  </div>
+  <div id="sheet" class="form-canvas print-sheet"
+       style="--page-w: {{ print_form.page_width_mm }}; --page-h: {{ print_form.page_height_mm }};"></div>
+  <script id="frames-view" type="application/json">{{ frames_json|safe }}</script>
+  <script id="page-settings-view" type="application/json">{{ page_settings_json|safe }}</script>
+  <script id="fill-values" type="application/json">{{ fill_values_json|safe }}</script>
+  <script src="{% static 'js/form_sheet_render.js' %}?v=2"></script>
+  <script>
+  (function () {
+    var frames = [], settings = {}, fills = {};
+    try { frames = JSON.parse(document.getElementById("frames-view").textContent || "[]") || []; } catch (e) {}
+    try { settings = JSON.parse(document.getElementById("page-settings-view").textContent || "{}") || {}; } catch (e) {}
+    try { fills = JSON.parse(document.getElementById("fill-values").textContent || "{}") || {}; } catch (e) {}
+    frames.forEach(function (f) {
+      if (f.kind === "field" && f.source_key && fills[f.source_key] != null) {
+        f._filled = String(fills[f.source_key]);
+      }
+    });
+    var canvas = document.getElementById("sheet");
+    if (window.ERPFormSheetRender) {
+      var orig = window.ERPFormSheetRender.render;
+      // Patch: prefer _filled text for fields
+      window.ERPFormSheetRender.render({
+        canvas: canvas,
+        frames: frames,
+        pageWidthMm: {{ print_form.page_width_mm|default:210 }},
+        pageHeightMm: {{ print_form.page_height_mm|default:297 }},
+        pageSettings: settings,
+        columnGroups: [],
+        useMm: true,
+        fillValues: fills
+      });
+    }
+    {% if auto_print %}
+    setTimeout(function () { window.print(); }, 200);
+    {% endif %}
+  })();
+  </script>
+</body>
+</html>

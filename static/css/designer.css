@@ -104,6 +104,25 @@ body.designer-app {
 .dz-btn.primary { background: #3d8bfd; border-color: #3d8bfd; color: #fff; }
 .dz-btn.primary:hover:not(:disabled) { background: #5a9dff; }
 
+.dz-purpose-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #c5c9d2;
+  white-space: nowrap;
+}
+.dz-purpose-wrap select {
+  min-width: 140px;
+  max-width: 200px;
+  height: 28px;
+  border: 1px solid #3a4250;
+  border-radius: 4px;
+  background: #2f3540;
+  color: #e8eaed;
+  padding: 0 6px;
+}
+
 .dz-align-group {
   display: inline-flex;
   gap: 3px;
@@ -445,10 +464,10 @@ body.designer-app {
 .dz-ruler-v .dz-tick.major { width: 12px; background: #8b93a7; }
 .dz-ruler-v .dz-tick span {
   position: absolute;
-  top: 0;
+  top: -11px;
   left: 2px;
   width: 28px;
-  transform: translateY(-50%);
+  transform: none;
   white-space: nowrap;
   color: #c5c9d2;
   text-align: left;
@@ -456,6 +475,10 @@ body.designer-app {
   letter-spacing: 0;
   direction: ltr;
   unicode-bidi: isolate;
+  line-height: 1;
+  background: #252930;
+  padding: 0 1px;
+  z-index: 1;
 }
 
 .dz-canvas-wrap.no-ruler .dz-ruler-corner,
@@ -662,6 +685,7 @@ body.designer-app {
 body.preview-mode .dz-exit-preview { display: inline-flex; align-items: center; }
 
 /* Preview / print: ONLY the paper — hide all designer chrome */
+html.preview-mode,
 body.preview-mode {
   overflow: auto !important;
   height: auto !important;
@@ -669,6 +693,9 @@ body.preview-mode {
   background: #fff !important;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+body.preview-mode {
+  display: block !important;
 }
 body.preview-mode .dz-titlebar,
 body.preview-mode .dz-topbar,

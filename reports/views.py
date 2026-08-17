@@ -26,6 +26,14 @@ from .access import (
     visible_reports,
 )
 from .columns import COLUMN_GROUPS, normalize_columns, run_report
+from .form_purposes import (
+    PURPOSE_PRODUCTION,
+    PURPOSE_REPORTS,
+    PURPOSE_WEEKLY,
+    forms_for_purpose,
+    purpose_source_groups,
+    report_level_groups,
+)
 from .forms import (
     PrintFormForm,
     SavedReportForm,
@@ -39,6 +47,45 @@ User = get_user_model()
 
 def _now_jdt():
     return jdatetime.datetime.now()
+
+
+def _designer_extra(user) -> dict:
+    """Purpose catalogs + saved reports (with levels) for the form designer."""
+    catalogs = {
+        PURPOSE_WEEKLY: purpose_source_groups(PURPOSE_WEEKLY),
+        PURPOSE_PRODUCTION: purpose_source_groups(PURPOSE_PRODUCTION),
+    }
+    reports_payload = []
+    for rep in visible_reports(user).order_by("number", "id"):
+        reports_payload.append({
+            "id": rep.pk,
+            "number": rep.number,
+            "title": rep.title,
+            "levels": report_level_groups(rep),
+        })
+    return {
+        "purpose_catalogs": catalogs,
+        "saved_reports": reports_payload,
+    }
+
+
+def _forms_list_payload(user, purpose: str, report_id=None) -> list[dict]:
+    items = []
+    for f in forms_for_purpose(user, purpose, report_id=report_id):
+        items.append({"id": f.pk, "number": f.number, "title": f.title})
+    return items
+
+
+def _forms_context_for_lists(user) -> dict:
+    return {
+        "forms_weekly": _forms_list_payload(user, PURPOSE_WEEKLY),
+        "forms_production": _forms_list_payload(user, PURPOSE_PRODUCTION),
+        "forms_reports_by_report": {
+            str(r.pk): _forms_list_payload(user, PURPOSE_REPORTS, report_id=r.pk)
+            for r in visible_reports(user)
+        },
+        "forms_reports_all": _forms_list_payload(user, PURPOSE_REPORTS),
+    }
 
 
 def _parse_filters(request: HttpRequest) -> dict:
@@ -94,6 +141,7 @@ def report_list(request: HttpRequest) -> HttpResponse:
 
     rows = []
     for report in reports:
+        forms_for_report = _forms_list_payload(request.user, PURPOSE_REPORTS, report_id=report.pk)
         rows.append(
             {
                 "report": report,
@@ -103,6 +151,9 @@ def report_list(request: HttpRequest) -> HttpResponse:
                 and (report.owner_id == request.user.id or can_edit_report(request.user, report)),
                 "can_copy": can_create_report(request.user)
                 and (report.owner_id == request.user.id or can_view_report(request.user, report)),
+                "forms": forms_for_report,
+                "forms_json": json.dumps(forms_for_report, ensure_ascii=False),
+                "forms_count": len(forms_for_report),
             }
         )
     return render(
@@ -412,6 +463,7 @@ def form_create(request: HttpRequest) -> HttpResponse:
             "frames_json": "[]",
             "page_settings_json": form.fields["page_settings_json"].initial or "{}",
             "column_groups": COLUMN_GROUPS,
+            **_designer_extra(request.user),
         },
     )
 
@@ -443,6 +495,7 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
             "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
             "column_groups": COLUMN_GROUPS,
+            **_designer_extra(request.user),
         },
     )
 
@@ -502,6 +555,141 @@ def form_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
             "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
             "column_groups": COLUMN_GROUPS,
+        },
+    )
+
+
+def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> dict:
+    """Map source_key → display value for filling a print form from a list row."""
+    values: dict[str, str] = {}
+    if ctx == "weekly_plan":
+        from planning.models import WeeklyPlan, WeeklyPlanItem
+        plan = WeeklyPlan.objects.select_related("created_by").filter(pk=obj_id).first()
+        if not plan:
+            return values
+        values.update({
+            "program_number": str(plan.program_number),
+            "date": str(plan.date),
+            "weekday": plan.weekday_name,
+            "status": plan.get_status_display(),
+            "created_by": plan.created_by.username if plan.created_by_id else "",
+        })
+        item = None
+        if item_id:
+            item = WeeklyPlanItem.objects.select_related(
+                "product", "machine__unit"
+            ).filter(pk=item_id, plan=plan).first()
+        else:
+            item = plan.items.select_related("product", "machine__unit").first()
+        if item:
+            values.update({
+                "uid": str(getattr(item, "uid", "") or ""),
+                "product_code": item.product.code if item.product_id else "",
+                "product_name": item.product.name if item.product_id else "",
+                "unit": f"واحد {item.machine.unit.number}" if item.machine_id and item.machine.unit_id else "",
+                "machine": str(item.machine.number) if item.machine_id else "",
+                "mold_change_day": str(getattr(item, "mold_change_weekday", "") or ""),
+                "mold_change_date": str(getattr(item, "mold_change_date", "") or ""),
+                "cavities": str(getattr(item, "active_cavities", "") or ""),
+            })
+    elif ctx == "prod_fitting":
+        from production.models import ProductionDayEntry, ProductionProgram
+        program = (
+            ProductionProgram.objects.select_related(
+                "item__product", "item__machine__unit", "item__plan"
+            )
+            .filter(pk=obj_id)
+            .first()
+        )
+        if not program:
+            return values
+        entries = ProductionDayEntry.objects.filter(program=program)
+        produced = sum(e.produced_quantity for e in entries)
+        planned = sum(e.planned_quantity for e in entries)
+        scrap = sum(e.scrap_quantity for e in entries)
+        values.update({
+            "uid": str(program.item.uid),
+            "program_number": str(program.item.plan.program_number),
+            "machine": program.machine_label,
+            "product_code": program.item.product.code,
+            "product_name": program.item.product.name,
+            "status": program.get_status_display(),
+            "produced": str(produced),
+            "planned": str(planned),
+            "scrap": str(scrap),
+            "date": str(program.item.plan.date),
+        })
+    elif ctx == "prod_pipe":
+        from production.models import PipeProduction
+        pipe = PipeProduction.objects.select_related("unit", "line", "product").filter(pk=obj_id).first()
+        if not pipe:
+            return values
+        values.update({
+            "date": str(pipe.date),
+            "unit": f"واحد {pipe.unit.number}",
+            "line": str(pipe.line.number),
+            "pipe_type": pipe.pipe_type,
+            "product_code": pipe.product.code if pipe.product_id else "",
+            "product_name": pipe.product.name if pipe.product_id else "",
+            "produced": str(pipe.produced_quantity),
+            "planned": str(pipe.planned_quantity),
+            "deviation": str(pipe.deviation),
+        })
+    elif ctx == "report":
+        report = SavedReport.objects.filter(pk=obj_id).first()
+        if not report:
+            return values
+        values["report_title"] = report.title
+        values["report_number"] = str(report.number)
+        try:
+            level = int(item_id or 1)
+        except (TypeError, ValueError):
+            level = 1
+        headers, rows, _payloads, _deeper = run_report(
+            report.data_source, report.columns or [], level=level, filters={}
+        )
+        if rows:
+            row0 = rows[0]
+            for i, h in enumerate(headers):
+                key = ""
+                for c in (report.columns or []):
+                    if int(c.get("level") or 1) == level and (c.get("label") == h or c.get("key")):
+                        key = str(c.get("key") or "")
+                        break
+                if not key:
+                    key = f"col_{i}"
+                val = row0[i] if i < len(row0) else ""
+                values[key] = str(val)
+                values[h] = str(val)
+    return values
+
+
+@login_required
+def form_print_fill(request: HttpRequest, pk: int) -> HttpResponse:
+    """Render a form filled with values from a planning/production/report context row."""
+    form_obj = get_object_or_404(PrintForm, pk=pk)
+    if not can_view_form(request.user, form_obj):
+        return HttpResponseForbidden("مجاز به مشاهده این فرم نیستید.")
+    ctx = (request.GET.get("ctx") or "").strip()
+    try:
+        obj_id = int(request.GET.get("id") or 0)
+    except ValueError:
+        obj_id = 0
+    item_id = request.GET.get("item")
+    try:
+        item_id_int = int(item_id) if item_id else None
+    except ValueError:
+        item_id_int = None
+    values = _context_row_values(ctx, obj_id, item_id_int) if obj_id else {}
+    return render(
+        request,
+        "print_forms/print_fill.html",
+        {
+            "print_form": form_obj,
+            "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
+            "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
+            "fill_values_json": json.dumps(values, ensure_ascii=False),
+            "auto_print": request.GET.get("autoprint") == "1",
         },
     )
 

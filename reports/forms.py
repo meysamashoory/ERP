@@ -168,11 +168,16 @@ class PrintFormForm(forms.ModelForm):
 
     class Meta:
         model = PrintForm
-        fields = ["title", "description", "number", "page_width_mm", "page_height_mm", "is_standard"]
+        fields = [
+            "title", "description", "number", "purpose", "linked_report",
+            "page_width_mm", "page_height_mm", "is_standard",
+        ]
         labels = {
             "title": "عنوان فرم",
             "description": "توضیحات",
             "number": "شماره فرم",
+            "purpose": "کاربرد فرم",
+            "linked_report": "گزارش مرتبط",
             "page_width_mm": "عرض صفحه (میلی‌متر)",
             "page_height_mm": "ارتفاع صفحه (میلی‌متر)",
         }
@@ -180,6 +185,8 @@ class PrintFormForm(forms.ModelForm):
             "title": forms.HiddenInput(),
             "description": forms.HiddenInput(),
             "number": forms.HiddenInput(),
+            "purpose": forms.HiddenInput(),
+            "linked_report": forms.HiddenInput(),
         }
 
     def __init__(self, *args, user=None, **kwargs):
@@ -189,9 +196,12 @@ class PrintFormForm(forms.ModelForm):
         self.fields["is_standard"].widget = forms.HiddenInput()
         if not (profile and profile.is_manager):
             self.fields["is_standard"].initial = False
-        # Page size is edited in the designer props panel.
+        # Page size / purpose edited in the designer props / topbar.
         self.fields["page_width_mm"].widget = forms.HiddenInput()
         self.fields["page_height_mm"].widget = forms.HiddenInput()
+        self.fields["purpose"].required = False
+        self.fields["linked_report"].required = False
+        self.fields["linked_report"].queryset = SavedReport.objects.all()
         if self.instance and self.instance.pk:
             self.fields["frames_json"].initial = json.dumps(
                 self.instance.frames or [], ensure_ascii=False
@@ -220,6 +230,20 @@ class PrintFormForm(forms.ModelForm):
         if qs.exists():
             raise ValidationError("شماره فرم وجود دارد")
         return number
+
+    def clean_linked_report(self):
+        purpose = self.cleaned_data.get("purpose") or ""
+        report = self.cleaned_data.get("linked_report")
+        if purpose != PrintForm.PURPOSE_REPORTS:
+            return None
+        return report
+
+    def clean_purpose(self):
+        purpose = self.cleaned_data.get("purpose") or ""
+        allowed = {c[0] for c in PrintForm.PURPOSE_CHOICES}
+        if purpose and purpose not in allowed:
+            return ""
+        return purpose
 
     def clean_frames_json(self):
         raw = self.cleaned_data.get("frames_json") or "[]"

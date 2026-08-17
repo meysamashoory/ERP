@@ -14,7 +14,7 @@
 <div class="panel">
   {% if plans %}
   <table class="table">
-    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th>تقویم برنامه</th><th>عملیات</th><th>تعیین وضعیت</th></tr></thead>
+    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th>فرم‌ها</th><th>تقویم برنامه</th><th>عملیات</th><th>تعیین وضعیت</th></tr></thead>
     <tbody>
       {% for plan in plans %}
       <tr>
@@ -23,6 +23,14 @@
         <td>{{ plan.weekday_name }}</td>
         <td><span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
         <td>{{ plan.created_by.username|default:'—' }}</td>
+        <td class="forms-cell">
+          <span class="forms-label">فرم‌ها</span>
+          <button type="button" class="forms-count-btn" data-open-forms
+            data-forms-title="{{ plan.program_number }} — {{ plan.date }}"
+            data-forms-ctx="weekly_plan"
+            data-forms-id="{{ plan.pk }}"
+            data-forms-json="{{ forms_weekly_json|escape }}">{{ forms_weekly|length }} فرم</button>
+        </td>
         <td>
           <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
             data-calendar-title="{{ plan.program_number }} — {{ plan.date }}">تقویم برنامه</button>
@@ -63,6 +71,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% include "print_forms/_forms_dialog.html" %}
 <script>
 (function () {
   var dialog = document.getElementById("plan-calendar-dialog");

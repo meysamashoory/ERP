@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=13">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=14">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -20,6 +20,8 @@
   {{ form.number }}
   {{ form.description }}
   {{ form.is_standard }}
+  {{ form.purpose }}
+  {{ form.linked_report }}
 
   <div class="dz-shell">
     <div class="dz-titlebar">
@@ -62,6 +64,22 @@
       <span class="sep"></span>
       <button type="button" class="dz-btn" id="btn-copy" disabled>Copy</button>
       <button type="button" class="dz-btn" id="btn-paste" disabled>Paste</button>
+      <span class="sep"></span>
+      <label class="dz-purpose-wrap">
+        <span>کاربرد فرم</span>
+        <select id="ui-form-purpose">
+          <option value="">— انتخاب کاربرد —</option>
+          <option value="weekly_planning">برنامه ریزی هفتگی</option>
+          <option value="production">برنامه های تولید</option>
+          <option value="reports">گزارش ها</option>
+        </select>
+      </label>
+      <label class="dz-purpose-wrap" id="report-name-wrap" hidden>
+        <span>نام گزارش</span>
+        <select id="ui-linked-report">
+          <option value="">— انتخاب گزارش —</option>
+        </select>
+      </label>
       <span class="sep"></span>
       <button type="button" class="dz-btn" id="btn-preview">پیش‌نمایش چاپ</button>
       <button type="button" class="dz-btn" id="btn-print">چاپ</button>
@@ -139,6 +157,10 @@
               <div class="dz-field"><label>تصویر لوگو</label><input type="file" id="prop-logo-file" accept="image/*"></div>
             </div>
             <div id="field-bind-props" hidden>
+              <div class="dz-field" id="report-level-wrap" hidden>
+                <label>انتخاب سطح گزارش</label>
+                <select id="prop-report-level"></select>
+              </div>
               <div class="dz-field"><label>منبع</label><select id="prop-source"></select></div>
               <div class="dz-field"><label>ستون</label><select id="prop-source-key"></select></div>
               <label class="dz-chk" style="margin-top:6px"><input type="checkbox" id="prop-data-extend"> امتداد دیتا (تکرار ردیف‌ها)</label>
@@ -209,9 +231,9 @@
                 </div>
               </div>
               <label class="dz-chk"><input type="checkbox" id="prop-last-line-enable"> خط آخر مستقل</label>
-              <div class="dz-field" id="last-line-wrap" hidden>
+              <div class="dz-field" id="last-line-wrap">
                 <label>نوع خط آخر (پایین)</label>
-                <select id="prop-last-line-style">
+                <select id="prop-last-line-style" disabled>
                   <option value="solid">ممتد</option>
                   <option value="dashed">خط‌چین</option>
                   <option value="dotted">نقطه‌چین</option>
@@ -261,9 +283,11 @@
 <button type="button" class="dz-exit-preview no-print" id="btn-exit-preview" hidden>بازگشت به طراحی</button>
 
 {{ column_groups|json_script:"column-groups" }}
+{{ purpose_catalogs|json_script:"purpose-catalogs" }}
+{{ saved_reports|json_script:"saved-reports" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_sheet_render.js' %}?v=1"></script>
-<script src="{% static 'js/form_designer.js' %}?v=13"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=2"></script>
+<script src="{% static 'js/form_designer.js' %}?v=14"></script>
 </body>
 </html>

@@ -138,8 +138,21 @@ def program_list(request):
         rec.can_edit = bool(profile and profile.can_edit_record(rec))
 
     active_tab = request.GET.get("tab", "injection")
+    from reports.form_purposes import PURPOSE_PRODUCTION, forms_for_purpose
+    import json as _json
+    forms_production = [
+        {"id": f.pk, "number": f.number, "title": f.title}
+        for f in forms_for_purpose(request.user, PURPOSE_PRODUCTION)
+    ]
     return render(request, "production/hub.html",
-                  {"rows": rows, "pipes": pipes, "profile": profile, "active_tab": active_tab})
+                  {
+                      "rows": rows,
+                      "pipes": pipes,
+                      "profile": profile,
+                      "active_tab": active_tab,
+                      "forms_production": forms_production,
+                      "forms_production_json": _json.dumps(forms_production, ensure_ascii=False),
+                  })
 
 
 ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]

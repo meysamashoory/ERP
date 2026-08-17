@@ -83,6 +83,15 @@ class SavedReport(models.Model):
 class PrintForm(models.Model):
     """Printable form definition with framing/layout for hard-copy use."""
 
+    PURPOSE_WEEKLY = "weekly_planning"
+    PURPOSE_PRODUCTION = "production"
+    PURPOSE_REPORTS = "reports"
+    PURPOSE_CHOICES = [
+        (PURPOSE_WEEKLY, "برنامه ریزی هفتگی"),
+        (PURPOSE_PRODUCTION, "برنامه های تولید"),
+        (PURPOSE_REPORTS, "گزارش ها"),
+    ]
+
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -94,6 +103,22 @@ class PrintForm(models.Model):
     number = models.PositiveSmallIntegerField(
         "شماره فرم",
         validators=[MinValueValidator(1), MaxValueValidator(999)],
+    )
+    purpose = models.CharField(
+        "کاربرد فرم",
+        max_length=40,
+        choices=PURPOSE_CHOICES,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+    linked_report = models.ForeignKey(
+        "SavedReport",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="linked_print_forms",
+        verbose_name="گزارش مرتبط",
     )
     frames = models.JSONField("کادرها و چیدمان", default=list)
     page_width_mm = models.PositiveIntegerField("عرض صفحه (مم)", default=210)
@@ -144,3 +169,7 @@ class PrintForm(models.Model):
 
     def __str__(self) -> str:
         return f"{self.number} — {self.title}"
+
+    @property
+    def purpose_label(self) -> str:
+        return dict(self.PURPOSE_CHOICES).get(self.purpose, "")

@@ -107,6 +107,7 @@
     var pageH = options.pageHeightMm || 297;
     var settings = options.pageSettings || {};
     var groups = options.columnGroups || [];
+    var fillValues = options.fillValues || {};
     var useMm = !!options.useMm;
 
     function len(v) {
@@ -214,7 +215,13 @@
       } else if (f.kind === "field") {
         el.style.border = "none";
         el.style.background = "transparent";
-        el.textContent = columnLabel(groups, f.source, f.source_key) || "";
+        if (f._filled != null && f._filled !== "") {
+          el.textContent = f._filled;
+        } else if (fillValues && f.source_key && fillValues[f.source_key] != null) {
+          el.textContent = String(fillValues[f.source_key]);
+        } else {
+          el.textContent = columnLabel(groups, f.source, f.source_key) || "";
+        }
       } else {
         el.style.border = "none";
         el.style.background = "transparent";
