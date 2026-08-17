@@ -256,6 +256,42 @@ class PrintFormForm(forms.ModelForm):
                 frame["source"] = str(item.get("source") or "")[:40]
                 frame["source_key"] = str(item.get("source_key") or "")[:80]
             frame["locked"] = bool(item.get("locked"))
+            if kind == "line":
+                orient = str(item.get("orientation") or "h")[:4]
+                frame["orientation"] = "v" if orient == "v" else "h"
+                style = str(item.get("line_style") or "solid")[:20]
+                if style not in ("solid", "dashed", "dotted", "dashdot"):
+                    style = "solid"
+                frame["line_style"] = style
+            if kind == "box":
+                fills = item.get("fill_colors") or []
+                clean_fills = []
+                if isinstance(fills, list):
+                    for c in fills[:9]:
+                        s = str(c or "")[:20]
+                        if s.startswith("#") and len(s) in (4, 7):
+                            clean_fills.append(s)
+                if len(clean_fills) < 2:
+                    clean_fills = ["#ffffff", "#e8f0fe"]
+                frame["fill_colors"] = clean_fills
+                bs = item.get("border_styles") or {}
+                if not isinstance(bs, dict):
+                    bs = {}
+                allowed = ("solid", "dashed", "dotted", "none")
+
+                def side(key, default="solid"):
+                    v = str(bs.get(key) or default)[:20]
+                    return v if v in allowed else default
+
+                frame["border_styles"] = {
+                    "top": side("top"),
+                    "right": side("right"),
+                    "bottom": side("bottom"),
+                    "left": side("left"),
+                }
+                frame["last_line_enable"] = bool(item.get("last_line_enable"))
+                last_style = str(item.get("last_line_style") or "solid")[:20]
+                frame["last_line_style"] = last_style if last_style in allowed else "solid"
             if kind == "logo" and item.get("image_data"):
                 img = str(item.get("image_data") or "")
                 frame["image_data"] = img[:2_000_000]

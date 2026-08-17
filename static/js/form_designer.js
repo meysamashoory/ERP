@@ -86,6 +86,9 @@
     if (!Array.isArray(pageSettings.guides)) pageSettings.guides = [];
     pageWInput.value = s.pageW; pageHInput.value = s.pageH;
     snap = pageSettings.snap_mm || 2;
+    if (snap < 1) snap = 1;
+    if (snap > 10) snap = 10;
+    pageSettings.snap_mm = snap;
     selectedId = null;
     selectedGuideIdx = null;
     syncUiChecks();
@@ -117,7 +120,25 @@
   }
 
   function kindLabel(k) {
-    return ({ header: "عنوان", box: "کادر", field: "کلید منابع", line: "خط", logo: "لوگو", row_number: "ردیف" })[k] || k;
+    return ({
+      header: "عنوان", box: "کادر", field: "کلید منابع",
+      line: "خط", line_h: "خط افقی", line_v: "خط عمودی",
+      logo: "لوگو", row_number: "ردیف"
+    })[k] || k;
+  }
+
+  function isLineKind(k) { return k === "line" || k === "line_h" || k === "line_v"; }
+
+  function borderCss(style) {
+    if (style === "none") return "none";
+    if (style === "dashed") return "1.5px dashed #111";
+    if (style === "dotted") return "1.5px dotted #111";
+    if (style === "dashdot") return "1.5px dashed #111";
+    return "1.5px solid #111";
+  }
+
+  function defaultFillColors() {
+    return ["#ffffff", "#e8f0fe"];
   }
 
   function updateClipboardButtons() {
@@ -152,7 +173,7 @@
     updateHistoryButtons();
   }
 
-  /* RTL: 0 at right edge → left; vertical ruler on left */
+  /* Horizontal ruler: 0 at left → width at right */
   function drawRulers() {
     if (!pageSettings.show_ruler) { rulerH.innerHTML = ""; rulerV.innerHTML = ""; return; }
     var w = pageW(), h = pageH();
@@ -169,8 +190,7 @@
       if (x % 5 !== 0 && snap > 1) continue;
       var tick = document.createElement("div");
       tick.className = "dz-tick" + (x % 10 === 0 ? " major" : "");
-      // 0 at the right edge of the paper
-      tick.style.left = (paperLeftInH + px(w) - px(x)) + "px";
+      tick.style.left = (paperLeftInH + px(x)) + "px";
       if (x % 10 === 0) {
         var lab = document.createElement("span");
         lab.textContent = String(x);
@@ -236,7 +256,9 @@
         '<span class="dz-drag-handle" title="جابجایی لایه">⋮⋮</span>' +
         '<span class="name">' + kindLabel(f.kind) + " — " + (f.label || "بدون نام") + "</span>" +
         '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="قفل">' +
-          '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7V5.2A3 3 0 0 1 11 5.2V7h1.2A1.3 1.3 0 0 1 13.5 8.3v5A1.3 1.3 0 0 1 12.2 14.5H3.8A1.3 1.3 0 0 1 2.5 13.3v-5A1.3 1.3 0 0 1 3.8 7zm1.3 0h3.4V5.2a1.7 1.7 0 0 0-3.4 0z"/></svg>' +
+          (f.locked
+            ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7V5.2a3 3 0 0 1 6 0V7h1.2A1.3 1.3 0 0 1 13.5 8.3v5A1.3 1.3 0 0 1 12.2 14.5H3.8A1.3 1.3 0 0 1 2.5 13.3v-5A1.3 1.3 0 0 1 3.8 7zm1.3 0h3.4V5.2a1.7 1.7 0 0 0-3.4 0z"/></svg>'
+            : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7V4.8A3 3 0 0 1 10.8 3.6l1.1.7A4.3 4.3 0 0 0 3.7 4.8V7H3.8A1.3 1.3 0 0 0 2.5 8.3v5A1.3 1.3 0 0 0 3.8 14.5h8.4A1.3 1.3 0 0 0 13.5 13.3v-5A1.3 1.3 0 0 0 12.2 7H5z"/></svg>') +
         "</button>" +
         '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش"' + (f.locked ? " disabled" : "") + ">" +
           '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2C4.2 3.2 1.3 6.1.5 8c.8 1.9 3.7 4.8 7.5 4.8S14.7 9.9 15.5 8C14.7 6.1 11.8 3.2 8 3.2zm0 7.6A2.8 2.8 0 1 1 8 5.2a2.8 2.8 0 0 1 0 5.6z"/></svg>' +
@@ -333,6 +355,50 @@
     }
   }
 
+  function renderFillPatternUI(f) {
+    var list = document.getElementById("fill-pattern-list");
+    if (!list) return;
+    if (!Array.isArray(f.fill_colors) || !f.fill_colors.length) {
+      f.fill_colors = defaultFillColors();
+    }
+    list.innerHTML = "";
+    f.fill_colors.forEach(function (color, idx) {
+      var row = document.createElement("div");
+      row.className = "dz-fill-row";
+      row.innerHTML =
+        '<span class="dz-fill-label">الگو ' + (idx + 1) + "</span>" +
+        '<input type="color" value="' + color + '" data-fill-idx="' + idx + '">' +
+        (idx >= 2 ? '<button type="button" class="dz-icon-btn del" data-fill-del="' + idx + '" title="حذف">×</button>' : "");
+      list.appendChild(row);
+    });
+    list.querySelectorAll("input[type=color]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        pushHistory();
+        f.fill_colors[parseInt(inp.getAttribute("data-fill-idx"), 10)] = inp.value;
+        render();
+      });
+    });
+    list.querySelectorAll("[data-fill-del]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var i = parseInt(btn.getAttribute("data-fill-del"), 10);
+        if (f.fill_colors.length <= 2) return;
+        pushHistory();
+        f.fill_colors.splice(i, 1);
+        render();
+      });
+    });
+    var addBtn = document.getElementById("btn-add-fill");
+    if (addBtn) {
+      addBtn.disabled = f.fill_colors.length >= 9;
+      addBtn.onclick = function () {
+        if (f.fill_colors.length >= 9) return;
+        pushHistory();
+        f.fill_colors.push("#f8fafc");
+        render();
+      };
+    }
+  }
+
   function renderProps() {
     var empty = document.getElementById("props-empty");
     var fields = document.getElementById("props-fields");
@@ -349,7 +415,9 @@
     document.getElementById("logo-props").hidden = f.kind !== "logo";
     document.getElementById("field-bind-props").hidden = f.kind !== "field";
     document.getElementById("row-number-props").hidden = f.kind !== "row_number";
-    document.getElementById("shape-extend-props").hidden = !(f.kind === "box" || f.kind === "line");
+    document.getElementById("shape-extend-props").hidden = !(f.kind === "box" || isLineKind(f.kind));
+    document.getElementById("line-style-props").hidden = !isLineKind(f.kind);
+    document.getElementById("box-style-props").hidden = f.kind !== "box";
     if (f.kind === "field") {
       document.getElementById("prop-data-extend").checked = !!f.data_extend;
       fillSources(f);
@@ -357,8 +425,22 @@
     if (f.kind === "row_number") {
       document.getElementById("prop-row-extend").checked = !!f.data_extend;
     }
-    if (f.kind === "box" || f.kind === "line") {
+    if (f.kind === "box" || isLineKind(f.kind)) {
       document.getElementById("prop-shape-extend").checked = !!f.data_extend;
+    }
+    if (isLineKind(f.kind)) {
+      document.getElementById("prop-line-style").value = f.line_style || "solid";
+    }
+    if (f.kind === "box") {
+      var bs = f.border_styles || {};
+      document.getElementById("prop-border-top").value = bs.top || "solid";
+      document.getElementById("prop-border-bottom").value = bs.bottom || "solid";
+      document.getElementById("prop-border-right").value = bs.right || "solid";
+      document.getElementById("prop-border-left").value = bs.left || "solid";
+      document.getElementById("prop-last-line-enable").checked = !!f.last_line_enable;
+      document.getElementById("last-line-wrap").hidden = !f.last_line_enable;
+      document.getElementById("prop-last-line-style").value = f.last_line_style || "solid";
+      renderFillPatternUI(f);
     }
   }
 
@@ -464,21 +546,42 @@
         el.style.width = px(f.width || 20) + "px";
         el.style.height = px(f.height || 10) + "px";
         el.style.transform = "rotate(" + (f.rotation || 0) + "deg)";
-        if (f.stroke && f.kind !== "line" && f.kind !== "field" && f.kind !== "row_number") {
-          el.style.borderWidth = px(f.stroke) + "px";
-        }
         var inner = document.createElement("div");
         inner.className = "inner";
         inner.style.justifyContent = f.align === "left" ? "flex-end" : (f.align === "right" ? "flex-start" : "center");
         inner.style.alignItems = f.valign === "top" ? "flex-start" : (f.valign === "bottom" ? "flex-end" : "center");
         inner.style.textAlign = f.align || "center";
 
+        if (f.kind === "box") {
+          var fills = (f.fill_colors && f.fill_colors.length) ? f.fill_colors : defaultFillColors();
+          el.style.background = fills[i % fills.length];
+          var bs = f.border_styles || {};
+          var isLast = previewMode && f.data_extend && (i === copies - 1) && f.last_line_enable;
+          el.style.borderTop = borderCss(bs.top || "solid");
+          el.style.borderRight = borderCss(bs.right || "solid");
+          el.style.borderLeft = borderCss(bs.left || "solid");
+          el.style.borderBottom = borderCss(isLast ? (f.last_line_style || "solid") : (bs.bottom || "solid"));
+        } else if (isLineKind(f.kind)) {
+          var ls = f.line_style || "solid";
+          el.style.background = "transparent";
+          el.style.border = "0";
+          if (f.orientation === "v" || f.kind === "line_v") {
+            el.style.borderLeft = borderCss(ls);
+            el.style.minWidth = "1px";
+          } else {
+            el.style.borderTop = borderCss(ls);
+            el.style.minHeight = "1px";
+          }
+        } else if (f.stroke && f.kind !== "field" && f.kind !== "row_number") {
+          el.style.borderWidth = px(f.stroke) + "px";
+        }
+
         if (f.kind === "logo" && f.image_data) {
           var img = document.createElement("img");
           img.src = f.image_data; img.alt = f.label || "لوگو";
           inner.appendChild(img);
-        } else if (f.kind === "line") {
-          /* border-top only */
+        } else if (isLineKind(f.kind)) {
+          /* styled via borders */
         } else if (f.kind === "row_number") {
           inner.textContent = previewMode ? String(i + 1) : (f.label || "ردیف");
         } else if (f.kind === "field") {
@@ -486,8 +589,10 @@
           if (f.source && f.source_key && !previewMode) txt += " ⟨" + f.source + "." + f.source_key + "⟩";
           if (previewMode && f.source_key) txt = "{" + f.source_key + "}";
           inner.textContent = txt;
-        } else {
+        } else if (f.kind !== "box") {
           inner.textContent = f.label || kindLabel(f.kind);
+        } else if (f.label) {
+          inner.textContent = f.label;
         }
         el.appendChild(inner);
 
@@ -538,7 +643,7 @@
     f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
     f.height = Math.max(0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
     f.rotation = parseFloat(document.getElementById("prop-rotation").value) || 0;
-    if (f.kind === "line") { f.height = Math.max(0.5, f.height); }
+    if (f.kind === "line") { f.height = Math.max(0.5, f.height); if (f.orientation === "v") f.width = Math.max(0.5, f.width); }
     render();
   }
   ["prop-label","prop-x","prop-y","prop-w","prop-h","prop-rotation"].forEach(function (id) {
@@ -554,8 +659,35 @@
     pushHistory(); f.data_extend = this.checked; render();
   });
   document.getElementById("prop-shape-extend").addEventListener("change", function () {
-    var f = find(selectedId); if (!f || (f.kind !== "box" && f.kind !== "line")) return;
+    var f = find(selectedId); if (!f || (f.kind !== "box" && !isLineKind(f.kind))) return;
     pushHistory(); f.data_extend = this.checked; render();
+  });
+  document.getElementById("prop-line-style").addEventListener("change", function () {
+    var f = find(selectedId); if (!f || !isLineKind(f.kind)) return;
+    pushHistory(); f.line_style = this.value; render();
+  });
+  ["prop-border-top","prop-border-bottom","prop-border-right","prop-border-left"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      var f = find(selectedId); if (!f || f.kind !== "box") return;
+      pushHistory();
+      f.border_styles = f.border_styles || {};
+      f.border_styles.top = document.getElementById("prop-border-top").value;
+      f.border_styles.bottom = document.getElementById("prop-border-bottom").value;
+      f.border_styles.right = document.getElementById("prop-border-right").value;
+      f.border_styles.left = document.getElementById("prop-border-left").value;
+      render();
+    });
+  });
+  document.getElementById("prop-last-line-enable").addEventListener("change", function () {
+    var f = find(selectedId); if (!f || f.kind !== "box") return;
+    pushHistory();
+    f.last_line_enable = this.checked;
+    document.getElementById("last-line-wrap").hidden = !this.checked;
+    render();
+  });
+  document.getElementById("prop-last-line-style").addEventListener("change", function () {
+    var f = find(selectedId); if (!f || f.kind !== "box") return;
+    pushHistory(); f.last_line_style = this.value; render();
   });
   document.getElementById("prop-logo-file").addEventListener("change", function (e) {
     var f = find(selectedId); if (!f || f.kind !== "logo") return;
@@ -740,12 +872,26 @@
       var kind = btn.getAttribute("data-add");
       var f = {
         id: "f" + Date.now() + "-" + (uid++),
-        label: kind === "header" ? "عنوان" : kind === "field" ? "کلید منابع" : kind === "logo" ? "لوگو" : kind === "row_number" ? "ردیف" : kind === "line" ? "" : "کادر",
+        label: kind === "header" ? "عنوان" : kind === "field" ? "کلید منابع" : kind === "logo" ? "لوگو" : kind === "row_number" ? "ردیف" : kind === "box" ? "کادر" : "",
         kind: kind, left: 15, x: 15, y: 20 + frames.length * 8,
-        width: (kind === "line" || kind === "header") ? Math.max(40, pageW() - 30) : (kind === "logo" ? 40 : 60),
-        height: kind === "line" ? 1 : kind === "header" ? 12 : kind === "logo" ? 28 : 14,
+        width: 60, height: 14,
         rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false, locked: false, data_extend: false
       };
+      if (kind === "line_h" || kind === "line") {
+        f.kind = "line"; f.orientation = "h"; f.width = Math.max(40, pageW() - 30); f.height = 1; f.line_style = "solid";
+      } else if (kind === "line_v") {
+        f.kind = "line"; f.orientation = "v"; f.width = 1; f.height = 40; f.line_style = "solid";
+      } else if (kind === "header") {
+        f.width = Math.max(40, pageW() - 30); f.height = 12;
+      } else if (kind === "logo") {
+        f.width = 40; f.height = 28;
+      } else if (kind === "box") {
+        f.width = 80; f.height = 24;
+        f.fill_colors = defaultFillColors();
+        f.border_styles = { top: "solid", right: "solid", bottom: "solid", left: "solid" };
+        f.last_line_enable = false;
+        f.last_line_style = "solid";
+      }
       if (kind === "field" || kind === "row_number") {
         f.source = ""; f.source_key = "";
       }
@@ -850,12 +996,16 @@
 
     var f = find(selectedId);
     if (!f || f.locked) return;
-    var step = e.shiftKey ? snap : (snap / 2 || 0.5);
+    var step = e.shiftKey ? Math.max(1, snap) : 1;
     var moved = false;
-    if (e.key === "ArrowLeft") { f.left = snapMm(Math.max(0, (f.left || 0) - step)); moved = true; }
-    if (e.key === "ArrowRight") { f.left = snapMm((f.left || 0) + step); moved = true; }
-    if (e.key === "ArrowUp") { f.y = snapMm(Math.max(0, (f.y || 0) - step)); moved = true; }
-    if (e.key === "ArrowDown") { f.y = snapMm((f.y || 0) + step); moved = true; }
+    function nudge(v, d) {
+      var next = Math.round(((v || 0) + d) * 100) / 100;
+      return next < 0 ? 0 : next;
+    }
+    if (e.key === "ArrowLeft") { f.left = nudge(f.left, -step); moved = true; }
+    if (e.key === "ArrowRight") { f.left = nudge(f.left, step); moved = true; }
+    if (e.key === "ArrowUp") { f.y = nudge(f.y, -step); moved = true; }
+    if (e.key === "ArrowDown") { f.y = nudge(f.y, step); moved = true; }
     if (moved) {
       e.preventDefault();
       if (!drag) pushHistory();

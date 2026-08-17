@@ -511,16 +511,33 @@ body.designer-app {
   font-weight: 700;
 }
 .dz-frame.kind-box {
-  border: 1.5px solid #111;
-  background: transparent;
+  border: 0;
+  background: #fff;
 }
 .dz-frame.kind-line {
   border: 0;
   background: transparent;
-  border-top: 1.5px solid #111;
   min-height: 1px;
 }
 .dz-frame.kind-line .inner { display: none; }
+
+.dz-fill-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.dz-fill-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+}
+.dz-fill-label { font-size: 11px; color: #8b93a7; }
+.dz-fill-row input[type="color"] {
+  width: 42px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #3a4250;
+  border-radius: 4px;
+  background: #151820;
+}
+#btn-add-fill { width: 100%; margin-top: 2px; }
 .dz-frame.kind-logo {
   overflow: hidden;
   background: transparent;

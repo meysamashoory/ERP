@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=7">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=8">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -104,12 +104,17 @@
             <div class="dz-field"><label>حاشیه چپ</label><input type="number" id="margin-left" min="0" max="80" step="0.5" lang="en" dir="ltr"></div>
           </div>
           <div class="dz-field">
-            <label>شبکه (مم)</label>
+            <label>شبکه (میلی‌متر)</label>
             <select id="snap-mm">
-              <option value="0.5">۰٫۵</option>
               <option value="1">۱</option>
               <option value="2" selected>۲</option>
+              <option value="3">۳</option>
+              <option value="4">۴</option>
               <option value="5">۵</option>
+              <option value="6">۶</option>
+              <option value="7">۷</option>
+              <option value="8">۸</option>
+              <option value="9">۹</option>
               <option value="10">۱۰</option>
             </select>
           </div>
@@ -147,6 +152,69 @@
               <label class="dz-chk"><input type="checkbox" id="prop-shape-extend"> امتداد همراه فیلد دیتا</label>
               <p style="font-size:11px;color:#64748b;margin:4px 0 0">فقط وقتی یک فیلد با امتداد وجود دارد، این کادر/خط به همان تعداد تکرار می‌شود.</p>
             </div>
+            <div id="line-style-props" hidden>
+              <div class="dz-field">
+                <label>نوع خط</label>
+                <select id="prop-line-style">
+                  <option value="solid">ممتد</option>
+                  <option value="dashed">خط‌چین</option>
+                  <option value="dotted">نقطه‌چین</option>
+                  <option value="dashdot">خط‌چین ترکیبی</option>
+                </select>
+              </div>
+            </div>
+            <div id="box-style-props" hidden>
+              <div class="dz-field">
+                <label>الگوی رنگ داخل کادر</label>
+                <div id="fill-pattern-list" class="dz-fill-list"></div>
+                <button type="button" class="dz-btn" id="btn-add-fill" title="افزودن الگو">+ الگوی رنگ</button>
+                <p class="muted" style="font-size:11px;margin:4px 0 0">تا ۹ الگو؛ در امتداد به ترتیب تکرار می‌شود.</p>
+              </div>
+              <div class="dz-grid-2">
+                <div class="dz-field"><label>خط بالا</label>
+                  <select id="prop-border-top">
+                    <option value="solid">ممتد</option>
+                    <option value="dashed">خط‌چین</option>
+                    <option value="dotted">نقطه‌چین</option>
+                    <option value="none">بدون خط</option>
+                  </select>
+                </div>
+                <div class="dz-field"><label>خط پایین</label>
+                  <select id="prop-border-bottom">
+                    <option value="solid">ممتد</option>
+                    <option value="dashed">خط‌چین</option>
+                    <option value="dotted">نقطه‌چین</option>
+                    <option value="none">بدون خط</option>
+                  </select>
+                </div>
+                <div class="dz-field"><label>خط راست</label>
+                  <select id="prop-border-right">
+                    <option value="solid">ممتد</option>
+                    <option value="dashed">خط‌چین</option>
+                    <option value="dotted">نقطه‌چین</option>
+                    <option value="none">بدون خط</option>
+                  </select>
+                </div>
+                <div class="dz-field"><label>خط چپ</label>
+                  <select id="prop-border-left">
+                    <option value="solid">ممتد</option>
+                    <option value="dashed">خط‌چین</option>
+                    <option value="dotted">نقطه‌چین</option>
+                    <option value="none">بدون خط</option>
+                  </select>
+                </div>
+              </div>
+              <label class="dz-chk"><input type="checkbox" id="prop-last-line-enable"> خط آخر مستقل</label>
+              <div class="dz-field" id="last-line-wrap" hidden>
+                <label>نوع خط آخر (پایین)</label>
+                <select id="prop-last-line-style">
+                  <option value="solid">ممتد</option>
+                  <option value="dashed">خط‌چین</option>
+                  <option value="dotted">نقطه‌چین</option>
+                  <option value="none">بدون خط</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       </aside>
@@ -170,7 +238,8 @@
             <button type="button" class="dz-tool" data-add="box">کادر</button>
             <button type="button" class="dz-tool" data-add="field">کلید منابع</button>
             <button type="button" class="dz-tool" data-add="row_number">ردیف</button>
-            <button type="button" class="dz-tool" data-add="line">خط</button>
+            <button type="button" class="dz-tool" data-add="line_h">خط افقی</button>
+            <button type="button" class="dz-tool" data-add="line_v">خط عمودی</button>
             <button type="button" class="dz-tool" data-add="logo">لوگو</button>
           </div>
         </div>
@@ -189,6 +258,6 @@
 {{ column_groups|json_script:"column-groups" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_designer.js' %}?v=7"></script>
+<script src="{% static 'js/form_designer.js' %}?v=8"></script>
 </body>
 </html>
