@@ -176,6 +176,7 @@
                     <option value="solid">ممتد</option>
                     <option value="dashed">خط‌چین</option>
                     <option value="dotted">نقطه‌چین</option>
+                    <option value="dashdot">خط‌چین ترکیبی</option>
                     <option value="none">بدون خط</option>
                   </select>
                 </div>
@@ -184,6 +185,7 @@
                     <option value="solid">ممتد</option>
                     <option value="dashed">خط‌چین</option>
                     <option value="dotted">نقطه‌چین</option>
+                    <option value="dashdot">خط‌چین ترکیبی</option>
                     <option value="none">بدون خط</option>
                   </select>
                 </div>
@@ -192,6 +194,7 @@
                     <option value="solid">ممتد</option>
                     <option value="dashed">خط‌چین</option>
                     <option value="dotted">نقطه‌چین</option>
+                    <option value="dashdot">خط‌چین ترکیبی</option>
                     <option value="none">بدون خط</option>
                   </select>
                 </div>
@@ -200,6 +203,7 @@
                     <option value="solid">ممتد</option>
                     <option value="dashed">خط‌چین</option>
                     <option value="dotted">نقطه‌چین</option>
+                    <option value="dashdot">خط‌چین ترکیبی</option>
                     <option value="none">بدون خط</option>
                   </select>
                 </div>
@@ -211,6 +215,7 @@
                   <option value="solid">ممتد</option>
                   <option value="dashed">خط‌چین</option>
                   <option value="dotted">نقطه‌چین</option>
+                  <option value="dashdot">خط‌چین ترکیبی</option>
                   <option value="none">بدون خط</option>
                 </select>
               </div>
@@ -258,6 +263,6 @@
 {{ column_groups|json_script:"column-groups" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_designer.js' %}?v=8"></script>
+<script src="{% static 'js/form_designer.js' %}?v=9"></script>
 </body>
 </html>

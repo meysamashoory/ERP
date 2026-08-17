@@ -277,7 +277,7 @@ class PrintFormForm(forms.ModelForm):
                 bs = item.get("border_styles") or {}
                 if not isinstance(bs, dict):
                     bs = {}
-                allowed = ("solid", "dashed", "dotted", "none")
+                allowed = ("solid", "dashed", "dotted", "dashdot", "none")
 
                 def side(key, default="solid"):
                     v = str(bs.get(key) or default)[:20]

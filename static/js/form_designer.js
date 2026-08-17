@@ -28,6 +28,14 @@
     if (f.locked == null) f.locked = false;
     if (f.rotation == null) f.rotation = 0;
     if (f.data_extend == null) f.data_extend = false;
+    if (f.kind === "line" && !f.orientation) f.orientation = (f.height > f.width) ? "v" : "h";
+    if (f.kind === "line" && !f.line_style) f.line_style = "solid";
+    if (f.kind === "box" && (!f.fill_colors || !f.fill_colors.length)) f.fill_colors = ["#ffffff", "#e8f0fe"];
+    if (f.kind === "box" && !f.border_styles) {
+      f.border_styles = { top: "solid", right: "solid", bottom: "solid", left: "solid" };
+    }
+    if (f.kind === "box" && f.last_line_enable == null) f.last_line_enable = false;
+    if (f.kind === "box" && !f.last_line_style) f.last_line_style = "solid";
   });
 
   var groups = [];
@@ -119,7 +127,9 @@
     hiddenSettings.value = JSON.stringify(pageSettings);
   }
 
-  function kindLabel(k) {
+  function kindLabel(k, f) {
+    if ((k === "line" || !k) && f && f.orientation === "v") return "خط عمودی";
+    if ((k === "line" || !k) && f && f.orientation === "h") return "خط افقی";
     return ({
       header: "عنوان", box: "کادر", field: "کلید منابع",
       line: "خط", line_h: "خط افقی", line_v: "خط عمودی",
@@ -254,11 +264,13 @@
       row.dataset.id = f.id;
       row.innerHTML =
         '<span class="dz-drag-handle" title="جابجایی لایه">⋮⋮</span>' +
-        '<span class="name">' + kindLabel(f.kind) + " — " + (f.label || "بدون نام") + "</span>" +
-        '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="قفل">' +
+        '<span class="name">' + kindLabel(f.kind, f) + " — " + (f.label || "بدون نام") + "</span>" +
+        '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="' + (f.locked ? "باز کردن قفل" : "قفل کردن") + '">' +
           (f.locked
-            ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7V5.2a3 3 0 0 1 6 0V7h1.2A1.3 1.3 0 0 1 13.5 8.3v5A1.3 1.3 0 0 1 12.2 14.5H3.8A1.3 1.3 0 0 1 2.5 13.3v-5A1.3 1.3 0 0 1 3.8 7zm1.3 0h3.4V5.2a1.7 1.7 0 0 0-3.4 0z"/></svg>'
-            : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7V4.8A3 3 0 0 1 10.8 3.6l1.1.7A4.3 4.3 0 0 0 3.7 4.8V7H3.8A1.3 1.3 0 0 0 2.5 8.3v5A1.3 1.3 0 0 0 3.8 14.5h8.4A1.3 1.3 0 0 0 13.5 13.3v-5A1.3 1.3 0 0 0 12.2 7H5z"/></svg>') +
+            /* closed lock */
+            ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5A2.75 2.75 0 0 0 5.25 4.25V6H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7A1.5 1.5 0 0 0 13 12.5v-5A1.5 1.5 0 0 0 11.5 6h-.75V4.25A2.75 2.75 0 0 0 8 1.5zm1.25 4.5h-2.5V4.25a1.25 1.25 0 1 1 2.5 0V6z"/></svg>'
+            /* open lock */
+            : '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5A2.75 2.75 0 0 0 5.25 4.25V6H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7A1.5 1.5 0 0 0 13 12.5v-5A1.5 1.5 0 0 0 11.5 6H6.75V4.25a1.25 1.25 0 0 1 2.4-.5l1.3-.55A2.75 2.75 0 0 0 8 1.5z"/></svg>') +
         "</button>" +
         '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش"' + (f.locked ? " disabled" : "") + ">" +
           '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2C4.2 3.2 1.3 6.1.5 8c.8 1.9 3.7 4.8 7.5 4.8S14.7 9.9 15.5 8C14.7 6.1 11.8 3.2 8 3.2zm0 7.6A2.8 2.8 0 1 1 8 5.2a2.8 2.8 0 0 1 0 5.6z"/></svg>' +
