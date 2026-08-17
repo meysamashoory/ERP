@@ -302,8 +302,9 @@ body.designer-app {
   fill: currentColor;
   display: block;
 }
-.dz-lock { color: #f59e0b; }
-.dz-lock.on { color: #fbbf24; }
+.dz-lock { color: #94a3b8; }
+.dz-lock.on { color: #f59e0b; }
+.dz-lock svg { width: 15px; height: 15px; }
 .dz-eye { color: #3d8bfd; position: relative; }
 .dz-eye.off { color: #3d8bfd; }
 .dz-eye.off::after {
@@ -371,7 +372,7 @@ body.designer-app {
   position: absolute;
   top: 0;
   left: 0;
-  width: 28px;
+  width: 34px;
   height: 24px;
   background: #252930;
   border-bottom: 1px solid #11141a;
@@ -387,7 +388,7 @@ body.designer-app {
 }
 .dz-ruler-h {
   top: 0;
-  left: 28px;
+  left: 34px;
   right: 0;
   height: 24px;
   border-bottom: 1px solid #11141a;
@@ -397,7 +398,7 @@ body.designer-app {
   top: 24px;
   left: 0;
   bottom: 0;
-  width: 28px;
+  width: 34px;
   border-right: 1px solid #11141a;
   cursor: ew-resize;
 }
@@ -431,10 +432,16 @@ body.designer-app {
 .dz-ruler-v .dz-tick.major { width: 12px; background: #8b93a7; }
 .dz-ruler-v .dz-tick span {
   position: absolute;
-  top: 2px;
-  left: 14px;
+  top: 0;
+  left: 1px;
+  width: 30px;
+  transform: translateY(-50%);
   white-space: nowrap;
   color: #c5c9d2;
+  text-align: left;
+  font-size: 8px;
+  letter-spacing: 0;
+  padding-left: 1px;
 }
 
 .dz-canvas-wrap.no-ruler .dz-ruler-corner,
@@ -445,7 +452,7 @@ body.designer-app {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 24px 24px 40px 40px;
+  padding: 24px 24px 40px 46px;
 }
 .dz-canvas-wrap.no-ruler .dz-scroll { padding: 16px; }
 
@@ -641,6 +648,14 @@ body.designer-app {
 body.preview-mode .dz-exit-preview { display: inline-flex; align-items: center; }
 
 /* Preview / print: ONLY the paper — hide all designer chrome */
+body.preview-mode {
+  overflow: auto !important;
+  height: auto !important;
+  min-height: 100%;
+  background: #fff !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
 body.preview-mode .dz-titlebar,
 body.preview-mode .dz-topbar,
 body.preview-mode .dz-left,
@@ -655,13 +670,14 @@ body.preview-mode #designer-form,
 body.preview-mode .dz-main {
   display: block !important;
   height: auto !important;
+  min-height: 0 !important;
   overflow: visible !important;
 }
 body.preview-mode .dz-canvas-wrap,
 body.preview-mode .dz-scroll,
 body.preview-mode .dz-stage {
   overflow: visible !important;
-  padding: 0 !important;
+  padding: 12px !important;
   background: #fff !important;
   height: auto !important;
   min-height: 0 !important;
@@ -669,6 +685,12 @@ body.preview-mode .dz-stage {
 body.preview-mode .dz-page {
   box-shadow: none !important;
   margin: 0 auto !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+body.preview-mode .dz-frame {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
 }
 body.preview-mode .dz-frame.kind-field,
 body.preview-mode .dz-frame.kind-row_number {
@@ -684,11 +706,13 @@ body.preview-mode .dz-margin,
 body.preview-mode .dz-guide { display: none !important; }
 
 @media print {
-  @page { margin: 0; }
+  @page { margin: 0; size: auto; }
   html, body {
     background: #fff !important;
     height: auto !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .dz-titlebar, .dz-topbar, .dz-left, .dz-right,
   .dz-ruler-corner, .dz-ruler-h, .dz-ruler-v,
@@ -703,6 +727,12 @@ body.preview-mode .dz-guide { display: none !important; }
   .dz-page {
     margin: 0 auto !important;
     box-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .dz-frame {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .dz-frame.kind-field,
   .dz-frame.kind-row_number {

@@ -164,6 +164,48 @@
     }
   }
 
+  function columnLabel(source, key) {
+    if (window.ERPFormSheetRender && window.ERPFormSheetRender.columnLabel) {
+      return window.ERPFormSheetRender.columnLabel(groups, source, key);
+    }
+    if (!source || !key) return "";
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i].id !== source) continue;
+      var cols = groups[i].columns || [];
+      for (var j = 0; j < cols.length; j++) {
+        if (cols[j][0] === key) return cols[j][1] || key;
+      }
+    }
+    return key;
+  }
+
+  function nearMm(a, b) { return Math.abs(a - b) <= 0.6; }
+  function vertOverlap(a, b) {
+    return Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.5;
+  }
+  function horizOverlap(a, b) {
+    return Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.5;
+  }
+
+  /** Shared edges: top box wins (bottom neighbor hides top); right box wins (left neighbor hides right). */
+  function resolveBoxBorders(inst, allBoxes, bs, lastStyle) {
+    var top = (bs && bs.top) || "solid";
+    var right = (bs && bs.right) || "solid";
+    var bottom = lastStyle || (bs && bs.bottom) || "solid";
+    var left = (bs && bs.left) || "solid";
+    allBoxes.forEach(function (other) {
+      if (other === inst) return;
+      if (nearMm(other.y + other.h, inst.y) && horizOverlap(inst, other)) top = "none";
+      if (nearMm(inst.x + inst.w, other.x) && vertOverlap(inst, other)) right = "none";
+    });
+    return {
+      top: borderCss(top),
+      right: borderCss(right),
+      bottom: borderCss(bottom),
+      left: borderCss(left)
+    };
+  }
+
   function syncUiChecks() {
     document.getElementById("chk-grid").checked = !!pageSettings.show_grid;
     document.getElementById("chk-ruler").checked = !!pageSettings.show_ruler;
@@ -180,6 +222,13 @@
     var found = "custom", w = pageW(), h = pageH();
     Object.keys(PRESETS).forEach(function (k) { if (PRESETS[k][0] === w && PRESETS[k][1] === h) found = k; });
     document.getElementById("paper-preset").value = found;
+    var wEl = document.getElementById("prop-page-w");
+    var hEl = document.getElementById("prop-page-h");
+    var isCustom = found === "custom";
+    wEl.disabled = !isCustom;
+    hEl.disabled = !isCustom;
+    wEl.title = isCustom ? "" : "برای تغییر اندازه، «سفارشی» را انتخاب کنید";
+    hEl.title = isCustom ? "" : "برای تغییر اندازه، «سفارشی» را انتخاب کنید";
     updateHistoryButtons();
   }
 
@@ -267,8 +316,8 @@
         '<span class="name">' + kindLabel(f.kind, f) + " — " + (f.label || "بدون نام") + "</span>" +
         '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="' + (f.locked ? "باز کردن قفل" : "قفل کردن") + '">' +
           (f.locked
-            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
-            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>') +
+            ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16" r="1.4" fill="#1a1d24"/></svg>'
+            : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16" r="1.2" fill="currentColor"/></svg>') +
         "</button>" +
         '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش"' + (f.locked ? " disabled" : "") + ">" +
           '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2C4.2 3.2 1.3 6.1.5 8c.8 1.9 3.7 4.8 7.5 4.8S14.7 9.9 15.5 8C14.7 6.1 11.8 3.2 8 3.2zm0 7.6A2.8 2.8 0 1 1 8 5.2a2.8 2.8 0 0 1 0 5.6z"/></svg>' +
@@ -535,27 +584,44 @@
     var masterRows = extendMasterRows();
     var rowStep = masterRowHeight();
 
+    var pending = [];
+    var boxInstances = [];
+
     frames.forEach(function (f, zi) {
       if (f.hidden) return;
-      if (previewMode && f.hidden) return;
-
       var copies = 1;
       if (previewMode && f.data_extend) {
         copies = copiesForFrame(f, masterRows);
       }
-
+      var step = (f.kind === "field") ? (f.height || 8) : rowStep;
       for (var i = 0; i < copies; i++) {
+        var item = {
+          f: f, i: i, copies: copies, zi: zi,
+          x: f.left || 0,
+          y: (f.y || 0) + i * step,
+          w: f.width || 20,
+          h: f.height || 10
+        };
+        pending.push(item);
+        if (f.kind === "box") boxInstances.push(item);
+      }
+    });
+
+    pending.forEach(function (item) {
+        var f = item.f;
+        var i = item.i;
         var el = document.createElement("div");
         el.className = "dz-frame kind-" + (f.kind || "box") +
           (f.id === selectedId && i === 0 && !previewMode ? " selected" : "") +
           (f.locked ? " is-locked" : "");
-        el.style.zIndex = String(2 + zi);
-        el.style.left = px(f.left || 0) + "px";
-        var step = (f.kind === "field") ? (f.height || 8) : rowStep;
-        el.style.top = px((f.y || 0) + i * step) + "px";
-        el.style.width = px(f.width || 20) + "px";
-        el.style.height = px(f.height || 10) + "px";
+        el.style.zIndex = String(2 + item.zi);
+        el.style.left = px(item.x) + "px";
+        el.style.top = px(item.y) + "px";
+        el.style.width = px(item.w) + "px";
+        el.style.height = px(item.h) + "px";
         el.style.transform = "rotate(" + (f.rotation || 0) + "deg)";
+        el.style.printColorAdjust = "exact";
+        el.style.webkitPrintColorAdjust = "exact";
         var inner = document.createElement("div");
         inner.className = "inner";
         inner.style.justifyContent = f.align === "left" ? "flex-end" : (f.align === "right" ? "flex-start" : "center");
@@ -566,11 +632,13 @@
           var fills = (f.fill_colors && f.fill_colors.length) ? f.fill_colors : defaultFillColors();
           el.style.background = fills[i % fills.length];
           var bs = f.border_styles || {};
-          var isLast = previewMode && f.data_extend && (i === copies - 1) && f.last_line_enable;
-          el.style.borderTop = borderCss(bs.top || "solid");
-          el.style.borderRight = borderCss(bs.right || "solid");
-          el.style.borderLeft = borderCss(bs.left || "solid");
-          el.style.borderBottom = borderCss(isLast ? (f.last_line_style || "solid") : (bs.bottom || "solid"));
+          var isLast = previewMode && f.data_extend && (i === item.copies - 1) && f.last_line_enable;
+          var lastStyle = isLast ? (f.last_line_style || "solid") : null;
+          var borders = resolveBoxBorders(item, boxInstances, bs, lastStyle);
+          el.style.borderTop = borders.top;
+          el.style.borderRight = borders.right;
+          el.style.borderLeft = borders.left;
+          el.style.borderBottom = borders.bottom;
         } else if (isLineKind(f.kind)) {
           var ls = f.line_style || "solid";
           el.style.background = "transparent";
@@ -595,13 +663,18 @@
         } else if (f.kind === "row_number") {
           inner.textContent = previewMode ? String(i + 1) : (f.label || "ردیف");
         } else if (f.kind === "field") {
-          var txt = f.label || "کلید منابع";
-          if (f.source && f.source_key && !previewMode) txt += " ⟨" + f.source + "." + f.source_key + "⟩";
-          if (previewMode && f.source_key) txt = "{" + f.source_key + "}";
-          inner.textContent = txt;
+          if (previewMode) {
+            inner.textContent = columnLabel(f.source, f.source_key) || "";
+          } else {
+            var txt = f.label || "کلید منابع";
+            if (f.source && f.source_key) txt += " ⟨" + f.source + "." + f.source_key + "⟩";
+            inner.textContent = txt;
+          }
         } else if (f.kind !== "box") {
           inner.textContent = f.label || kindLabel(f.kind);
-        } else if (f.label) {
+        } else if (f.label && !previewMode) {
+          inner.textContent = f.label;
+        } else if (f.label && previewMode && !f.data_extend) {
           inner.textContent = f.label;
         }
         el.appendChild(inner);
@@ -634,7 +707,6 @@
           }
         }
         canvas.appendChild(el);
-      }
     });
 
     drawRulers();
@@ -647,13 +719,15 @@
     var f = find(selectedId); if (!f) return;
     if (f.locked) return;
     pushHistory();
+    function mm1(v) { return Math.round(Math.max(0, parseFloat(v) || 0)); }
     f.label = document.getElementById("prop-label").value;
-    f.left = snapMm(Math.max(0, parseFloat(document.getElementById("prop-x").value) || 0));
-    f.y = snapMm(Math.max(0, parseFloat(document.getElementById("prop-y").value) || 0));
-    f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
-    f.height = Math.max(0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
-    f.rotation = parseFloat(document.getElementById("prop-rotation").value) || 0;
-    if (f.kind === "line") { f.height = Math.max(0.5, f.height); if (f.orientation === "v") f.width = Math.max(0.5, f.width); }
+    f.left = mm1(document.getElementById("prop-x").value);
+    f.y = mm1(document.getElementById("prop-y").value);
+    f.width = Math.max(1, mm1(document.getElementById("prop-w").value) || 1);
+    f.height = Math.max(1, Math.max(0.5, parseFloat(document.getElementById("prop-h").value) || 1));
+    f.height = Math.round(f.height);
+    f.rotation = Math.round(parseFloat(document.getElementById("prop-rotation").value) || 0);
+    if (f.kind === "line") { f.height = Math.max(1, f.height); if (f.orientation === "v") f.width = Math.max(1, f.width); }
     render();
   }
   ["prop-label","prop-x","prop-y","prop-w","prop-h","prop-rotation"].forEach(function (id) {
@@ -719,12 +793,16 @@
 
   var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
   document.getElementById("paper-preset").addEventListener("change", function () {
-    var v = this.value; if (!PRESETS[v]) return;
-    pushHistory();
-    pageWInput.value = PRESETS[v][0]; pageHInput.value = PRESETS[v][1]; render();
+    var v = this.value;
+    if (PRESETS[v]) {
+      pushHistory();
+      pageWInput.value = PRESETS[v][0]; pageHInput.value = PRESETS[v][1];
+    }
+    render();
   });
   ["prop-page-w","prop-page-h"].forEach(function (id) {
     document.getElementById(id).addEventListener("change", function () {
+      if (this.disabled) return;
       pushHistory();
       pageWInput.value = document.getElementById("prop-page-w").value;
       pageHInput.value = document.getElementById("prop-page-h").value;

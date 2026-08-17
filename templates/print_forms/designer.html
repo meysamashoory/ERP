@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=8">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=11">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -126,14 +126,14 @@
           <div id="props-fields" hidden>
             <div class="dz-field"><label>برچسب</label><input id="prop-label"></div>
             <div class="dz-grid-2">
-              <div class="dz-field"><label>X</label><input type="number" step="0.5" id="prop-x" lang="en" dir="ltr"></div>
-              <div class="dz-field"><label>Y</label><input type="number" step="0.5" id="prop-y" lang="en" dir="ltr"></div>
-              <div class="dz-field"><label>عرض</label><input type="number" step="0.5" id="prop-w" lang="en" dir="ltr"></div>
-              <div class="dz-field"><label>ارتفاع</label><input type="number" step="0.5" id="prop-h" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>X</label><input type="number" step="1" id="prop-x" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>Y</label><input type="number" step="1" id="prop-y" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>عرض</label><input type="number" step="1" id="prop-w" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>ارتفاع</label><input type="number" step="1" id="prop-h" lang="en" dir="ltr"></div>
             </div>
             <div class="dz-field">
               <label>چرخش (درجه)</label>
-              <input type="number" id="prop-rotation" min="-180" max="180" step="5" lang="en" dir="ltr">
+              <input type="number" id="prop-rotation" min="-180" max="180" step="1" lang="en" dir="ltr">
             </div>
             <div id="logo-props" hidden>
               <div class="dz-field"><label>تصویر لوگو</label><input type="file" id="prop-logo-file" accept="image/*"></div>
@@ -263,6 +263,7 @@
 {{ column_groups|json_script:"column-groups" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_designer.js' %}?v=10"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=1"></script>
+<script src="{% static 'js/form_designer.js' %}?v=11"></script>
 </body>
 </html>

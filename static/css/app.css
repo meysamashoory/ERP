@@ -889,16 +889,29 @@ input[type=number].spin {
   background: #e2e8f0;
   border-radius: 12px;
   padding: 16px;
+  max-height: calc(100vh - 160px);
+}
+.form-view-wrap {
+  max-height: none;
+  overflow: auto;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 .form-canvas {
   position: relative;
   width: calc(var(--page-w, 210) * 1mm);
   height: calc(var(--page-h, 297) * 1mm);
-  max-width: 100%;
+  max-width: none;
   background: #fff;
   border: 1px solid #94a3b8;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   margin: 0 auto;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.form-sheet-frame {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 .form-frame {
   position: absolute;
@@ -942,8 +955,25 @@ input[type=number].spin {
   .main { margin: 0 !important; }
   .content { padding: 0 !important; }
   .panel { border: none; box-shadow: none; }
-  .form-canvas-wrap { background: transparent; padding: 0; }
-  .print-sheet { box-shadow: none; }
+  .form-canvas-wrap, .form-view-wrap {
+    background: transparent !important;
+    padding: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+  .print-sheet, .form-canvas {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    max-width: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .form-sheet-frame {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 /* Form designer v2 */

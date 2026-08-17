@@ -205,10 +205,32 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(resp, "کلید منابع")
         self.assertContains(resp, "btn-copy")
         self.assertContains(resp, "btn-paste")
+        self.assertContains(resp, "form_sheet_render.js")
         self.assertNotContains(resp, "اسنپ به لبه‌ها")
         self.assertNotContains(resp, "وارد کردن فرم از اکسل")
         # No main app sidebar in designer window
         self.assertNotContains(resp, "خروج از سامانه")
+
+    def test_form_detail_uses_sheet_renderer(self):
+        self.client.login(username="expert", password="erp12345")
+        form_obj = PrintForm.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="فرم مشاهده",
+            number=77,
+            frames=[{
+                "id": "1", "kind": "box", "label": "کادر",
+                "left": 10, "x": 10, "y": 10, "width": 80, "height": 20,
+                "fill_colors": ["#ffffff", "#e8f0fe"],
+                "border_styles": {"top": "solid", "right": "solid", "bottom": "dashed", "left": "solid"},
+            }],
+            page_settings={"margin_top": 10, "margin_bottom": 10, "margin_left": 10, "margin_right": 10},
+        )
+        resp = self.client.get(reverse("print_form_detail", args=[form_obj.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "form_sheet_render.js")
+        self.assertContains(resp, "form-view-canvas")
+        self.assertContains(resp, "fill_colors")
 
     def test_report_edit_shows_existing_columns(self):
         self.client.login(username="admin", password="erp12345")

@@ -499,6 +499,9 @@ def form_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "print_forms/detail.html",
         {
             "print_form": form_obj,
+            "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
+            "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
+            "column_groups": COLUMN_GROUPS,
         },
     )
 
