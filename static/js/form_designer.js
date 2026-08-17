@@ -320,8 +320,8 @@
         '<span class="name">' + kindLabel(f.kind, f) + " — " + (f.label || "بدون نام") + "</span>" +
         '<button type="button" class="dz-icon-btn dz-lock' + (f.locked ? " on" : "") + '" title="' + (f.locked ? "باز کردن قفل" : "قفل کردن") + '">' +
           (f.locked
-            ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" fill="currentColor"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><rect x="11" y="14.2" width="2" height="3.2" rx="0.6" fill="#1a1d24"/></svg>'
-            : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M8 8c0-3.2 2.2-5.5 5.2-5.5 2.4 0 4.3 1.4 5 3.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="16" r="1.2" fill="currentColor"/></svg>') +
+            ? '<span class="dz-lock-glyph" aria-hidden="true">🔒</span>'
+            : '<span class="dz-lock-glyph" aria-hidden="true">🔓</span>') +
         "</button>" +
         '<button type="button" class="dz-icon-btn dz-eye' + (f.hidden ? " off" : "") + '" title="مخفی/نمایش"' + (f.locked ? " disabled" : "") + ">" +
           '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2C4.2 3.2 1.3 6.1.5 8c.8 1.9 3.7 4.8 7.5 4.8S14.7 9.9 15.5 8C14.7 6.1 11.8 3.2 8 3.2zm0 7.6A2.8 2.8 0 1 1 8 5.2a2.8 2.8 0 0 1 0 5.6z"/></svg>' +

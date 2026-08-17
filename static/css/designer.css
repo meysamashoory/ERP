@@ -303,8 +303,12 @@ body.designer-app {
   display: block;
 }
 .dz-lock { color: #94a3b8; }
-.dz-lock.on { color: #f59e0b; }
-.dz-lock svg { width: 16px; height: 15px; display: block; }
+.dz-lock.on { color: #f59e0b; filter: none; }
+.dz-lock-glyph {
+  font-size: 14px;
+  line-height: 1;
+  display: block;
+}
 .dz-field input:disabled,
 .dz-field select:disabled,
 .dz-field input.is-locked-size {
