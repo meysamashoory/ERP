@@ -29,7 +29,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/form_sheet_render.js' %}?v=1"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=3"></script>
 <script>
 (function () {
   var frames = [];
@@ -47,7 +47,9 @@
       pageHeightMm: {{ print_form.page_height_mm|default:297 }},
       pageSettings: settings,
       columnGroups: groups,
-      useMm: true
+      useMm: true,
+      fillRows: [],
+      viewMode: "detail"
     });
   }
   var printBtn = document.querySelector("[data-print-form]");

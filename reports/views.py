@@ -559,40 +559,52 @@ def form_detail(request: HttpRequest, pk: int) -> HttpResponse:
     )
 
 
-def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> dict:
-    """Map source_key → display value for filling a print form from a list row."""
-    values: dict[str, str] = {}
+def _item_values_from_plan_item(item) -> dict:
+    weekday = ""
+    try:
+        weekday = item.get_mold_change_weekday_display()
+    except Exception:
+        weekday = str(getattr(item, "mold_change_weekday", "") or "")
+    return {
+        "uid": str(getattr(item, "uid", "") or ""),
+        "product_code": item.product.code if item.product_id else "",
+        "product_name": item.product.name if item.product_id else "",
+        "unit": f"واحد {item.machine.unit.number}" if item.machine_id and item.machine.unit_id else "",
+        "machine": str(item.machine.number) if item.machine_id else "",
+        "mold_change_day": weekday,
+        "mold_change_date": str(getattr(item, "mold_change_date", "") or ""),
+        "cavities": str(getattr(item, "active_cavities", "") or ""),
+    }
+
+
+def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> list[dict]:
+    """Return one dict per data row for filling extended form fields."""
+    rows: list[dict] = []
     if ctx == "weekly_plan":
         from planning.models import WeeklyPlan, WeeklyPlanItem
         plan = WeeklyPlan.objects.select_related("created_by").filter(pk=obj_id).first()
         if not plan:
-            return values
-        values.update({
+            return rows
+        base = {
             "program_number": str(plan.program_number),
             "date": str(plan.date),
             "weekday": plan.weekday_name,
             "status": plan.get_status_display(),
             "created_by": plan.created_by.username if plan.created_by_id else "",
-        })
-        item = None
+        }
+        qs = WeeklyPlanItem.objects.select_related("product", "machine__unit").filter(plan=plan).order_by("id")
         if item_id:
-            item = WeeklyPlanItem.objects.select_related(
-                "product", "machine__unit"
-            ).filter(pk=item_id, plan=plan).first()
-        else:
-            item = plan.items.select_related("product", "machine__unit").first()
-        if item:
-            values.update({
-                "uid": str(getattr(item, "uid", "") or ""),
-                "product_code": item.product.code if item.product_id else "",
-                "product_name": item.product.name if item.product_id else "",
-                "unit": f"واحد {item.machine.unit.number}" if item.machine_id and item.machine.unit_id else "",
-                "machine": str(item.machine.number) if item.machine_id else "",
-                "mold_change_day": str(getattr(item, "mold_change_weekday", "") or ""),
-                "mold_change_date": str(getattr(item, "mold_change_date", "") or ""),
-                "cavities": str(getattr(item, "active_cavities", "") or ""),
-            })
-    elif ctx == "prod_fitting":
+            qs = qs.filter(pk=item_id)
+        items = list(qs)
+        if not items:
+            rows.append(dict(base))
+            return rows
+        for item in items:
+            row = dict(base)
+            row.update(_item_values_from_plan_item(item))
+            rows.append(row)
+        return rows
+    if ctx == "prod_fitting":
         from production.models import ProductionDayEntry, ProductionProgram
         program = (
             ProductionProgram.objects.select_related(
@@ -602,12 +614,12 @@ def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> di
             .first()
         )
         if not program:
-            return values
-        entries = ProductionDayEntry.objects.filter(program=program)
+            return rows
+        entries = list(ProductionDayEntry.objects.filter(program=program))
         produced = sum(e.produced_quantity for e in entries)
         planned = sum(e.planned_quantity for e in entries)
         scrap = sum(e.scrap_quantity for e in entries)
-        values.update({
+        rows.append({
             "uid": str(program.item.uid),
             "program_number": str(program.item.plan.program_number),
             "machine": program.machine_label,
@@ -619,12 +631,13 @@ def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> di
             "scrap": str(scrap),
             "date": str(program.item.plan.date),
         })
-    elif ctx == "prod_pipe":
+        return rows
+    if ctx == "prod_pipe":
         from production.models import PipeProduction
         pipe = PipeProduction.objects.select_related("unit", "line", "product").filter(pk=obj_id).first()
         if not pipe:
-            return values
-        values.update({
+            return rows
+        rows.append({
             "date": str(pipe.date),
             "unit": f"واحد {pipe.unit.number}",
             "line": str(pipe.line.number),
@@ -635,33 +648,45 @@ def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> di
             "planned": str(pipe.planned_quantity),
             "deviation": str(pipe.deviation),
         })
-    elif ctx == "report":
+        return rows
+    if ctx == "report":
         report = SavedReport.objects.filter(pk=obj_id).first()
         if not report:
-            return values
-        values["report_title"] = report.title
-        values["report_number"] = str(report.number)
+            return rows
         try:
             level = int(item_id or 1)
         except (TypeError, ValueError):
             level = 1
-        headers, rows, _payloads, _deeper = run_report(
+        headers, data_rows, _payloads, _deeper = run_report(
             report.data_source, report.columns or [], level=level, filters={}
         )
-        if rows:
-            row0 = rows[0]
+        level_cols = [
+            c for c in (report.columns or [])
+            if isinstance(c, dict) and int(c.get("level") or 1) == level
+        ]
+        for data_row in data_rows:
+            row = {
+                "report_title": report.title,
+                "report_number": str(report.number),
+            }
             for i, h in enumerate(headers):
                 key = ""
-                for c in (report.columns or []):
-                    if int(c.get("level") or 1) == level and (c.get("label") == h or c.get("key")):
-                        key = str(c.get("key") or "")
-                        break
+                if i < len(level_cols):
+                    key = str(level_cols[i].get("key") or "")
                 if not key:
                     key = f"col_{i}"
-                val = row0[i] if i < len(row0) else ""
-                values[key] = str(val)
-                values[h] = str(val)
-    return values
+                val = data_row[i] if i < len(data_row) else ""
+                row[key] = str(val)
+                row[h] = str(val)
+            rows.append(row)
+        return rows
+    return rows
+
+
+def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> dict:
+    """Backward-compatible single-row map (first fill row). """
+    rows = _context_fill_rows(ctx, obj_id, item_id)
+    return rows[0] if rows else {}
 
 
 @login_required
@@ -680,7 +705,7 @@ def form_print_fill(request: HttpRequest, pk: int) -> HttpResponse:
         item_id_int = int(item_id) if item_id else None
     except ValueError:
         item_id_int = None
-    values = _context_row_values(ctx, obj_id, item_id_int) if obj_id else {}
+    fill_rows = _context_fill_rows(ctx, obj_id, item_id_int) if obj_id else []
     return render(
         request,
         "print_forms/print_fill.html",
@@ -688,7 +713,7 @@ def form_print_fill(request: HttpRequest, pk: int) -> HttpResponse:
             "print_form": form_obj,
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
             "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
-            "fill_values_json": json.dumps(values, ensure_ascii=False),
+            "fill_rows_json": json.dumps(fill_rows, ensure_ascii=False),
             "auto_print": request.GET.get("autoprint") == "1",
         },
     )

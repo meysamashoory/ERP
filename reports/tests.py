@@ -196,7 +196,9 @@ class PrintFormFlowTests(TestCase):
         self.client.login(username="expert", password="erp12345")
         resp = self.client.get(reverse("print_form_create"))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "امتداد دیتا")
+        self.assertContains(resp, "تکرار تا پایین صفحه")
+        self.assertContains(resp, "تکرار وابسته به فیلد")
+        self.assertNotContains(resp, "امتداد دیتا")
         self.assertContains(resp, "لوگو")
         self.assertContains(resp, "حاشیه بالا")
         self.assertContains(resp, "designer-app")
@@ -233,6 +235,60 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(resp, "form_sheet_render.js")
         self.assertContains(resp, "form-view-canvas")
         self.assertContains(resp, "fill_colors")
+
+    def test_print_fill_repeats_each_plan_item(self):
+        import jdatetime
+        from catalog.models import Machine, Product, ProductionUnit
+        from planning.models import Weekday, WeeklyPlan, WeeklyPlanItem
+
+        self.client.login(username="expert", password="erp12345")
+        unit = ProductionUnit.objects.get(number=1)
+        machine = Machine.objects.filter(unit=unit).first()
+        p1 = Product.objects.get(code="F-0900")
+        p2 = Product.objects.get(code="F-1100")
+        plan = WeeklyPlan.objects.create(
+            program_number="BP-FILL",
+            date=jdatetime.date(1405, 5, 24),
+            status=WeeklyPlan.Status.DRAFT,
+            created_by=self.expert,
+        )
+        WeeklyPlanItem.objects.create(
+            plan=plan, subgroup=p1.subgroup, unit=unit, machine=machine,
+            product=p1, mold_change_weekday=Weekday.SHANBE,
+            mold_change_date=jdatetime.date(1405, 5, 24), active_cavities=4, sequence=1,
+        )
+        WeeklyPlanItem.objects.create(
+            plan=plan, subgroup=p2.subgroup, unit=unit, machine=machine,
+            product=p2, mold_change_weekday=Weekday.YEKSHANBE,
+            mold_change_date=jdatetime.date(1405, 5, 25), active_cavities=1, sequence=2,
+        )
+        form_obj = PrintForm.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="فرم برنامه",
+            number=78,
+            purpose="weekly_plan",
+            frames=[{
+                "id": "f1", "kind": "field", "label": "نام محصول",
+                "left": 10, "x": 10, "y": 10, "width": 60, "height": 10,
+                "source": "weekly_plan", "source_key": "product_name",
+            }, {
+                "id": "b1", "kind": "box", "label": "کادر",
+                "left": 5, "x": 5, "y": 10, "width": 100, "height": 10,
+                "extend_mode": "field",
+                "fill_colors": ["#ffffff", "#e8f0fe"],
+                "border_styles": {"top": "solid", "right": "solid", "bottom": "solid", "left": "solid"},
+            }],
+        )
+        resp = self.client.get(
+            reverse("print_form_print_fill", args=[form_obj.pk]),
+            {"ctx": "weekly_plan", "id": plan.pk},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "fill-rows")
+        self.assertContains(resp, p1.name)
+        self.assertContains(resp, p2.name)
+        self.assertContains(resp, "fillRows")
 
     def test_report_edit_shows_existing_columns(self):
         self.client.login(username="admin", password="erp12345")

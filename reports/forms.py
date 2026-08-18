@@ -274,8 +274,11 @@ class PrintFormForm(forms.ModelForm):
                 "valign": str(item.get("valign") or "middle")[:20],
                 "hidden": bool(item.get("hidden")),
             }
-            if kind in ("field", "row_number", "box", "line"):
-                frame["data_extend"] = bool(item.get("data_extend"))
+            if kind in ("box", "line"):
+                mode = str(item.get("extend_mode") or "").strip()
+                if mode not in ("page", "field", "none"):
+                    mode = "field" if item.get("data_extend") else "none"
+                frame["extend_mode"] = mode
             if kind in ("field", "row_number"):
                 frame["source"] = str(item.get("source") or "")[:40]
                 frame["source_key"] = str(item.get("source_key") or "")[:80]

@@ -163,16 +163,22 @@
               </div>
               <div class="dz-field"><label>منبع</label><select id="prop-source"></select></div>
               <div class="dz-field"><label>ستون</label><select id="prop-source-key"></select></div>
-              <label class="dz-chk" style="margin-top:6px"><input type="checkbox" id="prop-data-extend"> امتداد دیتا (تکرار ردیف‌ها)</label>
               <p id="field-bind-path" style="font-size:11px;color:#64748b;margin:4px 0 0"></p>
+              <p style="font-size:11px;color:#64748b;margin:6px 0 0">تکرار فیلد به تعداد آیتم‌های مرتبط (برنامه / گزارش) است.</p>
             </div>
             <div id="row-number-props" hidden>
-              <label class="dz-chk"><input type="checkbox" id="prop-row-extend"> وابسته به فیلد دیتای امتدادیافته</label>
-              <p style="font-size:11px;color:#64748b;margin:4px 0 0">شماره ردیف به تعداد ردیف‌های فیلد دیتا (۱…N) ساخته می‌شود.</p>
+              <p style="font-size:11px;color:#64748b;margin:0">شماره ردیف به تعداد آیتم‌های مرتبط (۱…N) ساخته می‌شود.</p>
             </div>
             <div id="shape-extend-props" hidden>
-              <label class="dz-chk"><input type="checkbox" id="prop-shape-extend"> امتداد همراه فیلد دیتا</label>
-              <p style="font-size:11px;color:#64748b;margin:4px 0 0">فقط وقتی یک فیلد با امتداد وجود دارد، این کادر/خط به همان تعداد تکرار می‌شود.</p>
+              <div class="dz-field">
+                <label>تکرار کادر / خط</label>
+                <select id="prop-extend-mode">
+                  <option value="none">بدون تکرار</option>
+                  <option value="page">تکرار تا پایین صفحه</option>
+                  <option value="field">تکرار وابسته به فیلد</option>
+                </select>
+              </div>
+              <p style="font-size:11px;color:#64748b;margin:4px 0 0">تا پایین صفحه مستقل از تعداد آیتم است؛ وابسته به فیلد با تعداد آیتم‌های داده هماهنگ می‌شود.</p>
             </div>
             <div id="line-style-props" hidden>
               <div class="dz-field">
@@ -190,7 +196,7 @@
                 <label>الگوی رنگ داخل کادر</label>
                 <div id="fill-pattern-list" class="dz-fill-list"></div>
                 <button type="button" class="dz-btn" id="btn-add-fill" title="افزودن الگو">+ الگوی رنگ</button>
-                <p class="muted" style="font-size:11px;margin:4px 0 0">تا ۹ الگو؛ در امتداد به ترتیب تکرار می‌شود.</p>
+                <p class="muted" style="font-size:11px;margin:4px 0 0">تا ۹ الگو؛ در تکرار به ترتیب اعمال می‌شود.</p>
               </div>
               <div class="dz-grid-2">
                 <div class="dz-field"><label>خط بالا</label>
@@ -288,6 +294,6 @@
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
 <script src="{% static 'js/form_sheet_render.js' %}?v=2"></script>
-<script src="{% static 'js/form_designer.js' %}?v=15"></script>
+<script src="{% static 'js/form_designer.js' %}?v=16"></script>
 </body>
 </html>

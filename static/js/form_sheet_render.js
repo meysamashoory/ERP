@@ -40,22 +40,13 @@
     return Math.max(1, Math.floor(avail / rowH));
   }
 
-  function masterFieldRows(frames, pageH, marginBottom) {
-    var n = 0;
-    (frames || []).forEach(function (f) {
-      if (f.hidden || f.kind !== "field" || !f.data_extend) return;
-      n = Math.max(n, estimateExtendRows(pageH, marginBottom, f));
-    });
-    return n;
-  }
-
-  function masterRowHeight(frames) {
-    var h = 0;
-    (frames || []).forEach(function (f) {
-      if (f.hidden || f.kind !== "field" || !f.data_extend) return;
-      h = Math.max(h, f.height || 0);
-    });
-    return h || 8;
+  /** Normalize legacy data_extend → extend_mode for box/line. */
+  function extendModeOf(f) {
+    if (f.extend_mode === "page" || f.extend_mode === "field" || f.extend_mode === "none") {
+      return f.extend_mode;
+    }
+    if (f.data_extend) return "field";
+    return "none";
   }
 
   function near(a, b, eps) {
@@ -72,7 +63,6 @@
     return Math.min(ar, br) - Math.max(al, bl) > 0.5;
   }
 
-  /** Suppress shared edges: top box wins horizontally; right box wins vertically. */
   function applyBoxBorders(inst, all, borderStyles, lastLineStyle) {
     var bs = borderStyles || {};
     var top = bs.top || "solid";
@@ -82,14 +72,8 @@
 
     all.forEach(function (other) {
       if (other === inst) return;
-      // Shared horizontal edge: other is above this → this suppresses top (top box wins)
-      if (near(other.y + other.h, inst.y) && horizontalOverlap(inst, other)) {
-        top = "none";
-      }
-      // Shared vertical edge: other is to the right → this suppresses right (right box wins)
-      if (near(inst.x + inst.w, other.x) && verticalOverlap(inst, other)) {
-        right = "none";
-      }
+      if (near(other.y + other.h, inst.y) && horizontalOverlap(inst, other)) top = "none";
+      if (near(inst.x + inst.w, other.x) && verticalOverlap(inst, other)) right = "none";
     });
 
     return {
@@ -100,6 +84,12 @@
     };
   }
 
+  /**
+   * options:
+   *  - fillRows: [{source_key: value}, ...] actual data rows from linked context
+   *  - viewMode: "detail" (general view) | "context" (linked print)
+   *  Without fillRows: field/field-dependent → 1 row; page → to bottom.
+   */
   function render(options) {
     var canvas = options.canvas;
     var frames = options.frames || [];
@@ -107,7 +97,11 @@
     var pageH = options.pageHeightMm || 297;
     var settings = options.pageSettings || {};
     var groups = options.columnGroups || [];
-    var fillValues = options.fillValues || {};
+    var fillRows = options.fillRows || [];
+    if ((!fillRows || !fillRows.length) && options.fillValues && typeof options.fillValues === "object") {
+      fillRows = [options.fillValues];
+    }
+    var dataCount = fillRows.length;
     var useMm = !!options.useMm;
 
     function len(v) {
@@ -123,22 +117,44 @@
     canvas.style.printColorAdjust = "exact";
     canvas.style.webkitPrintColorAdjust = "exact";
 
-    var masterRows = masterFieldRows(frames, pageH, settings.margin_bottom);
-    var rowStep = masterRowHeight(frames);
+    function copiesFor(f) {
+      var mode = extendModeOf(f);
+      if (f.kind === "field" || f.kind === "row_number") {
+        return dataCount > 0 ? dataCount : 1;
+      }
+      if (f.kind === "box" || isLineKind(f.kind)) {
+        if (mode === "page") return estimateExtendRows(pageH, settings.margin_bottom, f);
+        if (mode === "field") return dataCount > 0 ? dataCount : 1;
+        return 1;
+      }
+      return 1;
+    }
+
+    var masterField = null;
+    for (var mi = 0; mi < frames.length; mi++) {
+      if (!frames[mi].hidden && frames[mi].kind === "field") {
+        masterField = frames[mi];
+        break;
+      }
+    }
+    var masterStep = masterField ? Math.max(masterField.height || 8, 6) : 14;
+
+    function rowStepFor(f) {
+      if (f.kind === "field" || f.kind === "row_number") return Math.max(f.height || 8, 6);
+      var mode = extendModeOf(f);
+      if ((f.kind === "box" || isLineKind(f.kind)) && (mode === "field" || mode === "page")) {
+        return masterStep;
+      }
+      return Math.max(f.height || 8, 6);
+    }
 
     var boxInstances = [];
     var pending = [];
 
     frames.forEach(function (f, zi) {
       if (f.hidden) return;
-      var copies = 1;
-      if (f.data_extend) {
-        if (f.kind === "field") copies = estimateExtendRows(pageH, settings.margin_bottom, f);
-        else if (masterRows > 0) copies = masterRows;
-        else copies = 1;
-      }
-      var step = (f.kind === "field") ? (f.height || 8) : rowStep;
-
+      var copies = copiesFor(f);
+      var step = rowStepFor(f);
       for (var i = 0; i < copies; i++) {
         var x = f.left != null ? f.left : (f.x || 0);
         var y = (f.y || 0) + i * step;
@@ -152,6 +168,7 @@
 
     pending.forEach(function (item) {
       var f = item.f;
+      var mode = extendModeOf(f);
       var el = document.createElement("div");
       el.className = "form-sheet-frame kind-" + (f.kind || "box");
       el.style.position = "absolute";
@@ -179,14 +196,15 @@
       if (f.kind === "box") {
         var fills = (f.fill_colors && f.fill_colors.length) ? f.fill_colors : defaultFillColors();
         el.style.background = fills[item.i % fills.length];
-        var isLast = f.data_extend && (item.i === item.copies - 1) && f.last_line_enable;
+        var repeats = mode === "page" || mode === "field";
+        var isLast = repeats && (item.i === item.copies - 1) && f.last_line_enable;
         var lastStyle = isLast ? (f.last_line_style || "solid") : null;
         var borders = applyBoxBorders(item, boxInstances, f.border_styles, lastStyle);
         el.style.borderTop = borders.top;
         el.style.borderRight = borders.right;
         el.style.borderBottom = borders.bottom;
         el.style.borderLeft = borders.left;
-        if (f.label && !(f.data_extend && item.i > 0)) el.textContent = f.label;
+        if (f.label && item.i === 0) el.textContent = f.label;
       } else if (isLineKind(f.kind)) {
         var ls = f.line_style || "solid";
         el.style.background = "transparent";
@@ -215,10 +233,9 @@
       } else if (f.kind === "field") {
         el.style.border = "none";
         el.style.background = "transparent";
-        if (f._filled != null && f._filled !== "") {
-          el.textContent = f._filled;
-        } else if (fillValues && f.source_key && fillValues[f.source_key] != null) {
-          el.textContent = String(fillValues[f.source_key]);
+        var row = fillRows[item.i] || {};
+        if (f.source_key && row[f.source_key] != null && row[f.source_key] !== "") {
+          el.textContent = String(row[f.source_key]);
         } else {
           el.textContent = columnLabel(groups, f.source, f.source_key) || "";
         }
@@ -238,6 +255,7 @@
     columnLabel: columnLabel,
     applyBoxBorders: applyBoxBorders,
     isLineKind: isLineKind,
-    defaultFillColors: defaultFillColors
+    defaultFillColors: defaultFillColors,
+    extendModeOf: extendModeOf
   };
 })(window);

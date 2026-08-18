@@ -27,7 +27,15 @@
     if (f.hidden == null) f.hidden = false;
     if (f.locked == null) f.locked = false;
     if (f.rotation == null) f.rotation = 0;
-    if (f.data_extend == null) f.data_extend = false;
+    var isShape = f.kind === "box" || f.kind === "line" || f.kind === "line_h" || f.kind === "line_v";
+    if (isShape) {
+      if (f.extend_mode !== "page" && f.extend_mode !== "field" && f.extend_mode !== "none") {
+        f.extend_mode = f.data_extend ? "field" : "none";
+      }
+    } else {
+      delete f.extend_mode;
+    }
+    delete f.data_extend;
     if (f.kind === "line" && !f.orientation) f.orientation = (f.height > f.width) ? "v" : "h";
     if (f.kind === "line" && !f.line_style) f.line_style = "solid";
     if (f.kind === "box" && (!f.fill_colors || !f.fill_colors.length)) f.fill_colors = ["#ffffff", "#e8f0fe"];
@@ -307,28 +315,24 @@
     return Math.max(1, Math.floor(avail / rowH));
   }
 
-  /** Row count comes from the first extended data field (not page bottom alone). */
-  function extendMasterRows() {
-    var masters = frames.filter(function (f) {
-      return !f.hidden && f.kind === "field" && f.data_extend;
-    });
-    if (!masters.length) return 0;
-    return estimateExtendRows(masters[0]);
+  function extendModeOf(f) {
+    if (f.extend_mode === "page" || f.extend_mode === "field" || f.extend_mode === "none") {
+      return f.extend_mode;
+    }
+    if (f.data_extend) return "field";
+    return "none";
   }
 
-  function masterRowHeight() {
-    var masters = frames.filter(function (f) {
-      return !f.hidden && f.kind === "field" && f.data_extend;
-    });
-    if (!masters.length) return 14;
-    return Math.max(masters[0].height || 8, 6);
-  }
-
-  function copiesForFrame(f, masterRows) {
-    if (!f.data_extend) return 1;
-    if (f.kind === "field") return estimateExtendRows(f);
-    // row_number / box / line / others with extend follow master data field count
-    if (masterRows > 0) return masterRows;
+  /** Designer preview mirrors detail view: fields = 1; box/line page = bottom; field = 1. */
+  function copiesForFrame(f) {
+    var mode = extendModeOf(f);
+    if (f.kind === "field" || f.kind === "row_number") {
+      return 1;
+    }
+    if (f.kind === "box" || isLineKind(f.kind)) {
+      if (mode === "page") return estimateExtendRows(f);
+      return 1;
+    }
     return 1;
   }
 
@@ -507,14 +511,10 @@
     document.getElementById("line-style-props").hidden = !isLineKind(f.kind);
     document.getElementById("box-style-props").hidden = f.kind !== "box";
     if (f.kind === "field") {
-      document.getElementById("prop-data-extend").checked = !!f.data_extend;
       fillSources(f);
     }
-    if (f.kind === "row_number") {
-      document.getElementById("prop-row-extend").checked = !!f.data_extend;
-    }
     if (f.kind === "box" || isLineKind(f.kind)) {
-      document.getElementById("prop-shape-extend").checked = !!f.data_extend;
+      document.getElementById("prop-extend-mode").value = extendModeOf(f);
     }
     if (isLineKind(f.kind)) {
       document.getElementById("prop-line-style").value = f.line_style || "solid";
@@ -700,8 +700,10 @@
       }
     }
 
-    var masterRows = extendMasterRows();
-    var rowStep = masterRowHeight();
+    var masterField = frames.find(function (fr) {
+      return !fr.hidden && fr.kind === "field";
+    });
+    var rowStep = masterField ? Math.max(masterField.height || 8, 6) : 14;
 
     var pending = [];
     var boxInstances = [];
@@ -709,10 +711,12 @@
     frames.forEach(function (f, zi) {
       if (f.hidden) return;
       var copies = 1;
-      if (previewMode && f.data_extend) {
-        copies = copiesForFrame(f, masterRows);
+      if (previewMode) {
+        copies = copiesForFrame(f);
       }
-      var step = (f.kind === "field") ? (f.height || 8) : rowStep;
+      var step = (f.kind === "field" || f.kind === "row_number")
+        ? Math.max(f.height || 8, 6)
+        : rowStep;
       for (var i = 0; i < copies; i++) {
         var item = {
           f: f, i: i, copies: copies, zi: zi,
@@ -729,6 +733,7 @@
     pending.forEach(function (item) {
         var f = item.f;
         var i = item.i;
+        var mode = extendModeOf(f);
         var el = document.createElement("div");
         el.className = "dz-frame kind-" + (f.kind || "box") +
           (f.id === selectedId && i === 0 && !previewMode ? " selected" : "") +
@@ -751,7 +756,8 @@
           var fills = (f.fill_colors && f.fill_colors.length) ? f.fill_colors : defaultFillColors();
           el.style.background = fills[i % fills.length];
           var bs = f.border_styles || {};
-          var isLast = previewMode && f.data_extend && (i === item.copies - 1) && f.last_line_enable;
+          var repeats = mode === "page" || mode === "field";
+          var isLast = previewMode && repeats && (i === item.copies - 1) && f.last_line_enable;
           var lastStyle = isLast ? (f.last_line_style || "solid") : null;
           var borders = resolveBoxBorders(item, boxInstances, bs, lastStyle);
           el.style.borderTop = borders.top;
@@ -793,16 +799,18 @@
           inner.textContent = f.label || kindLabel(f.kind);
         } else if (f.label && !previewMode) {
           inner.textContent = f.label;
-        } else if (f.label && previewMode && !f.data_extend) {
+        } else if (f.label && previewMode && mode === "none") {
           inner.textContent = f.label;
         }
         el.appendChild(inner);
 
-        if (!previewMode && f.data_extend && i === 0) {
-          var badge = document.createElement("span");
-          badge.className = "badge-extend";
-          badge.textContent = f.kind === "row_number" ? "وابسته به فیلد" : "امتداد";
-          el.appendChild(badge);
+        if (!previewMode && i === 0 && (f.kind === "box" || isLineKind(f.kind))) {
+          if (mode === "page" || mode === "field") {
+            var badge = document.createElement("span");
+            badge.className = "badge-extend";
+            badge.textContent = mode === "page" ? "تا پایین صفحه" : "وابسته به فیلد";
+            el.appendChild(badge);
+          }
         }
 
         if (i === 0) {
@@ -853,17 +861,12 @@
     var el = document.getElementById(id);
     if (el) el.addEventListener("change", applyProps);
   });
-  document.getElementById("prop-data-extend").addEventListener("change", function () {
-    var f = find(selectedId); if (!f || f.kind !== "field") return;
-    pushHistory(); f.data_extend = this.checked; render();
-  });
-  document.getElementById("prop-row-extend").addEventListener("change", function () {
-    var f = find(selectedId); if (!f || f.kind !== "row_number") return;
-    pushHistory(); f.data_extend = this.checked; render();
-  });
-  document.getElementById("prop-shape-extend").addEventListener("change", function () {
+  document.getElementById("prop-extend-mode").addEventListener("change", function () {
     var f = find(selectedId); if (!f || (f.kind !== "box" && !isLineKind(f.kind))) return;
-    pushHistory(); f.data_extend = this.checked; render();
+    pushHistory();
+    f.extend_mode = this.value;
+    delete f.data_extend;
+    render();
   });
   document.getElementById("prop-line-style").addEventListener("change", function () {
     var f = find(selectedId); if (!f || !isLineKind(f.kind)) return;
@@ -1089,12 +1092,14 @@
         label: kind === "header" ? "عنوان" : kind === "field" ? "کلید منابع" : kind === "logo" ? "لوگو" : kind === "row_number" ? "ردیف" : kind === "box" ? "کادر" : "",
         kind: kind, left: 15, x: 15, y: 20 + frames.length * 8,
         width: 60, height: 14,
-        rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false, locked: false, data_extend: false
+        rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false, locked: false
       };
       if (kind === "line_h" || kind === "line") {
         f.kind = "line"; f.orientation = "h"; f.width = Math.max(40, pageW() - 30); f.height = 1; f.line_style = "solid";
+        f.extend_mode = "none";
       } else if (kind === "line_v") {
         f.kind = "line"; f.orientation = "v"; f.width = 1; f.height = 40; f.line_style = "solid";
+        f.extend_mode = "none";
       } else if (kind === "header") {
         f.width = Math.max(40, pageW() - 30); f.height = 12;
       } else if (kind === "logo") {
@@ -1105,6 +1110,7 @@
         f.border_styles = { top: "solid", right: "solid", bottom: "solid", left: "solid" };
         f.last_line_enable = false;
         f.last_line_style = "solid";
+        f.extend_mode = "none";
       }
       if (kind === "field" || kind === "row_number") {
         f.source = ""; f.source_key = "";
