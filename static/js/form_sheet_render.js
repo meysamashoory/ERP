@@ -176,7 +176,11 @@
       el.style.top = len(item.y);
       el.style.width = len(item.w);
       el.style.height = len(item.h);
-      el.style.zIndex = String(2 + item.zi);
+      el.style.zIndex = String(
+        ((f.kind === "field" || f.kind === "row_number" || f.kind === "header" || f.kind === "logo")
+          ? 80
+          : 2) + item.zi
+      );
       el.style.boxSizing = "border-box";
       el.style.overflow = "hidden";
       el.style.display = "flex";
@@ -204,7 +208,7 @@
         el.style.borderRight = borders.right;
         el.style.borderBottom = borders.bottom;
         el.style.borderLeft = borders.left;
-        if (f.label && item.i === 0) el.textContent = f.label;
+        if (f.label && item.i === 0 && !(fillRows && fillRows.length)) el.textContent = f.label;
       } else if (isLineKind(f.kind)) {
         var ls = f.line_style || "solid";
         el.style.background = "transparent";
