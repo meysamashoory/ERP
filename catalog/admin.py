@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     DeviationReason,
+    ExcelUpload,
     Machine,
     MoldOption,
     PlanningDisplaySettings,
@@ -314,3 +315,26 @@ class SystemAlarmAdmin(admin.ModelAdmin):
         n = queryset.count()
         queryset.delete()
         self.message_user(request, f"{n} آلارم برای همیشه حذف شد.")
+
+
+@admin.register(ExcelUpload)
+class ExcelUploadAdmin(admin.ModelAdmin):
+    list_display = ("title", "original_name", "uploaded_by", "created_at", "download_link")
+    list_display_links = ("title",)
+    search_fields = ("title", "original_name", "notes")
+    list_filter = ("created_at",)
+    readonly_fields = ("original_name", "uploaded_by", "created_at", "download_link")
+    fields = ("title", "file", "notes", "original_name", "uploaded_by", "created_at", "download_link")
+
+    def save_model(self, request, obj, form, change):
+        if not obj.uploaded_by_id:
+            obj.uploaded_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def download_link(self, obj):
+        if not obj.pk or not obj.file:
+            return "—"
+        from django.utils.html import format_html
+        return format_html('<a href="{}" download>دانلود فایل</a>', obj.file.url)
+
+    download_link.short_description = "سوابق / دانلود"

@@ -286,7 +286,8 @@ class Command(BaseCommand):
         unit2 = units[2]
         m2 = Machine.objects.filter(unit=unit2, machine_type="injection").order_by("id")[1]
         approved = WeeklyPlan.objects.create(
-            program_number="BP-1000", date=today, status=WeeklyPlan.Status.APPROVED,
+            program_number="BP-1000", date=today - jdatetime.timedelta(days=7),
+            status=WeeklyPlan.Status.APPROVED,
             created_by=admin, approved_by=admin,
         )
         item2 = WeeklyPlanItem.objects.create(

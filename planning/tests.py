@@ -50,3 +50,19 @@ class EmptyZeroWidgetTests(TestCase):
         form = WeeklyPlanLineForm()
         html = str(form["quantity"]) + str(form["cycle"])
         self.assertNotIn('value="0"', html)
+
+class WeeklyPlanDateUniqueTests(TestCase):
+    def test_duplicate_plan_date_rejected(self):
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from planning.forms import WeeklyPlanForm
+        from planning.models import WeeklyPlan
+
+        call_command("seed_demo")
+        existing = WeeklyPlan.objects.first()
+        form = WeeklyPlanForm(data={
+            "program_number": "BP-UNIQUE-TEST",
+            "date": existing.date.strftime("%Y/%m/%d"),
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("date", form.errors)

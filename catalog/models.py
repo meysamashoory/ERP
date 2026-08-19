@@ -484,3 +484,40 @@ class SystemAlarm(models.Model):
             self.reviewed_by = user
         self.save(update_fields=["status", "reviewed_at", "reviewed_by"])
 
+
+class ExcelUpload(models.Model):
+    """Any Excel workbook stored via «مدیریت داده‌ها» for later reuse."""
+
+    title = models.CharField("عنوان", max_length=200)
+    file = models.FileField(
+        "فایل اکسل",
+        upload_to="excel_uploads/%Y/%m/",
+        help_text="فرمت‌های رایج: .xlsx ، .xls ، .xlsm ، .csv",
+    )
+    original_name = models.CharField("نام اصلی فایل", max_length=255, blank=True)
+    notes = models.TextField("توضیحات", blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="بارگذارنده",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "فایل اکسل"
+        verbose_name_plural = "فایل‌های اکسل (سوابق آپلود)"
+
+    def __str__(self) -> str:
+        return self.title or self.original_name or f"اکسل #{self.pk}"
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_name:
+            self.original_name = getattr(self.file, "name", "") or ""
+            # Keep only the basename if a path leaked in.
+            self.original_name = self.original_name.replace("\\", "/").split("/")[-1]
+        super().save(*args, **kwargs)
+

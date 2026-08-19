@@ -47,6 +47,21 @@ class WeeklyPlanForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["program_number"].widget.attrs.setdefault("class", "input")
 
+    def clean_date(self):
+        value = self.cleaned_data.get("date")
+        if value is None:
+            return value
+        qs = WeeklyPlan.objects.filter(date=value)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            other = qs.first()
+            raise forms.ValidationError(
+                f"تاریخ برنامه‌ریزی تکراری است؛ برنامه «{other.program_number}» "
+                f"همین تاریخ را دارد. دو برنامه با یک تاریخ مجاز نیست."
+            )
+        return value
+
 
 class WeeklyPlanItemForm(forms.ModelForm):
     subgroup = forms.ModelChoiceField(

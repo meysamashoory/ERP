@@ -48,7 +48,7 @@ class WeeklyPlan(models.Model):
         APPROVED = "approved", "تأییدشده"
 
     program_number = models.CharField("شماره برنامه", max_length=30, unique=True)
-    date = jmodels.jDateField("تاریخ برنامه‌ریزی")
+    date = jmodels.jDateField("تاریخ برنامه‌ریزی", unique=True)
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.DRAFT
     )
