@@ -123,3 +123,61 @@ class ProgramUidAssignmentTests(TestCase):
         self.assertEqual(lines[0].uid, item.uid)
         self.assertEqual(lines[1].uid, "36159402299223")
         self.assertEqual(len(item.uid), 14)
+
+
+class ProgramUidCollisionAlarmTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_demo")
+
+    def test_duplicate_uid_registers_serious_alarm(self):
+        from catalog.models import Machine, Product, ProductionTypeOption, ProductionUnit, SystemAlarm
+        from planning.models import Weekday, WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
+        from planning.uid import assign_uids_for_item, build_program_uid
+
+        unit = ProductionUnit.objects.get(number=1)
+        machine = Machine.objects.filter(unit=unit).first()
+        product = Product.objects.first()
+        plan = WeeklyPlan.objects.create(
+            program_number="200",
+            date=jdatetime.date(1405, 5, 26),
+            status=WeeklyPlan.Status.DRAFT,
+        )
+        item_a = WeeklyPlanItem.objects.create(
+            plan=plan, subgroup=product.subgroup, unit=unit, machine=machine,
+            product=product, mold_change_weekday=Weekday.SHANBE,
+            mold_change_date=jdatetime.date(1405, 5, 27), active_cavities=1, sequence=1,
+        )
+        pt = ProductionTypeOption.objects.first()
+        WeeklyPlanLine.objects.create(item=item_a, production_type=pt, quantity=10, cycle=20)
+        assign_uids_for_item(item_a)
+        item_a.refresh_from_db()
+        self.assertTrue(item_a.uid)
+
+        # Force another item to claim the same uid string before assignment
+        item_b = WeeklyPlanItem.objects.create(
+            plan=plan, subgroup=product.subgroup, unit=unit, machine=machine,
+            product=product, mold_change_weekday=Weekday.SHANBE,
+            mold_change_date=jdatetime.date(1405, 5, 27), active_cavities=1, sequence=2,
+        )
+        WeeklyPlanLine.objects.create(item=item_b, production_type=pt, quantity=10, cycle=20)
+        # Manually set item_b's computed type-1 uid onto item_a to create collision target
+        # Instead: set item_a's uid to what item_b will compute for type 1 with mold_row=2
+        from planning.uid import uid_for_item
+        colliding = uid_for_item(item_b, production_type_index=1)
+        item_a.uid = colliding
+        item_a.save(update_fields=["uid"])
+        line_a = item_a.lines.first()
+        line_a.uid = colliding
+        line_a.save(update_fields=["uid"])
+
+        primary, collisions = assign_uids_for_item(item_b)
+        self.assertTrue(collisions)
+        self.assertEqual(collisions[0]["uid"], colliding)
+        alarm = SystemAlarm.objects.filter(
+            kind=SystemAlarm.Kind.UID_DUPLICATE, status=SystemAlarm.Status.OPEN
+        ).first()
+        self.assertIsNotNone(alarm)
+        self.assertIn("پیشنهاد", alarm.suggestion)
+        self.assertEqual(alarm.severity, SystemAlarm.Severity.SERIOUS)

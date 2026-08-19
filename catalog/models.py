@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 
@@ -413,3 +414,73 @@ class ProgramUidScheme(models.Model):
             + self.production_type_digits
             + self.mold_row_digits
         )
+
+
+class SystemAlarm(models.Model):
+    """Serious (and optionally advisory) alarms for «مدیریت داده‌ها»."""
+
+    class Severity(models.TextChoices):
+        SERIOUS = "serious", "جدی"
+        ADVISORY = "advisory", "پیشنهادی"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "باز"
+        REVIEWED = "reviewed", "بررسی‌شده"
+        CLEARED = "cleared", "پاک‌شده"
+
+    class Kind(models.TextChoices):
+        UID_DUPLICATE = "uid_duplicate", "تکرار شناسه برنامه"
+        OTHER = "other", "سایر"
+
+    severity = models.CharField(
+        "سطح", max_length=12, choices=Severity.choices, default=Severity.SERIOUS, db_index=True
+    )
+    kind = models.CharField(
+        "نوع", max_length=40, choices=Kind.choices, default=Kind.OTHER, db_index=True
+    )
+    status = models.CharField(
+        "وضعیت", max_length=12, choices=Status.choices, default=Status.OPEN, db_index=True
+    )
+    title = models.CharField("عنوان", max_length=200)
+    message = models.TextField("شرح")
+    suggestion = models.TextField(
+        "پیشنهاد اصلاح",
+        blank=True,
+        help_text="برای آلارم‌های جدی (مثل شناسه) راه‌حل پیشنهادی اینجا ثبت می‌شود.",
+    )
+    details = models.JSONField("جزئیات", default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="بررسی‌کننده",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "آلارم سیستم"
+        verbose_name_plural = "آلارم‌های سیستم (بررسی و پاک‌سازی)"
+
+    def __str__(self) -> str:
+        return f"[{self.get_severity_display()}] {self.title}"
+
+    def mark_reviewed(self, user=None) -> None:
+        from django.utils import timezone
+        self.status = self.Status.REVIEWED
+        self.reviewed_at = timezone.now()
+        if user is not None:
+            self.reviewed_by = user
+        self.save(update_fields=["status", "reviewed_at", "reviewed_by"])
+
+    def mark_cleared(self, user=None) -> None:
+        from django.utils import timezone
+        self.status = self.Status.CLEARED
+        self.reviewed_at = timezone.now()
+        if user is not None:
+            self.reviewed_by = user
+        self.save(update_fields=["status", "reviewed_at", "reviewed_by"])
+

@@ -267,7 +267,19 @@
       });
     }
 
-    // --- Auto-dismiss transient alerts ---------------------------------
+    // --- Floating toasts (no layout shift) ------------------------------
+    document.querySelectorAll(".toast-stack .toast").forEach(function (el) {
+      var hold = el.classList.contains("toast-error") || el.classList.contains("toast-danger") ? 7000 : 4200;
+      setTimeout(function () {
+        el.classList.add("is-leaving");
+        setTimeout(function () {
+          el.remove();
+          var stack = document.getElementById("toast-stack");
+          if (stack && !stack.querySelector(".toast")) stack.remove();
+        }, 380);
+      }, hold);
+    });
+    // Legacy inline alerts (if any remain outside toast-stack)
     document.querySelectorAll(".messages .alert").forEach(function (el) {
       setTimeout(function () {
         el.style.transition = "opacity .4s"; el.style.opacity = "0";

@@ -222,43 +222,134 @@ def uid_for_item(item, production_type_index: int = 1, scheme=None) -> str:
     )
 
 
-def assign_uids_for_item(item, scheme=None) -> str:
-    """Assign UIDs on lines (if present) and set item.uid to type-1 / first line."""
+def find_uid_owner(uid: str, *, exclude_item_id=None, exclude_line_id=None):
+    """Return (kind, obj) owning this uid, or None."""
+    from planning.models import WeeklyPlanItem, WeeklyPlanLine
+
+    qs = WeeklyPlanItem.objects.filter(uid=uid)
+    if exclude_item_id:
+        qs = qs.exclude(pk=exclude_item_id)
+    item = qs.select_related("plan", "product", "machine").first()
+    if item:
+        return ("item", item)
+    lqs = WeeklyPlanLine.objects.filter(uid=uid)
+    if exclude_line_id:
+        lqs = lqs.exclude(pk=exclude_line_id)
+    line = lqs.select_related("item__plan", "item__product", "item__machine").first()
+    if line:
+        return ("line", line)
+    return None
+
+
+def describe_uid_owner(owner) -> str:
+    kind, obj = owner
+    if kind == "item":
+        return (
+            f"کالای «{obj.product.name}» در برنامه {obj.plan.program_number} "
+            f"(دستگاه {obj.machine.number})"
+        )
+    item = obj.item
+    return (
+        f"ردیف تولید «{obj.production_type}» از کالای «{item.product.name}» "
+        f"در برنامه {item.plan.program_number}"
+    )
+
+
+def assign_uids_for_item(item, scheme=None) -> tuple[str, list[dict]]:
+    """Assign UIDs on lines and item. Returns (primary_uid, collisions).
+
+    On duplicate full UID: does not overwrite with the colliding value, registers a
+    serious SystemAlarm with a suggested fix, and records the collision.
+    """
+    from catalog.alarms import register_alarm, uid_collision_suggestion
+    from catalog.models import SystemAlarm
+
     scheme = scheme if scheme is not None else load_scheme()
     lines = list(item.lines.order_by("id"))
+    collisions: list[dict] = []
     primary = ""
+
+    def _handle_collision(uid: str, *, line=None, type_index: int) -> None:
+        owner = find_uid_owner(
+            uid,
+            exclude_item_id=item.pk,
+            exclude_line_id=getattr(line, "pk", None),
+        )
+        owner_label = describe_uid_owner(owner) if owner else "رکورد دیگر"
+        suggestion = uid_collision_suggestion(
+            uid=uid,
+            owner_label=owner_label,
+            program_number=str(item.plan.program_number),
+        )
+        register_alarm(
+            title="تکرار شناسه برنامه",
+            message=(
+                f"شناسه {uid} برای کالای «{item.product.name}» "
+                f"(برنامه {item.plan.program_number}، نوع تولید {type_index}) "
+                f"تکراری است و با {owner_label} تداخل دارد."
+            ),
+            suggestion=suggestion,
+            severity=SystemAlarm.Severity.SERIOUS,
+            kind=SystemAlarm.Kind.UID_DUPLICATE,
+            details={
+                "uid": uid,
+                "plan_id": item.plan_id,
+                "plan_number": str(item.plan.program_number),
+                "item_id": item.pk,
+                "product": item.product.name if item.product_id else "",
+                "production_type_index": type_index,
+                "owner": owner_label,
+            },
+        )
+        collisions.append({
+            "uid": uid,
+            "item_id": item.pk,
+            "type_index": type_index,
+            "owner": owner_label,
+            "suggestion": suggestion,
+        })
+
     if lines:
         for idx, line in enumerate(lines, start=1):
             uid = uid_for_item(item, production_type_index=idx, scheme=scheme)
-            if hasattr(line, "uid"):
+            owner = find_uid_owner(uid, exclude_item_id=item.pk, exclude_line_id=line.pk)
+            # Also collide if another line of a different item has it, or item.uid of other
+            if owner:
+                _handle_collision(uid, line=line, type_index=idx)
+            else:
                 if line.uid != uid:
                     line.uid = uid
                     line.save(update_fields=["uid"])
             if idx == 1:
-                primary = uid
+                primary = uid if not owner else (line.uid or item.uid or uid)
     else:
-        primary = uid_for_item(item, production_type_index=1, scheme=scheme)
+        uid = uid_for_item(item, production_type_index=1, scheme=scheme)
+        owner = find_uid_owner(uid, exclude_item_id=item.pk)
+        if owner:
+            _handle_collision(uid, type_index=1)
+            primary = item.uid or uid
+        else:
+            primary = uid
 
-    if item.uid != primary:
-        # Avoid unique collisions while swapping: temp then final if needed.
-        clash = type(item).objects.filter(uid=primary).exclude(pk=item.pk).exists()
-        if clash:
-            # Extremely rare with this scheme; keep a suffix-safe temp then rewrite.
-            temp = f"T{item.pk:013d}"[:16]
-            type(item).objects.filter(pk=item.pk).update(uid=temp)
-            item.uid = temp
-        type(item).objects.filter(pk=item.pk).update(uid=primary)
-        item.uid = primary
-    return primary
+    if primary and not any(c.get("type_index") == 1 for c in collisions):
+        if item.uid != primary:
+            clash = type(item).objects.filter(uid=primary).exclude(pk=item.pk).exists()
+            if clash:
+                temp = f"T{item.pk:013d}"[:16]
+                type(item).objects.filter(pk=item.pk).update(uid=temp)
+                item.uid = temp
+            type(item).objects.filter(pk=item.pk).update(uid=primary)
+            item.uid = primary
+    return primary, collisions
 
 
-def refresh_plan_uids(plan, scheme=None) -> int:
-    """Recompute UIDs for every item in a plan (after reordering / edits)."""
+def refresh_plan_uids(plan, scheme=None) -> list[dict]:
+    """Recompute UIDs for every item in a plan. Returns list of collision dicts."""
     scheme = scheme if scheme is not None else load_scheme()
-    count = 0
-    for item in plan.items.select_related("unit", "machine__unit", "plan").order_by(
-        "mold_change_date", "id"
-    ):
-        assign_uids_for_item(item, scheme=scheme)
-        count += 1
-    return count
+    all_collisions: list[dict] = []
+    for item in plan.items.select_related(
+        "unit", "machine__unit", "plan", "product"
+    ).order_by("mold_change_date", "id"):
+        _primary, collisions = assign_uids_for_item(item, scheme=scheme)
+        all_collisions.extend(collisions)
+    return all_collisions

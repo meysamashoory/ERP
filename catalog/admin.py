@@ -14,6 +14,7 @@ from .models import (
     ProgramChangeReason,
     ProgramUidScheme,
     StoppageReason,
+    SystemAlarm,
 )
 
 
@@ -238,7 +239,78 @@ class ProgramUidSchemeAdmin(admin.ModelAdmin):
         from planning.uid import refresh_plan_uids
 
         scheme = ProgramUidScheme.load()
-        total = 0
+        items = 0
+        collisions = 0
         for plan in WeeklyPlan.objects.all().iterator():
-            total += refresh_plan_uids(plan, scheme=scheme)
-        self.message_user(request, f"شناسه {total} کالا بازسازی شد.")
+            n_before = plan.items.count()
+            cols = refresh_plan_uids(plan, scheme=scheme)
+            items += n_before
+            collisions += len(cols)
+        msg = f"شناسه {items} کالا بازسازی شد."
+        if collisions:
+            msg += f" {collisions} مورد تکرار شناسه در آلارم‌های سیستم ثبت شد."
+        self.message_user(request, msg)
+
+
+@admin.register(SystemAlarm)
+class SystemAlarmAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "severity",
+        "kind",
+        "status",
+        "title",
+        "short_suggestion",
+    )
+    list_filter = ("severity", "kind", "status", "created_at")
+    search_fields = ("title", "message", "suggestion")
+    readonly_fields = ("created_at", "reviewed_at", "reviewed_by", "details")
+    list_display_links = ("title",)
+    actions = ("mark_reviewed", "mark_cleared", "hard_delete")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "severity",
+                    "kind",
+                    "status",
+                    "title",
+                    "message",
+                    "suggestion",
+                    "details",
+                    "created_at",
+                    "reviewed_at",
+                    "reviewed_by",
+                ),
+                "description": (
+                    "آلارم‌های جدی (مثل تکرار شناسه) اینجا ثبت می‌شوند. "
+                    "پس از بررسی می‌توانید وضعیت را به بررسی‌شده یا پاک‌شده تغییر دهید."
+                ),
+            },
+        ),
+    )
+
+    def short_suggestion(self, obj):
+        text = (obj.suggestion or "")[:80]
+        return text + ("…" if obj.suggestion and len(obj.suggestion) > 80 else "")
+
+    short_suggestion.short_description = "پیشنهاد اصلاح"
+
+    @admin.action(description="علامت‌گذاری به‌عنوان بررسی‌شده")
+    def mark_reviewed(self, request, queryset):
+        for alarm in queryset:
+            alarm.mark_reviewed(user=request.user)
+        self.message_user(request, f"{queryset.count()} آلارم بررسی‌شده شد.")
+
+    @admin.action(description="علامت‌گذاری به‌عنوان پاک‌شده")
+    def mark_cleared(self, request, queryset):
+        for alarm in queryset:
+            alarm.mark_cleared(user=request.user)
+        self.message_user(request, f"{queryset.count()} آلارم پاک‌شده شد.")
+
+    @admin.action(description="حذف دائمی از فهرست")
+    def hard_delete(self, request, queryset):
+        n = queryset.count()
+        queryset.delete()
+        self.message_user(request, f"{n} آلارم برای همیشه حذف شد.")

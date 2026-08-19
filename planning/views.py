@@ -158,12 +158,23 @@ def item_save(request, pk):
         if formset.is_valid():
             formset.save()
         from .uid import refresh_plan_uids
-        refresh_plan_uids(plan)
+        collisions = refresh_plan_uids(plan)
         item.refresh_from_db(fields=["uid"])
-        # Transient warning only (not stored permanently).
+        # Transient warning only (not stored permanently) — soft advisory toast.
         if item.history_alarm:
-            messages.warning(request, f"دستگاه {item.machine} در سوابق تولید ثبت نشده است.")
-        messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
+            messages.warning(
+                request,
+                f"دستگاه {item.machine} در سوابق تولید ثبت نشده است. "
+                "پیشنهاد: پس از اولین ثبت تولید، این هشدار برطرف می‌شود.",
+            )
+        if collisions:
+            first = collisions[0]
+            messages.error(
+                request,
+                f"شناسه تکراری: {first['uid']}. {first.get('suggestion') or 'جزئیات در مدیریت داده‌ها ثبت شد.'}",
+            )
+        else:
+            messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
         return redirect("plan_detail", pk=pk)
 
     messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
