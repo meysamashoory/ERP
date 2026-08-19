@@ -620,7 +620,7 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
         planned = sum(e.planned_quantity for e in entries)
         scrap = sum(e.scrap_quantity for e in entries)
         rows.append({
-            "uid": str(program.item.uid),
+            "uid": str(getattr(program, "resolved_uid", None) or program.item.uid),
             "program_number": str(program.item.plan.program_number),
             "machine": program.machine_label,
             "product_code": program.item.product.code,

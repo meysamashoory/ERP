@@ -57,7 +57,7 @@ def unseed(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("catalog", "0004_moldoption"),
+        ("catalog", "0006_planning_display_and_status_labels"),
     ]
 
     operations = [

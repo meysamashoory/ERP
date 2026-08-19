@@ -31,7 +31,7 @@
             <td class="forms-cell">
               <span class="forms-label">فرم‌ها</span>
               <button type="button" class="forms-count-btn" data-open-forms
-                data-forms-title="{{ row.program.item.uid }}"
+                data-forms-title="{{ row.program.resolved_uid }}"
                 data-forms-ctx="prod_fitting"
                 data-forms-id="{{ row.program.pk }}"
                 data-forms-json="{{ forms_production_json|escape }}">{{ forms_production|length }} فرم</button>
