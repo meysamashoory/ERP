@@ -34,7 +34,7 @@
             نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
-        <th style="width:110px">فرم‌ها</th>
+        <th style="width:110px">تعداد فرم‌ها</th>
         <th style="width:200px">عملیات</th>
       </tr>
     </thead>
@@ -55,7 +55,6 @@
         </td>
         <td class="col-type cell-nav">{% if row.report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% else %}<span class="type-label">شخصی</span>{% endif %}</td>
         <td class="forms-cell">
-          <span class="forms-label">فرم‌ها</span>
           <button type="button" class="forms-count-btn" data-open-forms
             data-forms-title="{{ row.report.title }}"
             data-forms-ctx="report"

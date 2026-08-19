@@ -16,7 +16,7 @@
       <table class="table">
         <thead><tr>
           <th>شناسه</th><th>شماره برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
-          <th>وضعیت</th><th>تولید/برنامه</th><th>فرم‌ها</th><th>تعیین وضعیت</th><th>عملیات</th>
+          <th>وضعیت</th><th>تولید/برنامه</th><th>تعداد فرم‌ها</th><th>تعیین وضعیت</th><th>عملیات</th>
         </tr></thead>
         <tbody>
           {% for row in rows %}
@@ -29,7 +29,6 @@
             <td><span class="badge status-{{ row.program.status }}">{{ row.program.get_status_display }}</span></td>
             <td class="num">{{ row.totals.produced }} / {{ row.totals.planned }}</td>
             <td class="forms-cell">
-              <span class="forms-label">فرم‌ها</span>
               <button type="button" class="forms-count-btn" data-open-forms
                 data-forms-title="{{ row.program.resolved_uid }}"
                 data-forms-ctx="prod_fitting"
@@ -74,7 +73,7 @@
       </div>
       {% if pipes %}
       <table class="table">
-        <thead><tr><th>تاریخ</th><th>واحد</th><th>خط</th><th>نوع</th><th>کد کالا</th><th>نام محصول</th><th>تولید</th><th>برنامه</th><th>انحراف</th><th>فرم‌ها</th><th></th></tr></thead>
+        <thead><tr><th>تاریخ</th><th>واحد</th><th>خط</th><th>نوع</th><th>کد کالا</th><th>نام محصول</th><th>تولید</th><th>برنامه</th><th>انحراف</th><th>تعداد فرم‌ها</th><th></th></tr></thead>
         <tbody>
           {% for r in pipes %}
           <tr>
@@ -88,7 +87,6 @@
             <td class="num">{{ r.planned_quantity }}</td>
             <td class="num">{{ r.deviation }}</td>
             <td class="forms-cell">
-              <span class="forms-label">فرم‌ها</span>
               <button type="button" class="forms-count-btn" data-open-forms
                 data-forms-title="لوله {{ r.date }}"
                 data-forms-ctx="prod_pipe"

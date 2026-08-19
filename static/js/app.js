@@ -61,6 +61,7 @@
         allowEmptyOption: true,
         maxOptions: 2000,
         controlInput: null,
+        openOnFocus: false,
         placeholder: sel.getAttribute("placeholder") || "انتخاب...",
         render: { no_results: function () { return '<div class="no-results">موردی یافت نشد</div>'; } },
         onDropdownOpen: function () {
@@ -73,6 +74,8 @@
           if (inp) setTimeout(function () { inp.focus(); }, 0);
         },
       });
+      // Prevent accidental open on programmatic setValue / sync after load.
+      ts.on("focus", function () { /* keep closed until click */ });
       // Override library positioning so menus never jump to the page bottom.
       ts.positionDropdown = function () { pinDropdown(ts); };
       var repin = function () { if (ts.isOpen) pinDropdown(ts); };
@@ -169,12 +172,24 @@
   function repopulate(sel, items, opts) {
     var ts = tsOf(sel); if (!ts) return;
     var prev = ts.getValue();
+    // Clear selection first so a stale value is not kept as a ghost item.
+    if (!(opts && opts.preserve)) ts.clear(true);
     ts.clearOptions();
-    items.forEach(function (it) { ts.addOption({ value: String(it.value), text: it.text }); });
+    // Rebuild underlying <select> so Tom Select cannot duplicate native options.
+    var keepEmpty = true;
+    var html = keepEmpty ? '<option value="">——</option>' : "";
+    items.forEach(function (it) {
+      html += '<option value="' + String(it.value) + '">' + String(it.text) + "</option>";
+    });
+    sel.innerHTML = html;
+    items.forEach(function (it) {
+      ts.addOption({ value: String(it.value), text: it.text, subgroup_id: it.subgroup_id, code: it.code });
+    });
     ts.refreshOptions(false);
     var keep = opts && opts.preserve && prev &&
       items.some(function (it) { return String(it.value) === String(prev); });
-    if (keep) ts.setValue(prev, true); else ts.clear(true);
+    if (keep) ts.setValue(prev, true);
+    else ts.clear(true);
   }
 
   function wireUnitMachine(root) {
@@ -185,6 +200,8 @@
       var mtype = machineSel.getAttribute("data-machine-type") || "injection";
       function refresh(preserve) {
         var unit = valOf(unitSel);
+        var mts = tsOf(machineSel);
+        if (!preserve && mts) mts.clear(true);
         if (!unit) { repopulate(machineSel, [], {}); return; }
         fetch(window.API.machines + "?unit=" + encodeURIComponent(unit) + "&type=" + mtype)
           .then(function (r) { return r.json(); })

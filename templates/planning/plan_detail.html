@@ -2,16 +2,17 @@
 {% load planning_extras %}
 {% block title %}شماره برنامه {{ plan.program_number|program_no }}{% endblock %}
 {% block heading %}
-<span class="plan-heading-line">
-  <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
-    data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }}">تقویم برنامه</button>
-  <span class="plan-heading-text">شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }} <span class="plan-status-inline">({{ plan.get_status_display }})</span></span>
-</span>
+<span class="plan-heading-text">شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }} <span class="plan-status-inline">({{ plan.get_status_display }})</span></span>
 {% endblock %}
 {% block nav_planning %}active{% endblock %}
 
 {% block topbar_actions %}
 <div class="topbar-actions">
+  {% if alarm_items %}
+  <button type="button" class="btn btn-sm btn-warn" id="btn-check-alarms">بررسی هشدارها</button>
+  {% endif %}
+  <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
+    data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }}">تقویم برنامه</button>
   {% if editable %}
     {% if profile.can_create_plans %}
     <button type="button" class="btn btn-sm" id="toggle-plan-edit">ویرایش شماره و تاریخ</button>
@@ -20,7 +21,7 @@
       {% csrf_token %}
       <input type="hidden" name="status" value="approved">
       <input type="hidden" name="next" value="{% url 'plan_list' %}">
-      <button class="btn btn-sm btn-ok" type="submit">تأیید برنامه</button>
+      <button class="btn btn-sm btn-ok" type="submit">ذخیره</button>
     </form>
   {% endif %}
 </div>
@@ -50,21 +51,21 @@
         {% if editing_item %}
         <div class="edit-switch"><a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}">افزودن کالای جدید</a></div>
         {% endif %}
-        <form method="post" action="{% url 'plan_item_save' plan.pk %}" id="item-form" data-product-kind="fitting">
+        <form method="post" action="{% url 'plan_item_save' plan.pk %}" id="item-form" data-product-kind="fitting" novalidate>
           {% csrf_token %}
           {% if editing_item %}<input type="hidden" name="item_id" value="{{ editing_item.pk }}">{% endif %}
           {{ item_form.production_days }}
 
           <div class="plan-form-grid">
-            <div class="field" data-field="subgroup"><label>{{ item_form.subgroup.label }}</label>{{ item_form.subgroup }}{{ item_form.subgroup.errors }}</div>
-            <div class="field" data-field="product"><label>{{ item_form.product.label }}</label>{{ item_form.product }}{{ item_form.product.errors }}</div>
-            <div class="field" data-field="code"><label>{{ item_form.code.label }}</label>{{ item_form.code }}{{ item_form.code.errors }}</div>
-            <div class="field" data-field="mold"><label>{{ item_form.mold.label }}</label>{{ item_form.mold }}{{ item_form.mold.errors }}</div>
+            <div class="field {% if item_form.subgroup.errors %}has-error{% endif %}" data-field="subgroup" {% if item_form.subgroup.errors %}title="{{ item_form.subgroup.errors.0 }}"{% endif %}><label>{{ item_form.subgroup.label }}</label>{{ item_form.subgroup }}</div>
+            <div class="field {% if item_form.product.errors %}has-error{% endif %}" data-field="product" {% if item_form.product.errors %}title="{{ item_form.product.errors.0 }}"{% endif %}><label>{{ item_form.product.label }}</label>{{ item_form.product }}</div>
+            <div class="field {% if item_form.code.errors %}has-error{% endif %}" data-field="code" {% if item_form.code.errors %}title="{{ item_form.code.errors.0 }}"{% endif %}><label>{{ item_form.code.label }}</label>{{ item_form.code }}</div>
+            <div class="field {% if item_form.mold.errors %}has-error{% endif %}" data-field="mold" {% if item_form.mold.errors %}title="{{ item_form.mold.errors.0 }}"{% endif %}><label>{{ item_form.mold.label }}</label>{{ item_form.mold }}</div>
 
-            <div class="field" data-field="unit"><label>{{ item_form.unit.label }}</label>{{ item_form.unit }}{{ item_form.unit.errors }}</div>
-            <div class="field" data-field="machine"><label>{{ item_form.machine.label }}</label>{{ item_form.machine }}{{ item_form.machine.errors }}</div>
-            <div class="field" data-field="mold_change_weekday"><label>{{ item_form.mold_change_weekday.label }}</label>{{ item_form.mold_change_weekday }}{{ item_form.mold_change_weekday.errors }}</div>
-            <div class="field" data-field="mold_change_date"><label>{{ item_form.mold_change_date.label }}</label>{{ item_form.mold_change_date }}{{ item_form.mold_change_date.errors }}</div>
+            <div class="field {% if item_form.unit.errors %}has-error{% endif %}" data-field="unit" {% if item_form.unit.errors %}title="{{ item_form.unit.errors.0 }}"{% endif %}><label>{{ item_form.unit.label }}</label>{{ item_form.unit }}</div>
+            <div class="field {% if item_form.machine.errors %}has-error{% endif %}" data-field="machine" {% if item_form.machine.errors %}title="{{ item_form.machine.errors.0 }}"{% endif %}><label>{{ item_form.machine.label }}</label>{{ item_form.machine }}</div>
+            <div class="field {% if item_form.mold_change_weekday.errors %}has-error{% endif %}" data-field="mold_change_weekday" {% if item_form.mold_change_weekday.errors %}title="{{ item_form.mold_change_weekday.errors.0 }}"{% endif %}><label>{{ item_form.mold_change_weekday.label }}</label>{{ item_form.mold_change_weekday }}</div>
+            <div class="field {% if item_form.mold_change_date.errors %}has-error{% endif %}" data-field="mold_change_date" {% if item_form.mold_change_date.errors %}title="{{ item_form.mold_change_date.errors.0 }}"{% endif %}><label>{{ item_form.mold_change_date.label }}</label>{{ item_form.mold_change_date }}</div>
           </div>
 
           {{ line_formset.management_form }}
@@ -72,10 +73,10 @@
             {% for lform in line_formset %}
             <div class="repeat-row plan-line-row" data-formset-row>
               {{ lform.id }}
-              <div class="field" data-line-field="production_type"><label data-label-base="نوع تولید">نوع تولید</label>{{ lform.production_type }}{{ lform.production_type.errors }}</div>
-              <div class="field" data-line-field="active_cavities"><label data-label-base="تعداد حفره">تعداد حفره</label>{{ lform.active_cavities }}{{ lform.active_cavities.errors }}</div>
-              <div class="field" data-line-field="quantity"><label data-label-base="مقدار تولید">مقدار تولید</label>{{ lform.quantity }}{{ lform.quantity.errors }}</div>
-              <div class="field" data-line-field="cycle"><label data-label-base="سیکل تولید (ثانیه)">سیکل تولید (ثانیه)</label>{{ lform.cycle }}{{ lform.cycle.errors }}</div>
+              <div class="field {% if lform.production_type.errors %}has-error{% endif %}" data-line-field="production_type" {% if lform.production_type.errors %}title="{{ lform.production_type.errors.0 }}"{% endif %}><label data-label-base="نوع تولید">نوع تولید</label>{{ lform.production_type }}</div>
+              <div class="field {% if lform.active_cavities.errors %}has-error{% endif %}" data-line-field="active_cavities" {% if lform.active_cavities.errors %}title="{{ lform.active_cavities.errors.0 }}"{% endif %}><label data-label-base="تعداد حفره">تعداد حفره</label>{{ lform.active_cavities }}</div>
+              <div class="field {% if lform.quantity.errors %}has-error{% endif %}" data-line-field="quantity" {% if lform.quantity.errors %}title="{{ lform.quantity.errors.0 }}"{% endif %}><label data-label-base="مقدار تولید">مقدار تولید</label>{{ lform.quantity }}</div>
+              <div class="field {% if lform.cycle.errors %}has-error{% endif %}" data-line-field="cycle" {% if lform.cycle.errors %}title="{{ lform.cycle.errors.0 }}"{% endif %}><label data-label-base="سیکل تولید (ثانیه)">سیکل تولید (ثانیه)</label>{{ lform.cycle }}</div>
             </div>
             {% endfor %}
           </div>
@@ -94,6 +95,7 @@
             <button type="button" class="btn btn-sm btn-ghost" data-formset-add="lines"
               data-require-first-type="1" data-number-line-labels="1">+ افزودن ردیف تولید</button>
             <button type="button" class="btn btn-sm btn-ghost" id="btn-production-days">روزهای تولید</button>
+            <span class="line-actions-spacer"></span>
             <button class="btn" type="submit">{% if editing_item %}ذخیره تغییرات کالا{% else %}افزودن کالا{% endif %}</button>
           </div>
         </form>
@@ -111,11 +113,14 @@
         <p class="insight-empty muted">هنوز فیلد اطلاعاتی تعریف نشده است. از «مدیریت داده‌ها» فیلدهای نوار شیشه‌ای را اضافه کنید.</p>
         {% endfor %}
       </div>
+      <div class="insight-glass-actions">
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-insight-details" disabled>جزئیات</button>
+      </div>
     </section>
   </div>
 </div>
 {% else %}
-<div class="panel"><div class="panel-body muted">این برنامه در وضعیت «{{ plan.get_status_display }}» است و تنها قابل مشاهده می‌باشد. برای ویرایش، وضعیت را از فهرست برنامه‌ها به «قابل ویرایش» تغییر دهید.</div></div>
+<div class="panel"><div class="panel-body muted">این برنامه فقط قابل مشاهده است. {% if plan.status == 'approved' %}برنامه ذخیره/تأیید شده است.{% endif %} برای ویرایش، ایجادکننده باید از فهرست برنامه‌ها گزینه «ویرایش» را اعمال کند.</div></div>
 
 <section class="insight-glass mold-glass-green" style="--insight-scale: {{ mold_stats.height_coefficient }}">
   <div class="insight-glass-inner mold-glass-inner">
@@ -171,7 +176,7 @@
             <td>{{ plan.date|jdate }}</td>
             <td>{{ item.machine.number }}/{{ item.unit.number }}</td>
             <td>{{ item.product.code }}</td>
-            <td>{{ item.product.name }}{% if item.history_alarm %} <span class="badge badge-rejected">بدون سابقه</span>{% endif %}</td>
+            <td>{{ item.product.name }}</td>
             <td>{% if item.mold %}{{ item.mold }}{% elif line.mold %}{{ line.mold }}{% else %}—{% endif %}</td>
             <td dir="ltr">{% if line.uid %}{{ line.uid }}{% else %}—{% endif %}</td>
             <td>{{ item.mold_change_date|jdate }}</td>
@@ -249,6 +254,45 @@
       <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
     </div>
     <div id="calendar-dialog-body" class="calendar-dialog-body muted">در حال بارگذاری…</div>
+  </div>
+</dialog>
+
+<dialog id="alarms-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>بررسی هشدارها</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div class="alarms-dialog-body">
+      {% if alarm_items %}
+      <table class="table">
+        <thead><tr><th>شناسه</th><th>کد کالا</th><th>نام کالا</th><th>دستگاه/واحد</th><th>هشدار</th></tr></thead>
+        <tbody>
+          {% for a in alarm_items %}
+          <tr>
+            <td dir="ltr">{{ a.uid }}</td>
+            <td>{{ a.code }}</td>
+            <td>{{ a.name }}</td>
+            <td>{{ a.machine }}</td>
+            <td>بدون سابقه تولید روی دستگاه</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">هشداری ثبت نشده است.</p>
+      {% endif %}
+    </div>
+  </div>
+</dialog>
+
+<dialog id="insight-details-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>جزئیات راهنما</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div id="insight-details-body" class="insight-details-body muted">در حال بارگذاری…</div>
   </div>
 </dialog>
 
@@ -370,6 +414,9 @@
   var url = wrap.getAttribute("data-insights-url");
   var body = wrap.querySelector("[data-insights-body]");
   var prod = document.getElementById("id_product");
+  var detailsBtn = document.getElementById("btn-insight-details");
+  var detailsDialog = document.getElementById("insight-details-dialog");
+  var detailsBody = document.getElementById("insight-details-body");
   if (!url || !body || !prod) return;
 
   function render(cards) {
@@ -383,16 +430,90 @@
     }).join("");
   }
 
+  function currentProductId() {
+    return prod.tomselect ? prod.tomselect.getValue() : prod.value;
+  }
+
   function load() {
-    var id = prod.tomselect ? prod.tomselect.getValue() : prod.value;
+    var id = currentProductId();
+    if (detailsBtn) detailsBtn.disabled = !id;
     if (!id) { render([]); return; }
     fetch(url + "?product=" + encodeURIComponent(id))
       .then(function (r) { return r.json(); })
       .then(function (d) { render(d.insights || []); });
   }
 
+  if (detailsBtn && detailsDialog && detailsBody) {
+    detailsBtn.addEventListener("click", function () {
+      var id = currentProductId();
+      if (!id) return;
+      detailsBody.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+      if (typeof detailsDialog.showModal === "function") detailsDialog.showModal();
+      else detailsDialog.setAttribute("open", "");
+      fetch(url + "?product=" + encodeURIComponent(id) + "&details=1")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var sections = d.sections || [];
+          if (!sections.length) {
+            detailsBody.innerHTML = '<p class="muted">موردی نیست.</p>';
+            return;
+          }
+          var html = "";
+          sections.forEach(function (sec) {
+            html += '<section class="insight-detail-section"><h4>' + sec.label + "</h4>";
+            if (!(sec.rows || []).length) {
+              html += '<p class="muted">—</p>';
+            } else {
+              html += '<table class="table"><thead><tr><th>مورد</th><th>مقدار</th></tr></thead><tbody>';
+              sec.rows.forEach(function (row) {
+                html += "<tr><td>" + (row.title || "—") + "</td><td>" + (row.value == null || row.value === "" ? "—" : row.value) + "</td></tr>";
+              });
+              html += "</tbody></table>";
+            }
+            html += "</section>";
+          });
+          detailsBody.innerHTML = html;
+        })
+        .catch(function () { detailsBody.innerHTML = '<p class="muted">خطا در دریافت جزئیات.</p>'; });
+    });
+    detailsDialog.addEventListener("click", function (e) {
+      if (e.target.closest("[data-dialog-close]")) {
+        e.preventDefault();
+        if (typeof detailsDialog.close === "function") detailsDialog.close();
+        else detailsDialog.removeAttribute("open");
+      }
+    });
+  }
+
   if (prod.tomselect) prod.tomselect.on("change", load);
   else prod.addEventListener("change", load);
+  load();
+})();
+
+(function () {
+  var alarmsBtn = document.getElementById("btn-check-alarms");
+  var alarmsDialog = document.getElementById("alarms-dialog");
+  if (alarmsBtn && alarmsDialog) {
+    alarmsBtn.addEventListener("click", function () {
+      if (typeof alarmsDialog.showModal === "function") alarmsDialog.showModal();
+      else alarmsDialog.setAttribute("open", "");
+    });
+    alarmsDialog.addEventListener("click", function (e) {
+      if (e.target.closest("[data-dialog-close]")) {
+        e.preventDefault();
+        if (typeof alarmsDialog.close === "function") alarmsDialog.close();
+        else alarmsDialog.removeAttribute("open");
+      }
+    });
+  }
+})();
+
+(function () {
+  setTimeout(function () {
+    document.querySelectorAll("select[data-combo]").forEach(function (sel) {
+      if (sel.tomselect && sel.tomselect.isOpen) sel.tomselect.close();
+    });
+  }, 80);
 })();
 
 /* Numbered production-row labels + gate on نوع تولید */
