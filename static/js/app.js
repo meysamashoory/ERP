@@ -18,12 +18,9 @@
 
   function pinDropdown(ts) {
     if (!ts || !ts.dropdown || !ts.control) return;
-    // Never force the menu visible while closed — that left a half-open
-    // "انتخاب..." panel on page load.
-    if (!ts.isOpen) {
-      ts.dropdown.style.display = "none";
-      return;
-    }
+    // Only position while open. Never force display while closed — that left a
+    // half-open «انتخاب...» panel; also never block open() by hiding mid-open.
+    if (!ts.isOpen) return;
     var control = ts.control;
     var dropdown = ts.dropdown;
     var host = dropdownLayerHost(control);
@@ -42,6 +39,7 @@
     dropdown.style.maxHeight = maxH + "px";
     dropdown.style.overflowY = "auto";
     dropdown.style.display = "block";
+    dropdown.style.visibility = "visible";
     if (openUp) {
       dropdown.style.top = "auto";
       dropdown.style.bottom = Math.round(window.innerHeight - rect.top + gap) + "px";
@@ -100,14 +98,28 @@
           if (inp) setTimeout(function () { inp.focus(); }, 0);
         },
         onDropdownClose: function () {
-          if (this.dropdown) this.dropdown.style.display = "none";
+          if (this.dropdown) {
+            this.dropdown.style.display = "none";
+            this.dropdown.style.visibility = "hidden";
+          }
         },
+      });
+      // openOnFocus:false avoids auto-open on load/tab; click must open explicitly.
+      ts.control.addEventListener("mousedown", function (e) {
+        if (ts.isLocked || ts.isDisabled) return;
+        if (ts.isOpen) return;
+        e.preventDefault();
+        ts.focus();
+        ts.open();
       });
       // Override library positioning so menus never jump to the page bottom.
       ts.positionDropdown = function () { pinDropdown(ts); };
-      // Ensure closed on init (no half-open menu with only «انتخاب»).
-      ts.close();
-      if (ts.dropdown) ts.dropdown.style.display = "none";
+      // Start closed without leaving a visible empty menu.
+      if (ts.isOpen) ts.close();
+      if (ts.dropdown) {
+        ts.dropdown.style.display = "none";
+        ts.dropdown.style.visibility = "hidden";
+      }
       var repin = function () { if (ts.isOpen) pinDropdown(ts); };
       window.addEventListener("scroll", repin, true);
       window.addEventListener("resize", repin);
