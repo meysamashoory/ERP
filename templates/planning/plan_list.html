@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load planning_extras %}
 {% block title %}برنامه‌ریزی هفتگی{% endblock %}
 {% block heading %}برنامه‌ریزی هفتگی تولید{% endblock %}
 {% block nav_planning %}active{% endblock %}
@@ -18,22 +19,22 @@
     <tbody>
       {% for plan in plans %}
       <tr>
-        <td>{{ plan.program_number }}</td>
-        <td class="num">{{ plan.date }}</td>
+        <td>{{ plan.program_number|program_no }}</td>
+        <td class="num">{{ plan.date|jdate }}</td>
         <td>{{ plan.weekday_name }}</td>
         <td><span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
         <td>{{ plan.created_by.username|default:'—' }}</td>
         <td class="forms-cell">
           <span class="forms-label">فرم‌ها</span>
           <button type="button" class="forms-count-btn" data-open-forms
-            data-forms-title="{{ plan.program_number }} — {{ plan.date }}"
+            data-forms-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}"
             data-forms-ctx="weekly_plan"
             data-forms-id="{{ plan.pk }}"
             data-forms-json="{{ forms_weekly_json|escape }}">{{ forms_weekly|length }} فرم</button>
         </td>
         <td>
           <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
-            data-calendar-title="{{ plan.program_number }} — {{ plan.date }}">تقویم برنامه</button>
+            data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}">تقویم برنامه</button>
         </td>
         <td>
           <a class="link-edit" href="{% url 'plan_detail' plan.pk %}">

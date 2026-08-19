@@ -1,4 +1,3 @@
-import jdatetime
 from django import forms
 from django.forms import inlineformset_factory
 from django_jalali import forms as jforms
@@ -6,7 +5,7 @@ from django_jalali import forms as jforms
 from catalog.models import Machine, MoldOption, Product, ProductKind, ProductSubGroup
 
 from .models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
-from .utils import mold_change_date_candidates
+from .utils import format_jdate, mold_change_date_candidates, parse_jdate_string
 
 JDATE_FORMATS = ["%Y/%m/%d", "%Y-%m-%d"]
 
@@ -108,16 +107,16 @@ class WeeklyPlanItemForm(forms.ModelForm):
         if weekday not in (None, "") and plan_date is not None:
             candidates = mold_change_date_candidates(plan_date, int(weekday))
             self.fields["mold_change_date"].choices = [
-                (c.strftime("%Y-%m-%d"), c.strftime("%Y-%m-%d")) for c in candidates
+                (format_jdate(c), format_jdate(c)) for c in candidates
             ]
         if self.instance and self.instance.pk:
             self.fields["subgroup"].initial = self.instance.product.subgroup_id
-            self.fields["mold_change_date"].initial = self.instance.mold_change_date.strftime("%Y-%m-%d")
+            self.fields["mold_change_date"].initial = format_jdate(
+                self.instance.mold_change_date
+            )
 
     def clean_mold_change_date(self):
-        raw = self.cleaned_data["mold_change_date"]
-        y, m, d = (int(p) for p in raw.split("-"))
-        return jdatetime.date(y, m, d)
+        return parse_jdate_string(self.cleaned_data["mold_change_date"])
 
     def clean(self):
         cleaned = super().clean()

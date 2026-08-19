@@ -76,7 +76,8 @@ class WeeklyPlan(models.Model):
         verbose_name_plural = "برنامه‌ریزی هفتگی"
 
     def __str__(self) -> str:
-        return f"برنامه {self.program_number} — {self.date}"
+        from .utils import format_jdate
+        return f"برنامه {self.program_number} — {format_jdate(self.date)}"
 
     @property
     def weekday_name(self) -> str:
@@ -157,3 +158,13 @@ class WeeklyPlanLine(models.Model):
 
     def __str__(self) -> str:
         return f"{self.production_type} — {self.quantity}"
+
+    @property
+    def production_hours(self) -> float:
+        """Estimated production hours: (qty / cavities) × cycle seconds / 3600."""
+        cavities = max(int(getattr(self.item, "active_cavities", 1) or 1), 1)
+        qty = int(self.quantity or 0)
+        cycle = int(self.cycle or 0)
+        if qty <= 0 or cycle <= 0:
+            return 0.0
+        return round((qty / cavities) * cycle / 3600.0, 2)

@@ -12,7 +12,7 @@ from .forms import WeeklyPlanForm, WeeklyPlanItemForm, WeeklyPlanLineFormSet
 from .insights import resolve_insights
 from .models import WeeklyPlan, WeeklyPlanItem
 from .mold_stats import mold_change_stats
-from .utils import mold_change_date_candidates
+from .utils import format_jdate, mold_change_date_candidates
 from catalog.models import Product
 
 
@@ -92,9 +92,11 @@ def plan_edit(request, pk):
 def plan_detail(request, pk):
     plan = get_object_or_404(
         WeeklyPlan.objects.prefetch_related(
-            "items__lines",
+            "items__lines__mold",
+            "items__lines__production_type",
             "items__product",
             "items__unit",
+            "items__machine",
             "items__subgroup__group",
         ),
         pk=pk,
@@ -247,4 +249,4 @@ def mold_change_dates(request):
     except (TypeError, ValueError):
         return JsonResponse({"dates": []})
     candidates = mold_change_date_candidates(plan.date, weekday_int)
-    return JsonResponse({"dates": [c.strftime("%Y-%m-%d") for c in candidates]})
+    return JsonResponse({"dates": [format_jdate(c) for c in candidates]})

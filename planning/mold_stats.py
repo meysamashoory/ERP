@@ -7,6 +7,7 @@ from typing import Any
 
 from catalog.models import PlanningDisplaySettings
 from planning.models import PERSIAN_WEEKDAYS, WeeklyPlan
+from planning.utils import format_jdate
 
 
 def _settings() -> PlanningDisplaySettings:
@@ -38,7 +39,7 @@ def mold_change_stats(plan: WeeklyPlan) -> dict[str, Any]:
         group_name = item.subgroup.group.name if item.subgroup_id else "—"
         by_unit[unit_no]["groups"][group_name] += 1
 
-        date_str = str(item.mold_change_date)
+        date_str = format_jdate(item.mold_change_date)
         key = (int(item.mold_change_weekday), date_str)
         if unit_no not in matrix_counts[key]:
             matrix_counts[key][unit_no] = 0

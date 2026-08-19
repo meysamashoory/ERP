@@ -13,6 +13,8 @@ from django.views.decorators.http import require_POST
 
 from core.exports import export_excel, export_pdf
 
+from planning.utils import format_jdate
+
 from .access import (
     can_create_form,
     can_create_report,
@@ -572,7 +574,7 @@ def _item_values_from_plan_item(item) -> dict:
         "unit": f"واحد {item.machine.unit.number}" if item.machine_id and item.machine.unit_id else "",
         "machine": str(item.machine.number) if item.machine_id else "",
         "mold_change_day": weekday,
-        "mold_change_date": str(getattr(item, "mold_change_date", "") or ""),
+        "mold_change_date": format_jdate(getattr(item, "mold_change_date", None)),
         "cavities": str(getattr(item, "active_cavities", "") or ""),
     }
 
@@ -587,7 +589,7 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
             return rows
         base = {
             "program_number": str(plan.program_number),
-            "date": str(plan.date),
+            "date": format_jdate(plan.date),
             "weekday": plan.weekday_name,
             "status": plan.get_status_display(),
             "created_by": plan.created_by.username if plan.created_by_id else "",
@@ -629,7 +631,7 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
             "produced": str(produced),
             "planned": str(planned),
             "scrap": str(scrap),
-            "date": str(program.item.plan.date),
+            "date": format_jdate(program.item.plan.date),
         })
         return rows
     if ctx == "prod_pipe":
@@ -638,7 +640,7 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
         if not pipe:
             return rows
         rows.append({
-            "date": str(pipe.date),
+            "date": format_jdate(pipe.date),
             "unit": f"واحد {pipe.unit.number}",
             "line": str(pipe.line.number),
             "pipe_type": pipe.pipe_type,
