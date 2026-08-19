@@ -121,6 +121,9 @@ def item_save(request, pk):
         formset = WeeklyPlanLineFormSet(request.POST, instance=item, prefix="lines")
         if formset.is_valid():
             formset.save()
+        from .uid import refresh_plan_uids
+        refresh_plan_uids(plan)
+        item.refresh_from_db(fields=["uid"])
         # Transient warning only (not stored permanently).
         if item.history_alarm:
             messages.warning(request, f"دستگاه {item.machine} در سوابق تولید ثبت نشده است.")

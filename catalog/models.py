@@ -233,3 +233,82 @@ class MoldOption(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+
+class ProgramUidScheme(models.Model):
+    """Active law for building the planning program UID (شناسه برنامه).
+
+    Managed via «مدیریت داده‌ها». Digits and base year can be redefined here;
+    ``segments_json`` documents each segment for future custom schemes.
+    """
+
+    name = models.CharField("نام قانون", max_length=120, default="قانون اصلی ۱۴ رقمی")
+    is_active = models.BooleanField("فعال", default=True)
+    base_year = models.PositiveIntegerField(
+        "سال مبدأ شمسی",
+        default=1370,
+        help_text="کد سال = سال برنامه‌ریزی − مبدأ + ۱ (مثلاً ۱۴۰۵ با مبدأ ۱۳۷۰ → ۳۶).",
+    )
+    year_digits = models.PositiveSmallIntegerField("ارقام کد سال", default=2)
+    program_digits = models.PositiveSmallIntegerField("ارقام شماره برنامه", default=3)
+    unit_digits = models.PositiveSmallIntegerField("ارقام واحد", default=1)
+    machine_digits = models.PositiveSmallIntegerField("ارقام دستگاه", default=2)
+    date_sum_digits = models.PositiveSmallIntegerField("ارقام جمع روزها", default=3)
+    production_type_digits = models.PositiveSmallIntegerField("ارقام نوع تولید", default=1)
+    mold_row_digits = models.PositiveSmallIntegerField("ارقام ردیف قالب", default=2)
+    segments_json = models.JSONField(
+        "تعریف قطعات شناسه",
+        default=list,
+        blank=True,
+        help_text="ساختار قطعات برای مستندسازی و بازتعریف آینده.",
+    )
+    notes = models.TextField(
+        "توضیحات",
+        blank=True,
+        help_text="شرح قانون برای اپراتور / برنامه‌نویس.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "قانون شناسه برنامه"
+        verbose_name_plural = "قانون شناسه برنامه (بازتعریف)"
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.segments_json:
+            from planning.uid import DEFAULT_SEGMENTS
+            self.segments_json = list(DEFAULT_SEGMENTS)
+        super().save(*args, **kwargs)
+        if self.is_active:
+            type(self).objects.exclude(pk=self.pk).filter(is_active=True).update(is_active=False)
+
+    @classmethod
+    def load(cls) -> "ProgramUidScheme":
+        obj = cls.objects.filter(is_active=True).first() or cls.objects.first()
+        if obj is None:
+            from planning.uid import DEFAULT_SEGMENTS
+            obj = cls(
+                name="قانون اصلی ۱۴ رقمی",
+                is_active=True,
+                base_year=1370,
+                segments_json=list(DEFAULT_SEGMENTS),
+                notes=(
+                    "YY=سال−۱۳۷۰+۱ | PPP=شماره برنامه | U=واحد | MM=دستگاه | "
+                    "DDD=جمع آفست اکسل تاریخ برنامه و تعویض قالب | T=نوع تولید | RR=ردیف قالب"
+                ),
+            )
+        return obj
+
+    @property
+    def total_digits(self) -> int:
+        return (
+            self.year_digits
+            + self.program_digits
+            + self.unit_digits
+            + self.machine_digits
+            + self.date_sum_digits
+            + self.production_type_digits
+            + self.mold_row_digits
+        )
