@@ -68,48 +68,28 @@ def resolve_insights(product: Product | None) -> list[dict]:
     return cards
 
 
-def resolve_insight_details(product: Product | None) -> list[dict]:
-    """Full history rows per insight field (for the جزئیات dialog)."""
-    from planning.utils import format_jdate
+def resolve_insight_details(product: Product | None) -> dict:
+    """Production history table for the جزئیات dialog (no «آخرین» labels).
 
-    fields = PlanningInsightField.objects.filter(is_active=True)
-    sections: list[dict] = []
+    Columns mirror the blue glass production metrics:
+    سیکل | دستگاه تولید شده | تعداد حفره تولید شده
+    """
+    columns = ["سیکل", "دستگاه تولید شده", "تعداد حفره تولید شده"]
+    rows: list[dict] = []
     if product is None:
-        for field in fields:
-            sections.append({"label": field.label, "rows": []})
-        return sections
+        return {"columns": columns, "rows": rows}
 
-    productions = list(
+    productions = (
         FittingProduction.objects.filter(product=product)
         .select_related("machine", "machine__unit")
         .order_by("-date", "-id")
     )
-
-    for field in fields:
-        rows = []
-        if field.source == PlanningInsightField.Source.PRODUCT:
-            value = _product_value(product, field.source_key)
-            rows.append({
-                "title": product.name,
-                "value": "—" if value in (None, "") else value,
-            })
-        elif field.source == PlanningInsightField.Source.LAST_PRODUCTION:
-            for rec in productions:
-                if field.source_key == "shot_cycle":
-                    value = rec.shot_cycle
-                elif field.source_key == "machine_unit":
-                    value = f"دستگاه {rec.machine.number} · واحد {rec.machine.unit.number}"
-                elif field.source_key == "active_cavities":
-                    value = rec.active_cavities
-                elif field.source_key == "produced_quantity":
-                    value = rec.produced_quantity
-                elif field.source_key == "date":
-                    value = format_jdate(rec.date)
-                else:
-                    value = None
-                rows.append({
-                    "title": format_jdate(rec.date) or str(rec.date),
-                    "value": "—" if value in (None, "") else value,
-                })
-        sections.append({"label": field.label, "rows": rows})
-    return sections
+    for rec in productions:
+        cycle = rec.shot_cycle
+        cavities = rec.active_cavities
+        rows.append({
+            "cycle": "—" if cycle in (None, "") else cycle,
+            "machine": f"دستگاه {rec.machine.number} · واحد {rec.machine.unit.number}",
+            "cavities": "—" if cavities in (None, "") else cavities,
+        })
+    return {"columns": columns, "rows": rows}

@@ -113,9 +113,7 @@
         <p class="insight-empty muted">هنوز فیلد اطلاعاتی تعریف نشده است. از «مدیریت داده‌ها» فیلدهای نوار شیشه‌ای را اضافه کنید.</p>
         {% endfor %}
       </div>
-      <div class="insight-glass-actions">
-        <button type="button" class="btn btn-sm btn-ghost" id="btn-insight-details" disabled>جزئیات</button>
-      </div>
+      <button type="button" class="btn btn-sm btn-ghost insight-details-btn" id="btn-insight-details" disabled>جزئیات</button>
     </section>
   </div>
 </div>
@@ -453,25 +451,22 @@
       fetch(url + "?product=" + encodeURIComponent(id) + "&details=1")
         .then(function (r) { return r.json(); })
         .then(function (d) {
-          var sections = d.sections || [];
-          if (!sections.length) {
-            detailsBody.innerHTML = '<p class="muted">موردی نیست.</p>';
+          var rows = d.rows || [];
+          var cols = d.columns || ["سیکل", "دستگاه تولید شده", "تعداد حفره تولید شده"];
+          if (!rows.length) {
+            detailsBody.innerHTML = '<p class="muted">سابقه تولیدی برای این کالا ثبت نشده است.</p>';
             return;
           }
-          var html = "";
-          sections.forEach(function (sec) {
-            html += '<section class="insight-detail-section"><h4>' + sec.label + "</h4>";
-            if (!(sec.rows || []).length) {
-              html += '<p class="muted">—</p>';
-            } else {
-              html += '<table class="table"><thead><tr><th>مورد</th><th>مقدار</th></tr></thead><tbody>';
-              sec.rows.forEach(function (row) {
-                html += "<tr><td>" + (row.title || "—") + "</td><td>" + (row.value == null || row.value === "" ? "—" : row.value) + "</td></tr>";
-              });
-              html += "</tbody></table>";
-            }
-            html += "</section>";
+          var html = '<table class="table insight-history-table"><thead><tr>';
+          cols.forEach(function (c) { html += "<th>" + c + "</th>"; });
+          html += "</tr></thead><tbody>";
+          rows.forEach(function (row) {
+            html += "<tr><td>" + (row.cycle == null || row.cycle === "" ? "—" : row.cycle) +
+              "</td><td>" + (row.machine == null || row.machine === "" ? "—" : row.machine) +
+              "</td><td>" + (row.cavities == null || row.cavities === "" ? "—" : row.cavities) +
+              "</td></tr>";
           });
+          html += "</tbody></table>";
           detailsBody.innerHTML = html;
         })
         .catch(function () { detailsBody.innerHTML = '<p class="muted">خطا در دریافت جزئیات.</p>'; });

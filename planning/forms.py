@@ -255,17 +255,26 @@ class WeeklyPlanLineForm(forms.ModelForm):
     def clean_active_cavities(self):
         return self.cleaned_data.get("active_cavities") or 0
 
+    def is_empty_row(self) -> bool:
+        cd = getattr(self, "cleaned_data", None) or {}
+        return not (
+            cd.get("production_type")
+            or (cd.get("quantity") or 0)
+            or (cd.get("cycle") or 0)
+            or (cd.get("active_cavities") or 0)
+        )
+
     def clean(self):
         cleaned = super().clean()
         ptype = cleaned.get("production_type")
         qty = cleaned.get("quantity") or 0
         cycle = cleaned.get("cycle") or 0
         cavities = cleaned.get("active_cavities") or 0
-        # Empty spare rows are allowed; a started row must be complete.
+        # Completely empty spare row is fine.
         if not ptype and not qty and not cycle and not cavities:
             return cleaned
-        if not ptype:
-            self.add_error("production_type", "نوع تولید را انتخاب کنید.")
+        # Partial/started row: cavities, quantity, cycle are always required.
+        # نوع تولید is enforced at formset level only when 2+ rows are filled.
         if cavities < 1:
             self.add_error("active_cavities", "تعداد حفره الزامی است.")
         if qty < 1:
@@ -275,10 +284,46 @@ class WeeklyPlanLineForm(forms.ModelForm):
         return cleaned
 
 
+class WeeklyPlanLineFormSetBase(forms.BaseInlineFormSet):
+    """Validate production rows: one row may omit نوع تولید; 2+ rows all need it."""
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        filled = []
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data") or form.cleaned_data is None:
+                continue
+            if form.is_empty_row():
+                continue
+            filled.append(form)
+        if not filled:
+            # Prefer field errors so the UI paints red borders (not only a toast).
+            target = self.forms[0] if self.forms else None
+            if target is not None:
+                target.add_error("active_cavities", "تعداد حفره الزامی است.")
+                target.add_error("quantity", "مقدار تولید الزامی است.")
+                target.add_error("cycle", "سیکل تولید الزامی است.")
+            else:
+                raise forms.ValidationError(
+                    "ردیف تولید را کامل کنید: تعداد حفره، مقدار تولید و سیکل تولید الزامی است."
+                )
+            return
+        if len(filled) >= 2:
+            for form in filled:
+                if not form.cleaned_data.get("production_type"):
+                    form.add_error(
+                        "production_type",
+                        "وقتی بیش از یک ردیف تولید دارید، نوع تولید همه ردیف‌ها الزامی است.",
+                    )
+
+
 WeeklyPlanLineFormSet = inlineformset_factory(
     WeeklyPlanItem,
     WeeklyPlanLine,
     form=WeeklyPlanLineForm,
+    formset=WeeklyPlanLineFormSetBase,
     fields=["production_type", "active_cavities", "quantity", "cycle"],
     extra=1,
     can_delete=False,

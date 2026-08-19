@@ -459,14 +459,10 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 }
 .line-actions-spacer { flex: 1; min-width: 8px; }
 .line-actions .btn { margin: 0; }
-.insight-glass-actions {
-  display: flex;
-  justify-content: flex-start;
-  padding: 8px 12px 10px;
-}
 .insight-details-body { max-height: 60vh; overflow: auto; }
-.insight-detail-section { margin-bottom: 16px; }
-.insight-detail-section h4 { margin: 0 0 8px; font-size: 14px; }
+.insight-history-table { width: 100%; }
+.insight-history-table th,
+.insight-history-table td { text-align: center; }
 .ops-apply-form {
   display: inline-flex;
   align-items: center;
@@ -512,6 +508,7 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .plan-workspace-main .insight-glass-inner {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   padding: calc(18px * var(--insight-scale, 1)) calc(20px * var(--insight-scale, 1));
+  padding-left: calc(92px * var(--insight-scale, 1));
   min-height: calc(72px * var(--insight-scale, 1));
 }
 .plan-form-grid {
@@ -638,6 +635,7 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   padding: 1px;
   background: linear-gradient(135deg, rgba(125,211,252,.75), rgba(56,189,248,.35), rgba(14,165,233,.55));
   box-shadow: 0 8px 28px rgba(14,165,233,.18);
+  position: relative;
 }
 .insight-glass-inner {
   display: grid;
@@ -650,6 +648,17 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,.55);
   min-height: calc(64px * var(--insight-scale, 1));
+}
+.insight-details-btn {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+}
+.insight-details-btn:disabled {
+  opacity: 0.45;
 }
 .mold-glass-green {
   margin: 16px 0 20px;

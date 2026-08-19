@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -199,6 +200,27 @@ def plan_detail(request, pk):
     )
 
 
+def _plan_item_form_context(request, plan, profile, *, form, formset, editing_item):
+    insight_product = None
+    if getattr(form, "cleaned_data", None) and form.cleaned_data.get("product"):
+        insight_product = form.cleaned_data.get("product")
+    elif editing_item is not None:
+        insight_product = editing_item.product
+    return {
+        "plan": plan,
+        "profile": profile,
+        "editable": True,
+        "view_mode": False,
+        "item_form": form,
+        "line_formset": formset,
+        "editing_item": editing_item,
+        "edit_form": WeeklyPlanForm(instance=plan),
+        "mold_stats": mold_change_stats(plan),
+        "insights": resolve_insights(insight_product),
+        "alarm_items": _alarm_items_for_plan(plan),
+    }
+
+
 @login_required
 def item_save(request, pk):
     """Create a new کالا, or update an existing one (with its production rows)."""
@@ -214,7 +236,35 @@ def item_save(request, pk):
 
     form = WeeklyPlanItemForm(request.POST, plan_date=plan.date, instance=instance)
     formset = WeeklyPlanLineFormSet(request.POST, instance=instance, prefix="lines")
-    if form.is_valid() and formset.is_valid():
+
+    # Validate everything BEFORE any DB write so incomplete rows never create a کالا.
+    if not (form.is_valid() and formset.is_valid()):
+        messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
+        return render(
+            request,
+            "planning/plan_detail.html",
+            _plan_item_form_context(
+                request, plan, profile,
+                form=form, formset=formset, editing_item=instance,
+            ),
+        )
+
+    filled_forms = [
+        f for f in formset.forms
+        if getattr(f, "cleaned_data", None) and not f.is_empty_row()
+    ]
+    if not filled_forms:
+        messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
+        return render(
+            request,
+            "planning/plan_detail.html",
+            _plan_item_form_context(
+                request, plan, profile,
+                form=form, formset=formset, editing_item=instance,
+            ),
+        )
+
+    with transaction.atomic():
         item = form.save(commit=False)
         item.plan = plan
         has_history = FittingProduction.objects.filter(machine=item.machine).exists()
@@ -223,33 +273,8 @@ def item_save(request, pk):
             item.sequence = plan.items.filter(machine=item.machine).count() + 1
         item.save()
 
-        # Bind formset to saved item (new items need pk for inline saves).
-        formset = WeeklyPlanLineFormSet(request.POST, instance=item, prefix="lines")
-        if not formset.is_valid():
-            messages.error(request, "خطا در ردیف‌های تولید. مقادیر را بررسی کنید.")
-            return render(
-                request,
-                "planning/plan_detail.html",
-                {
-                    "plan": plan,
-                    "profile": profile,
-                    "editable": True,
-                    "view_mode": False,
-                    "item_form": form,
-                    "line_formset": formset,
-                    "editing_item": item,
-                    "edit_form": WeeklyPlanForm(instance=plan),
-                    "mold_stats": mold_change_stats(plan),
-                    "insights": resolve_insights(item.product),
-                    "alarm_items": _alarm_items_for_plan(plan),
-                },
-            )
-
         saved_lines = []
-        for line_form in formset.forms:
-            cd = line_form.cleaned_data
-            if not cd or not cd.get("production_type"):
-                continue
+        for line_form in filled_forms:
             line = line_form.save(commit=False)
             line.item = item
             line.mold = item.mold
@@ -262,70 +287,28 @@ def item_save(request, pk):
         keep_ids = {ln.pk for ln in saved_lines}
         item.lines.exclude(pk__in=keep_ids).delete()
 
-        if saved_lines:
-            item.active_cavities = saved_lines[0].active_cavities or 1
-            item.save(update_fields=["active_cavities"])
-        else:
-            messages.error(request, "حداقل یک ردیف تولید کامل (نوع، حفره، مقدار، سیکل) لازم است.")
-            return render(
-                request,
-                "planning/plan_detail.html",
-                {
-                    "plan": plan,
-                    "profile": profile,
-                    "editable": True,
-                    "view_mode": False,
-                    "item_form": form,
-                    "line_formset": WeeklyPlanLineFormSet(instance=item, prefix="lines"),
-                    "editing_item": item,
-                    "edit_form": WeeklyPlanForm(instance=plan),
-                    "mold_stats": mold_change_stats(plan),
-                    "insights": resolve_insights(item.product),
-                    "alarm_items": _alarm_items_for_plan(plan),
-                },
-            )
+        item.active_cavities = saved_lines[0].active_cavities or 1
+        item.save(update_fields=["active_cavities"])
 
         from .uid import refresh_plan_uids
         collisions = refresh_plan_uids(plan)
-        item.refresh_from_db(fields=["uid"])
-        if item.history_alarm:
-            messages.warning(
-                request,
-                f"دستگاه {item.machine} در سوابق تولید ثبت نشده است. "
-                "پیشنهاد: پس از اولین ثبت تولید، این هشدار برطرف می‌شود.",
-            )
-        if collisions:
-            first = collisions[0]
-            messages.error(
-                request,
-                f"شناسه تکراری: {first['uid']}. {first.get('suggestion') or 'جزئیات در مدیریت داده‌ها ثبت شد.'}",
-            )
-        else:
-            messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
-        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
 
-    messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
-    return render(
-        request,
-        "planning/plan_detail.html",
-        {
-            "plan": plan,
-            "profile": profile,
-            "editable": True,
-            "view_mode": False,
-            "item_form": form,
-            "line_formset": formset,
-            "editing_item": instance,
-            "edit_form": WeeklyPlanForm(instance=plan),
-            "mold_stats": mold_change_stats(plan),
-            "insights": resolve_insights(
-                form.cleaned_data.get("product")
-                if getattr(form, "cleaned_data", None)
-                else (instance.product if instance else None)
-            ),
-            "alarm_items": _alarm_items_for_plan(plan),
-        },
-    )
+    item.refresh_from_db(fields=["uid"])
+    if item.history_alarm:
+        messages.warning(
+            request,
+            f"دستگاه {item.machine} در سوابق تولید ثبت نشده است. "
+            "پیشنهاد: پس از اولین ثبت تولید، این هشدار برطرف می‌شود.",
+        )
+    if collisions:
+        first = collisions[0]
+        messages.error(
+            request,
+            f"شناسه تکراری: {first['uid']}. {first.get('suggestion') or 'جزئیات در مدیریت داده‌ها ثبت شد.'}",
+        )
+    else:
+        messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
+    return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
 
 
 @login_required
@@ -337,7 +320,7 @@ def product_insights(request):
     product = Product.objects.filter(pk=product_id).first() if product_id else None
     details = request.GET.get("details") == "1"
     if details:
-        return JsonResponse({"sections": resolve_insight_details(product)})
+        return JsonResponse(resolve_insight_details(product))
     return JsonResponse({"insights": resolve_insights(product)})
 
 

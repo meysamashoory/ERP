@@ -147,7 +147,8 @@ class WeeklyPlanLine(models.Model):
         WeeklyPlanItem, on_delete=models.CASCADE, related_name="lines"
     )
     production_type = models.ForeignKey(
-        ProductionTypeOption, on_delete=models.PROTECT, related_name="+", verbose_name="نوع تولید"
+        ProductionTypeOption, on_delete=models.PROTECT, related_name="+",
+        verbose_name="نوع تولید", null=True, blank=True,
     )
     mold = models.ForeignKey(
         MoldOption, on_delete=models.SET_NULL, null=True, blank=True,
