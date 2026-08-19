@@ -8,6 +8,7 @@ urlpatterns = [
     path("<int:pk>/", views.plan_detail, name="plan_detail"),
     path("<int:pk>/edit/", views.plan_edit, name="plan_edit"),
     path("<int:pk>/items/save/", views.item_save, name="plan_item_save"),
+    path("<int:pk>/items/<int:item_id>/delete/", views.item_delete, name="plan_item_delete"),
     path("<int:pk>/operate/", views.plan_operate, name="plan_operate"),
     path("<int:pk>/status/", views.plan_set_status, name="plan_set_status"),
     path("mold-change-dates/", views.mold_change_dates, name="mold_change_dates"),

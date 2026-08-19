@@ -137,7 +137,13 @@ class WeeklyPlanItem(models.Model):
 
     @property
     def has_production_days(self) -> bool:
-        return bool(self.production_days)
+        days = self.production_days or []
+        if not isinstance(days, list):
+            return False
+        return any(
+            isinstance(d, dict) and str(d.get("date") or "").strip()
+            for d in days
+        )
 
 
 class WeeklyPlanLine(models.Model):

@@ -369,6 +369,23 @@ def item_save(request, pk):
 
 
 @login_required
+def item_delete(request, pk, item_id):
+    """Delete one کالا (and its production rows) from the plan."""
+    plan = get_object_or_404(WeeklyPlan, pk=pk)
+    profile = get_profile(request.user)
+    if not _can_edit_plan(request.user, profile, plan):
+        raise PermissionDenied("فقط ایجادکنندهٔ برنامه می‌تواند آن را ویرایش کند.")
+    if request.method != "POST":
+        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
+    item = get_object_or_404(WeeklyPlanItem, pk=item_id, plan=plan)
+    item.delete()
+    from .uid import refresh_plan_uids
+    refresh_plan_uids(plan)
+    messages.success(request, "ردیف انتخاب‌شده حذف شد.")
+    return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
+
+
+@login_required
 def product_insights(request):
     """JSON: glass-panel metrics for the selected product."""
     from .insights import resolve_insight_details

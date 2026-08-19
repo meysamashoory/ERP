@@ -93,9 +93,13 @@
           pinDropdown(self);
           requestAnimationFrame(function () { pinDropdown(self); });
           setTimeout(function () { pinDropdown(self); }, 20);
-          // Focus the in-dropdown search box for typing.
-          var inp = self.dropdown && self.dropdown.querySelector("input");
-          if (inp) setTimeout(function () { inp.focus(); }, 0);
+          // Focus search after the opening click finishes — focusing during
+          // mousedown made mouseup on the control close the menu immediately.
+          setTimeout(function () {
+            if (!self.isOpen) return;
+            var inp = self.dropdown && self.dropdown.querySelector("input");
+            if (inp) inp.focus();
+          }, 50);
         },
         onDropdownClose: function () {
           if (this.dropdown) {
@@ -104,11 +108,11 @@
           }
         },
       });
-      // openOnFocus:false avoids auto-open on load/tab; click must open explicitly.
-      ts.control.addEventListener("mousedown", function (e) {
+      // openOnFocus:false — open on click without the library's click-to-blur
+      // closing the menu we just opened on mousedown.
+      ts.hook("instead", "onClick", function () {
         if (ts.isLocked || ts.isDisabled) return;
         if (ts.isOpen) return;
-        e.preventDefault();
         ts.focus();
         ts.open();
       });

@@ -49,7 +49,13 @@
     <div class="panel panel-compact">
       <div class="panel-body panel-body-compact">
         {% if editing_item %}
-        <div class="edit-switch"><a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}?mode=edit">افزودن کالای جدید</a></div>
+        <div class="edit-switch">
+          <form method="post" action="{% url 'plan_item_delete' plan.pk editing_item.pk %}" class="inline-form"
+            onsubmit="return confirm('ردیف انتخاب‌شده حذف شود؟');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-ghost">حذف ردیف انتخاب شده</button>
+          </form>
+        </div>
         {% endif %}
         <form method="post" action="{% url 'plan_item_save' plan.pk %}" id="item-form" data-product-kind="fitting" novalidate>
           {% csrf_token %}
@@ -189,7 +195,7 @@
                 data-days="{{ item.production_days|as_json }}"
                 data-readonly="1">روزهای تولید</button>
               {% else %}
-              <button type="button" class="btn btn-sm btn-ghost" disabled title="روز تولیدی ثبت نشده">روزهای تولید</button>
+              <span class="muted">—</span>
               {% endif %}
             </td>
             {% if editable %}
@@ -224,7 +230,7 @@
                 data-days="{{ item.production_days|as_json }}"
                 data-readonly="1">روزهای تولید</button>
               {% else %}
-              <button type="button" class="btn btn-sm btn-ghost" disabled>روزهای تولید</button>
+              <span class="muted">—</span>
               {% endif %}
             </td>
             {% if editable %}
@@ -573,10 +579,11 @@
 
   function weekdayFor(inp, dayEl) {
     var v = inp.value;
-    if (!v) { dayEl.textContent = ""; return; }
+    if (!v) { dayEl.textContent = "—"; return; }
     fetch("{% url 'weekday_for_date' %}?date=" + encodeURIComponent(v))
       .then(function (r) { return r.json(); })
-      .then(function (d) { dayEl.textContent = d.weekday || ""; });
+      .then(function (d) { dayEl.textContent = d.weekday || "—"; })
+      .catch(function () { dayEl.textContent = "—"; });
   }
 
   function rowHtml(row, idx) {
@@ -589,7 +596,8 @@
       '<div class="field"><label>تاریخ</label>' +
       '<input type="text" class="input" data-jdp data-prod-date autocomplete="off" value="' + (row.date || "") + '"' + dis + ">" +
       '</div>' +
-      '<div class="field"><label>روز</label><input type="text" class="input" data-prod-weekday readonly value=""></div>' +
+      '<div class="prod-day-weekday"><span class="prod-day-weekday-label">روز</span>' +
+      '<span class="prod-day-weekday-value" data-prod-weekday>—</span></div>' +
       '<div class="field"><label>شیفت</label><select data-combo data-prod-shift' + dis + ">" + opts + "</select></div>" +
       '<div class="field"><label>توضیحات</label><input type="text" class="input" data-prod-note maxlength="200" value="' + (row.note || "").replace(/"/g, "&quot;") + '"' + dis + "></div>" +
       "</div>";
@@ -602,6 +610,13 @@
     function sync() { weekdayFor(dateInp, dayEl); }
     dateInp.addEventListener("change", sync);
     dateInp.addEventListener("input", sync);
+    dateInp.addEventListener("blur", sync);
+    // Jalali datepicker often sets value without a reliable change event.
+    var last = dateInp.value;
+    var timer = setInterval(function () {
+      if (!document.body.contains(dateInp)) { clearInterval(timer); return; }
+      if (dateInp.value !== last) { last = dateInp.value; sync(); }
+    }, 300);
     if (dateInp.value) sync();
   }
 
