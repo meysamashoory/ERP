@@ -49,7 +49,7 @@
     <div class="panel panel-compact">
       <div class="panel-body panel-body-compact">
         {% if editing_item %}
-        <div class="edit-switch"><a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}">افزودن کالای جدید</a></div>
+        <div class="edit-switch"><a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}?mode=edit">افزودن کالای جدید</a></div>
         {% endif %}
         <form method="post" action="{% url 'plan_item_save' plan.pk %}" id="item-form" data-product-kind="fitting" novalidate>
           {% csrf_token %}
@@ -120,7 +120,7 @@
   </div>
 </div>
 {% else %}
-<div class="panel"><div class="panel-body muted">این برنامه فقط قابل مشاهده است. {% if plan.status == 'approved' %}برنامه ذخیره/تأیید شده است.{% endif %} برای ویرایش، ایجادکننده باید از فهرست برنامه‌ها گزینه «ویرایش» را اعمال کند.</div></div>
+<div class="panel"><div class="panel-body muted">حالت مشاهده — این برنامه فقط قابل مشاهده است. برای ویرایش، از فهرست برنامه‌ها گزینه «ویرایش» را انتخاب و اعمال کنید.</div></div>
 
 <section class="insight-glass mold-glass-green" style="--insight-scale: {{ mold_stats.height_coefficient }}">
   <div class="insight-glass-inner mold-glass-inner">
@@ -199,7 +199,7 @@
               {% if editing_item and editing_item.pk == item.pk %}
               <span class="editing-label">در حال ویرایش</span>
               {% else %}
-              <a class="link-edit" href="{% url 'plan_detail' plan.pk %}?edit={{ item.pk }}">ویرایش</a>
+              <a class="link-edit" href="{% url 'plan_detail' plan.pk %}?mode=edit&edit={{ item.pk }}">ویرایش</a>
               {% endif %}
             </td>
             {% endif %}
@@ -234,7 +234,7 @@
               {% if editing_item and editing_item.pk == item.pk %}
               <span class="editing-label">در حال ویرایش</span>
               {% else %}
-              <a class="link-edit" href="{% url 'plan_detail' plan.pk %}?edit={{ item.pk }}">ویرایش</a>
+              <a class="link-edit" href="{% url 'plan_detail' plan.pk %}?mode=edit&edit={{ item.pk }}">ویرایش</a>
               {% endif %}
             </td>
             {% endif %}

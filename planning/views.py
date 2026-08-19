@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from accounts.permissions import get_profile
@@ -64,7 +65,7 @@ def plan_create(request):
             plan.status = WeeklyPlan.Status.DRAFT
             plan.save()
             messages.success(request, "برنامه ایجاد شد. اکنون کالاها را اضافه کنید.")
-            return redirect("plan_detail", pk=plan.pk)
+            return redirect(f"{reverse('plan_detail', args=[plan.pk])}?mode=edit")
     else:
         form = WeeklyPlanForm()
     return render(request, "planning/plan_form.html", {"form": form})
@@ -110,8 +111,8 @@ def plan_operate(request, pk):
             plan.approved_at = None
             plan.save(update_fields=["status", "approved_by", "approved_at"])
             messages.info(request, "برنامه برای ویرایش باز شد.")
-        return redirect("plan_detail", pk=pk)
-    return redirect("plan_detail", pk=pk)
+        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
+    return redirect(f"{reverse('plan_detail', args=[pk])}?mode=view")
 
 
 @login_required
@@ -128,7 +129,7 @@ def plan_edit(request, pk):
             messages.success(request, "شماره و تاریخ برنامه به‌روزرسانی شد.")
         else:
             messages.error(request, "مقادیر واردشده معتبر نیست.")
-    return redirect("plan_detail", pk=pk)
+    return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
 
 
 def _alarm_items_for_plan(plan):
@@ -159,7 +160,12 @@ def plan_detail(request, pk):
         pk=pk,
     )
     profile = get_profile(request.user)
-    editable = _can_edit_plan(request.user, profile, plan)
+    mode = (request.GET.get("mode") or "view").strip().lower()
+    # مشاهده is always read-only; ویرایش requires ownership + draft.
+    editable = bool(mode == "edit" and _can_edit_plan(request.user, profile, plan))
+    if mode == "edit" and not editable:
+        # Owner requested edit but plan isn't editable (or not owner) → fall back to view.
+        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=view")
 
     editing_item = None
     edit_id = request.GET.get("edit")
@@ -181,6 +187,7 @@ def plan_detail(request, pk):
             "plan": plan,
             "profile": profile,
             "editable": editable,
+            "view_mode": not editable,
             "item_form": item_form,
             "line_formset": line_formset,
             "editing_item": editing_item,
@@ -200,7 +207,7 @@ def item_save(request, pk):
     if not _can_edit_plan(request.user, profile, plan):
         raise PermissionDenied("فقط ایجادکنندهٔ برنامه می‌تواند آن را ویرایش کند.")
     if request.method != "POST":
-        return redirect("plan_detail", pk=pk)
+        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
 
     item_id = request.POST.get("item_id") or None
     instance = plan.items.filter(pk=item_id).first() if item_id else None
@@ -227,6 +234,7 @@ def item_save(request, pk):
                     "plan": plan,
                     "profile": profile,
                     "editable": True,
+                    "view_mode": False,
                     "item_form": form,
                     "line_formset": formset,
                     "editing_item": item,
@@ -266,6 +274,7 @@ def item_save(request, pk):
                     "plan": plan,
                     "profile": profile,
                     "editable": True,
+                    "view_mode": False,
                     "item_form": form,
                     "line_formset": WeeklyPlanLineFormSet(instance=item, prefix="lines"),
                     "editing_item": item,
@@ -293,7 +302,7 @@ def item_save(request, pk):
             )
         else:
             messages.success(request, "کالا ذخیره شد." if instance else "کالا اضافه شد.")
-        return redirect("plan_detail", pk=pk)
+        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=edit")
 
     messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
     return render(
@@ -303,6 +312,7 @@ def item_save(request, pk):
             "plan": plan,
             "profile": profile,
             "editable": True,
+            "view_mode": False,
             "item_form": form,
             "line_formset": formset,
             "editing_item": instance,

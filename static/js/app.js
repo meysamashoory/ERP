@@ -61,7 +61,6 @@
         allowEmptyOption: true,
         maxOptions: 2000,
         controlInput: null,
-        openOnFocus: false,
         placeholder: sel.getAttribute("placeholder") || "انتخاب...",
         render: { no_results: function () { return '<div class="no-results">موردی یافت نشد</div>'; } },
         onDropdownOpen: function () {
@@ -74,8 +73,6 @@
           if (inp) setTimeout(function () { inp.focus(); }, 0);
         },
       });
-      // Prevent accidental open on programmatic setValue / sync after load.
-      ts.on("focus", function () { /* keep closed until click */ });
       // Override library positioning so menus never jump to the page bottom.
       ts.positionDropdown = function () { pinDropdown(ts); };
       var repin = function () { if (ts.isOpen) pinDropdown(ts); };
@@ -172,24 +169,25 @@
   function repopulate(sel, items, opts) {
     var ts = tsOf(sel); if (!ts) return;
     var prev = ts.getValue();
-    // Clear selection first so a stale value is not kept as a ghost item.
+    // Clear first when not preserving, so a machine from another unit never
+    // remains selected (and must not mutate native <select> via innerHTML —
+    // that breaks Tom Select click/open).
     if (!(opts && opts.preserve)) ts.clear(true);
     ts.clearOptions();
-    // Rebuild underlying <select> so Tom Select cannot duplicate native options.
-    var keepEmpty = true;
-    var html = keepEmpty ? '<option value="">——</option>' : "";
     items.forEach(function (it) {
-      html += '<option value="' + String(it.value) + '">' + String(it.text) + "</option>";
+      ts.addOption({
+        value: String(it.value),
+        text: it.text,
+        subgroup_id: it.subgroup_id,
+        code: it.code,
+      });
     });
-    sel.innerHTML = html;
-    items.forEach(function (it) {
-      ts.addOption({ value: String(it.value), text: it.text, subgroup_id: it.subgroup_id, code: it.code });
-    });
-    ts.refreshOptions(false);
+    // Do not call refreshOptions(true) — that opens the dropdown on load.
     var keep = opts && opts.preserve && prev &&
       items.some(function (it) { return String(it.value) === String(prev); });
-    if (keep) ts.setValue(prev, true);
-    else ts.clear(true);
+    if (keep) ts.setValue(String(prev), true);
+    else if (opts && opts.preserve) { /* keep empty */ }
+    if (ts.isOpen) ts.close();
   }
 
   function wireUnitMachine(root) {
@@ -201,12 +199,17 @@
       function refresh(preserve) {
         var unit = valOf(unitSel);
         var mts = tsOf(machineSel);
-        if (!preserve && mts) mts.clear(true);
+        if (!preserve && mts) {
+          mts.clear(true);
+          if (mts.isOpen) mts.close();
+        }
         if (!unit) { repopulate(machineSel, [], {}); return; }
         fetch(window.API.machines + "?unit=" + encodeURIComponent(unit) + "&type=" + mtype)
           .then(function (r) { return r.json(); })
           .then(function (d) {
-            repopulate(machineSel, (d.results || []).map(function (m) { return { value: m.id, text: m.label }; }), { preserve: preserve });
+            repopulate(machineSel, (d.results || []).map(function (m) {
+              return { value: m.id, text: m.label };
+            }), { preserve: preserve });
           });
       }
       var ts = tsOf(unitSel);
@@ -243,24 +246,21 @@
           .then(function (r) { return r.json(); })
           .then(function (d) {
             var res = d.results || [];
-            // Keep subgroup_id on Tom Select options via addOption below.
             var pts = tsOf(prodSel);
             var prev = pts ? pts.getValue() : prodSel.value;
             if (pts) {
-              pts.clear(true);
-              tsOf(prodSel) && pts.clearOptions();
+              // Avoid clear()+refreshOptions — that opens the product menu on page load.
+              var keep = preserve && prev && res.some(function (p) { return String(p.id) === String(prev); });
+              if (!keep) pts.clear(true);
+              pts.clearOptions();
               res.forEach(function (p) {
                 pts.addOption({
                   value: String(p.id), text: p.name,
                   subgroup_id: p.subgroup_id, code: p.code
                 });
               });
-              pts.refreshOptions(false);
-              if (preserve && prev && res.some(function (p) { return String(p.id) === String(prev); })) {
-                pts.setValue(prev, true);
-              } else if (!preserve) {
-                pts.clear(true);
-              }
+              if (keep) pts.setValue(String(prev), true);
+              if (pts.isOpen) pts.close();
             } else {
               repopulate(prodSel, mapProducts(res), { preserve: preserve });
             }
@@ -268,23 +268,26 @@
               var cts = tsOf(codeSel);
               if (cts) {
                 var cprev = cts.getValue();
-                cts.clear(true); cts.clearOptions();
+                var ckeep = preserve && cprev && res.some(function (p) { return String(p.id) === String(cprev); });
+                if (!ckeep) cts.clear(true);
+                cts.clearOptions();
                 res.forEach(function (p) {
                   cts.addOption({
                     value: String(p.id), text: p.code,
                     subgroup_id: p.subgroup_id
                   });
                 });
-                cts.refreshOptions(false);
-                if (preserve && cprev && res.some(function (p) { return String(p.id) === String(cprev); })) {
-                  cts.setValue(cprev, true);
-                } else if (!preserve) {
-                  cts.clear(true);
-                }
+                if (ckeep) cts.setValue(String(cprev), true);
+                if (cts.isOpen) cts.close();
               } else {
                 repopulate(codeSel, mapCodes(res), { preserve: preserve });
               }
             }
+            // Ensure no combo is left open after async option load.
+            [prodSel, codeSel, sgSel].forEach(function (el) {
+              var t = tsOf(el);
+              if (t && t.isOpen) t.close();
+            });
           });
       }
 
