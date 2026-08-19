@@ -2,7 +2,7 @@
 {% load planning_extras %}
 {% block title %}شماره برنامه {{ plan.program_number|program_no }}{% endblock %}
 {% block heading %}
-<span class="plan-heading-text">شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }} <span class="plan-status-inline">({{ plan.get_status_display }})</span></span>
+<span class="plan-heading-text">شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }} <span class="plan-status-inline">({% if editable %}در حال ویرایش{% else %}فقط مشاهده{% endif %})</span></span>
 {% endblock %}
 {% block nav_planning %}active{% endblock %}
 

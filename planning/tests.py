@@ -115,6 +115,62 @@ class ProductionLineFormSetValidationTests(TestCase):
         self.assertTrue(any("production_type" in (e or {}) for e in fs.errors))
 
 
+class ProductCollisionTests(TestCase):
+    def test_same_product_same_mold_same_type_conflicts(self):
+        from django.core.management import call_command
+        from planning.views import _product_collision_in_plan
+        from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
+        from catalog.models import ProductionTypeOption, MoldOption
+
+        call_command("seed_demo")
+        plan = WeeklyPlan.objects.filter(status="draft").first()
+        item = plan.items.select_related("product", "mold").first()
+        self.assertIsNotNone(item)
+        pt = ProductionTypeOption.objects.filter(is_active=True).first()
+        if not item.lines.exists():
+            WeeklyPlanLine.objects.create(
+                item=item, production_type=pt, quantity=10, cycle=20, active_cavities=1
+            )
+        line = item.lines.first()
+        mold = item.mold or MoldOption.objects.filter(is_active=True).first()
+        if item.mold_id is None and mold:
+            item.mold = mold
+            item.save(update_fields=["mold"])
+        type_id = line.production_type_id
+        self.assertTrue(
+            _product_collision_in_plan(
+                plan,
+                product=item.product,
+                mold=item.mold,
+                type_ids=[type_id] if type_id else [],
+                exclude_item_id=None,
+            )
+        )
+        # Editing the same item is fine.
+        self.assertFalse(
+            _product_collision_in_plan(
+                plan,
+                product=item.product,
+                mold=item.mold,
+                type_ids=[type_id] if type_id else [],
+                exclude_item_id=item.pk,
+            )
+        )
+
+    def test_product_label_is_name_only(self):
+        from django.core.management import call_command
+        from planning.forms import WeeklyPlanItemForm
+        from planning.models import WeeklyPlan
+
+        call_command("seed_demo")
+        plan = WeeklyPlan.objects.filter(status="draft").first()
+        item = plan.items.select_related("product").first()
+        form = WeeklyPlanItemForm(plan_date=plan.date, instance=item)
+        label = form.fields["product"].label_from_instance(item.product)
+        self.assertEqual(label, item.product.name)
+        self.assertNotIn(item.product.code, label)
+
+
 class WeeklyPlanDateUniqueTests(TestCase):
     def test_duplicate_plan_date_rejected(self):
         from django.contrib.auth import get_user_model

@@ -384,6 +384,7 @@ input[type=time]:focus, select:focus, textarea:focus {
   z-index: 100002 !important;
   box-shadow: 0 8px 24px rgba(15,23,42,.12);
   background: #fff;
+  display: none; /* closed until Tom Select opens (JS sets display:block) */
 }
 .ts-dropdown .option { padding: 8px 12px; }
 .ts-dropdown .active { background: #eef2ff; color: var(--ink); }

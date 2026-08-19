@@ -18,6 +18,12 @@
 
   function pinDropdown(ts) {
     if (!ts || !ts.dropdown || !ts.control) return;
+    // Never force the menu visible while closed — that left a half-open
+    // "انتخاب..." panel on page load.
+    if (!ts.isOpen) {
+      ts.dropdown.style.display = "none";
+      return;
+    }
     var control = ts.control;
     var dropdown = ts.dropdown;
     var host = dropdownLayerHost(control);
@@ -45,6 +51,26 @@
     }
   }
 
+  function clearFieldError(el) {
+    var field = el && el.closest ? el.closest(".field") : null;
+    if (!field || !field.classList.contains("has-error")) return;
+    field.classList.remove("has-error");
+    field.removeAttribute("title");
+  }
+
+  function wireClearErrors(root) {
+    root.querySelectorAll(".field.has-error").forEach(function (field) {
+      if (field.dataset.errorClearWired) return;
+      field.dataset.errorClearWired = "1";
+      field.addEventListener("input", function (e) { clearFieldError(e.target); }, true);
+      field.addEventListener("change", function (e) { clearFieldError(e.target); }, true);
+      field.querySelectorAll("select").forEach(function (sel) {
+        var ts = tsOf(sel);
+        if (ts) ts.on("change", function () { clearFieldError(sel); });
+      });
+    });
+  }
+
   function initCombos(root) {
     if (!window.TomSelect) return;
     root.querySelectorAll("select[data-combo]").forEach(function (sel) {
@@ -61,6 +87,7 @@
         allowEmptyOption: true,
         maxOptions: 2000,
         controlInput: null,
+        openOnFocus: false,
         placeholder: sel.getAttribute("placeholder") || "انتخاب...",
         render: { no_results: function () { return '<div class="no-results">موردی یافت نشد</div>'; } },
         onDropdownOpen: function () {
@@ -72,9 +99,15 @@
           var inp = self.dropdown && self.dropdown.querySelector("input");
           if (inp) setTimeout(function () { inp.focus(); }, 0);
         },
+        onDropdownClose: function () {
+          if (this.dropdown) this.dropdown.style.display = "none";
+        },
       });
       // Override library positioning so menus never jump to the page bottom.
       ts.positionDropdown = function () { pinDropdown(ts); };
+      // Ensure closed on init (no half-open menu with only «انتخاب»).
+      ts.close();
+      if (ts.dropdown) ts.dropdown.style.display = "none";
       var repin = function () { if (ts.isOpen) pinDropdown(ts); };
       window.addEventListener("scroll", repin, true);
       window.addEventListener("resize", repin);
@@ -259,7 +292,16 @@
                   subgroup_id: p.subgroup_id, code: p.code
                 });
               });
-              if (keep) pts.setValue(String(prev), true);
+              if (keep) {
+                pts.setValue(String(prev), true);
+                // Silent setValue does not fire change — sync code manually.
+                if (codeSel) {
+                  var ctsSync = tsOf(codeSel);
+                  if (ctsSync && ctsSync.getValue() !== String(prev)) {
+                    ctsSync.setValue(String(prev), true);
+                  }
+                }
+              }
               if (pts.isOpen) pts.close();
             } else {
               repopulate(prodSel, mapProducts(res), { preserve: preserve });
@@ -355,6 +397,7 @@
     wireUnitMachine(root);
     wireSubgroupProduct(root);
     wireChangeType(root);
+    wireClearErrors(root);
   }
 
   window.ERP = { enhance: enhance };

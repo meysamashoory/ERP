@@ -147,6 +147,29 @@ def _alarm_items_for_plan(plan):
     ]
 
 
+def _product_collision_in_plan(plan, *, product, mold, type_ids, exclude_item_id=None) -> bool:
+    """Same product may only reappear if mold or production type differs."""
+    if product is None:
+        return False
+    mold_id = mold.pk if mold is not None else None
+    new_types = {t for t in type_ids if t}
+    qs = plan.items.filter(product_id=product.pk).prefetch_related("lines")
+    if exclude_item_id:
+        qs = qs.exclude(pk=exclude_item_id)
+    for other in qs:
+        if (other.mold_id or None) != mold_id:
+            continue
+        other_types = {
+            tid for tid in other.lines.values_list("production_type_id", flat=True) if tid
+        }
+        # No distinguishing type difference (both empty, or shared type).
+        if not new_types and not other_types:
+            return True
+        if new_types & other_types:
+            return True
+    return False
+
+
 @login_required
 def plan_detail(request, pk):
     plan = get_object_or_404(
@@ -255,6 +278,40 @@ def item_save(request, pk):
     ]
     if not filled_forms:
         messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
+        return render(
+            request,
+            "planning/plan_detail.html",
+            _plan_item_form_context(
+                request, plan, profile,
+                form=form, formset=formset, editing_item=instance,
+            ),
+        )
+
+    type_ids = []
+    for line_form in filled_forms:
+        ptype = line_form.cleaned_data.get("production_type")
+        type_ids.append(ptype.pk if ptype else None)
+    if _product_collision_in_plan(
+        plan,
+        product=form.cleaned_data.get("product"),
+        mold=form.cleaned_data.get("mold"),
+        type_ids=type_ids,
+        exclude_item_id=instance.pk if instance else None,
+    ):
+        form.add_error(
+            "product",
+            "این کالا با همین قالب و نوع تولید قبلاً در این برنامه ثبت شده است.",
+        )
+        mold = form.cleaned_data.get("mold")
+        if mold is not None:
+            form.add_error("mold", "قالب با ردیف قبلی یکسان است؛ برای ثبت مجدد کالا باید قالب یا نوع تولید فرق کند.")
+        for line_form in filled_forms:
+            if line_form.cleaned_data.get("production_type"):
+                line_form.add_error(
+                    "production_type",
+                    "نوع تولید با ردیف قبلی یکسان است.",
+                )
+        messages.error(request, "این کالا تکراری است. قالب یا نوع تولید باید متفاوت باشد.")
         return render(
             request,
             "planning/plan_detail.html",

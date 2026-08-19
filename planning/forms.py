@@ -110,10 +110,16 @@ class WeeklyPlanItemForm(forms.ModelForm):
             machine_type="injection", is_active=True
         )
         self.fields["machine"].label = "شماره دستگاه تزریق"
-        self.fields["product"].queryset = Product.objects.filter(
+        products = Product.objects.filter(
             subgroup__group__kind=ProductKind.FITTING, is_active=True
         )
+        self.fields["product"].queryset = products
         self.fields["product"].label = "نام کالا"
+        # Keep نام کالا = name only (Product.__str__ mixes code + name).
+        self.fields["product"].label_from_instance = lambda obj: obj.name
+        self.fields["code"].widget.choices = (
+            [("", "——")] + [(str(p.pk), p.code) for p in products]
+        )
         self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
         self.fields["mold"].required = False
         self.fields["mold"].empty_label = "——"
@@ -141,6 +147,7 @@ class WeeklyPlanItemForm(forms.ModelForm):
         self.fields["mold_change_date"].choices = choices
         if self.instance and self.instance.pk:
             self.fields["subgroup"].initial = self.instance.product.subgroup_id
+            self.fields["code"].initial = str(self.instance.product_id)
             self.fields["mold_change_date"].initial = format_jdate(
                 self.instance.mold_change_date
             )
