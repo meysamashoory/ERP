@@ -1,3 +1,5 @@
+import json
+
 from django import forms
 from django.forms import inlineformset_factory
 from django_jalali import forms as jforms
@@ -8,6 +10,13 @@ from .models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
 from .utils import format_jdate, mold_change_date_candidates, parse_jdate_string
 
 JDATE_FORMATS = ["%Y/%m/%d", "%Y-%m-%d"]
+
+PRODUCTION_SHIFT_CHOICES = [
+    ("", "——"),
+    ("day", "فقط شیفت روز"),
+    ("night", "فقط شیفت شب"),
+    ("both", "هر دو شیفت"),
+]
 
 
 def style_fields(form):
@@ -66,23 +75,31 @@ class WeeklyPlanItemForm(forms.ModelForm):
     subgroup = forms.ModelChoiceField(
         queryset=ProductSubGroup.objects.filter(group__kind=ProductKind.FITTING),
         label="زیرگروه",
+        required=False,
         widget=combo({"data-role": "subgroup"}),
     )
     code = forms.CharField(
         required=False, label="کد کالا",
         widget=forms.Select(attrs={"data-role": "code", "data-combo": "1"}),
     )
-    mold_change_date = forms.ChoiceField(choices=[], label="تاریخ تعویض قالب",
-                                         widget=combo())
+    mold_change_date = forms.ChoiceField(
+        choices=[], label="تاریخ تعویض قالب", widget=combo(),
+    )
+    production_days = forms.CharField(
+        required=False, widget=forms.HiddenInput(attrs={"id": "id_production_days"}),
+    )
 
     class Meta:
         model = WeeklyPlanItem
-        fields = ["subgroup", "unit", "machine", "product", "code",
-                  "mold_change_weekday", "active_cavities"]
+        fields = [
+            "subgroup", "product", "code", "mold",
+            "unit", "machine", "mold_change_weekday",
+        ]
         widgets = {
             "unit": combo({"data-role": "unit"}),
             "machine": combo({"data-role": "machine", "data-machine-type": "injection"}),
             "product": combo({"data-role": "product"}),
+            "mold": combo(),
             "mold_change_weekday": combo({"data-role": "weekday"}),
         }
 
@@ -92,31 +109,75 @@ class WeeklyPlanItemForm(forms.ModelForm):
         self.fields["machine"].queryset = Machine.objects.filter(
             machine_type="injection", is_active=True
         )
+        self.fields["machine"].label = "شماره دستگاه تزریق"
         self.fields["product"].queryset = Product.objects.filter(
             subgroup__group__kind=ProductKind.FITTING, is_active=True
         )
-        self.fields["product"].label = "نام محصول"
+        self.fields["product"].label = "نام کالا"
+        self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
+        self.fields["mold"].required = False
+        self.fields["mold"].empty_label = "——"
+        self.fields["mold"].label = "نوع قالب"
+        self.fields["subgroup"].empty_label = "——"
         style_fields(self)
 
-        # Candidate mold-change dates (for validation and initial display).
         weekday = None
         if self.data:
             weekday = self.data.get("mold_change_weekday")
         elif self.instance and self.instance.pk:
             weekday = self.instance.mold_change_weekday
+        choices = []
         if weekday not in (None, "") and plan_date is not None:
             candidates = mold_change_date_candidates(plan_date, int(weekday))
-            self.fields["mold_change_date"].choices = [
-                (format_jdate(c), format_jdate(c)) for c in candidates
-            ]
+            choices = [(format_jdate(c), format_jdate(c)) for c in candidates]
+        # Keep the currently saved date selectable even if outside the horizon.
+        current_date = None
+        if self.instance and self.instance.pk and self.instance.mold_change_date:
+            current_date = format_jdate(self.instance.mold_change_date)
+        if self.data and self.data.get("mold_change_date"):
+            current_date = self.data.get("mold_change_date")
+        if current_date and (current_date, current_date) not in choices:
+            choices.insert(0, (current_date, current_date))
+        self.fields["mold_change_date"].choices = choices
         if self.instance and self.instance.pk:
             self.fields["subgroup"].initial = self.instance.product.subgroup_id
             self.fields["mold_change_date"].initial = format_jdate(
                 self.instance.mold_change_date
             )
+            days = self.instance.production_days or []
+            self.fields["production_days"].initial = json.dumps(
+                days, ensure_ascii=False
+            )
 
     def clean_mold_change_date(self):
         return parse_jdate_string(self.cleaned_data["mold_change_date"])
+
+    def clean_production_days(self):
+        raw = self.cleaned_data.get("production_days") or "[]"
+        if isinstance(raw, list):
+            return raw
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(data, list):
+            return []
+        cleaned = []
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            date = str(row.get("date") or "").strip()
+            if not date:
+                continue
+            shift = str(row.get("shift") or "").strip()
+            if shift not in ("", "day", "night", "both"):
+                shift = ""
+            cleaned.append({
+                "date": format_jdate(date),
+                "shift": shift,
+                "note": str(row.get("note") or "").strip()[:200],
+            })
+        return cleaned
 
     def clean(self):
         cleaned = super().clean()
@@ -127,12 +188,22 @@ class WeeklyPlanItemForm(forms.ModelForm):
         if unit and machine and machine.unit_id != unit.id:
             self.add_error("machine", "دستگاه انتخاب‌شده متعلق به این واحد نیست.")
         if product and subgroup and product.subgroup_id != subgroup.id:
-            self.add_error("product", "محصول با زیرگروه انتخاب‌شده هم‌خوانی ندارد.")
+            # Auto-align when product drives subgroup; only error if both set and conflict
+            # after user intentionally filtered — still auto-fix from product.
+            cleaned["subgroup"] = product.subgroup
+        elif product and not subgroup:
+            cleaned["subgroup"] = product.subgroup
         return cleaned
 
     def save(self, commit=True):
         obj = super().save(commit=False)
         obj.mold_change_date = self.cleaned_data["mold_change_date"]
+        obj.production_days = self.cleaned_data.get("production_days") or []
+        subgroup = self.cleaned_data.get("subgroup")
+        if subgroup is None and obj.product_id:
+            obj.subgroup = obj.product.subgroup
+        elif subgroup is not None:
+            obj.subgroup = subgroup
         if commit:
             obj.save()
         return obj
@@ -150,27 +221,29 @@ class EmptyZeroNumberInput(forms.NumberInput):
 class WeeklyPlanLineForm(forms.ModelForm):
     class Meta:
         model = WeeklyPlanLine
-        fields = ["production_type", "mold", "quantity", "cycle"]
+        fields = ["production_type", "active_cavities", "quantity", "cycle"]
         widgets = {
             "production_type": combo(),
-            "mold": combo(),
+            "active_cavities": EmptyZeroNumberInput(attrs={"class": "input", "min": "1"}),
             "quantity": EmptyZeroNumberInput(attrs={"class": "input", "min": "0"}),
             "cycle": EmptyZeroNumberInput(attrs={"class": "input", "min": "0"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
-        self.fields["mold"].required = False
-        self.fields["mold"].empty_label = "—"
-        # Blank out zeros on new/empty rows (and when stored value is 0).
-        for name in ("quantity", "cycle"):
+        self.fields["production_type"].required = False
+        self.fields["production_type"].empty_label = "——"
+        for name in ("quantity", "cycle", "active_cavities"):
             field = self.fields[name]
             field.required = False
             if not self.is_bound:
                 current = getattr(self.instance, name, None) if self.instance else None
-                if not self.instance.pk or current in (0, None):
+                if name == "active_cavities":
+                    if not self.instance.pk or current in (0, None):
+                        field.initial = None
+                elif not self.instance.pk or current in (0, None):
                     field.initial = None
+        self.fields["active_cavities"].label = "تعداد حفره"
         style_fields(self)
 
     def clean_quantity(self):
@@ -179,12 +252,34 @@ class WeeklyPlanLineForm(forms.ModelForm):
     def clean_cycle(self):
         return self.cleaned_data.get("cycle") or 0
 
+    def clean_active_cavities(self):
+        return self.cleaned_data.get("active_cavities") or 0
+
+    def clean(self):
+        cleaned = super().clean()
+        ptype = cleaned.get("production_type")
+        qty = cleaned.get("quantity") or 0
+        cycle = cleaned.get("cycle") or 0
+        cavities = cleaned.get("active_cavities") or 0
+        # Empty spare rows are allowed; a started row must be complete.
+        if not ptype and not qty and not cycle and not cavities:
+            return cleaned
+        if not ptype:
+            self.add_error("production_type", "نوع تولید را انتخاب کنید.")
+        if cavities < 1:
+            self.add_error("active_cavities", "تعداد حفره الزامی است.")
+        if qty < 1:
+            self.add_error("quantity", "مقدار تولید الزامی است.")
+        if cycle < 1:
+            self.add_error("cycle", "سیکل تولید الزامی است.")
+        return cleaned
+
 
 WeeklyPlanLineFormSet = inlineformset_factory(
     WeeklyPlanItem,
     WeeklyPlanLine,
     form=WeeklyPlanLineForm,
-    fields=["production_type", "mold", "quantity", "cycle"],
+    fields=["production_type", "active_cavities", "quantity", "cycle"],
     extra=1,
     can_delete=False,
 )

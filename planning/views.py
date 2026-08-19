@@ -147,22 +147,77 @@ def item_save(request, pk):
     instance = plan.items.filter(pk=item_id).first() if item_id else None
 
     form = WeeklyPlanItemForm(request.POST, plan_date=plan.date, instance=instance)
-    if form.is_valid():
+    formset = WeeklyPlanLineFormSet(request.POST, instance=instance, prefix="lines")
+    if form.is_valid() and formset.is_valid():
         item = form.save(commit=False)
         item.plan = plan
         has_history = FittingProduction.objects.filter(machine=item.machine).exists()
         item.history_alarm = not has_history
         if instance is None:
-            # Sequence position among items on the same machine in this plan.
             item.sequence = plan.items.filter(machine=item.machine).count() + 1
         item.save()
+
+        # Bind formset to saved item (new items need pk for inline saves).
         formset = WeeklyPlanLineFormSet(request.POST, instance=item, prefix="lines")
-        if formset.is_valid():
-            formset.save()
+        if not formset.is_valid():
+            messages.error(request, "خطا در ردیف‌های تولید. مقادیر را بررسی کنید.")
+            return render(
+                request,
+                "planning/plan_detail.html",
+                {
+                    "plan": plan,
+                    "profile": profile,
+                    "editable": True,
+                    "item_form": form,
+                    "line_formset": formset,
+                    "editing_item": item,
+                    "edit_form": WeeklyPlanForm(instance=plan),
+                    "mold_stats": mold_change_stats(plan),
+                    "insights": resolve_insights(item.product),
+                },
+            )
+
+        saved_lines = []
+        for line_form in formset.forms:
+            cd = line_form.cleaned_data
+            if not cd or not cd.get("production_type"):
+                continue
+            line = line_form.save(commit=False)
+            line.item = item
+            line.mold = item.mold
+            if not line.active_cavities:
+                line.active_cavities = 1
+            line.save()
+            saved_lines.append(line)
+
+        # Drop leftover DB lines that were cleared / removed from the formset.
+        keep_ids = {ln.pk for ln in saved_lines}
+        item.lines.exclude(pk__in=keep_ids).delete()
+
+        if saved_lines:
+            item.active_cavities = saved_lines[0].active_cavities or 1
+            item.save(update_fields=["active_cavities"])
+        else:
+            messages.error(request, "حداقل یک ردیف تولید کامل (نوع، حفره، مقدار، سیکل) لازم است.")
+            return render(
+                request,
+                "planning/plan_detail.html",
+                {
+                    "plan": plan,
+                    "profile": profile,
+                    "editable": True,
+                    "item_form": form,
+                    "line_formset": WeeklyPlanLineFormSet(instance=item, prefix="lines"),
+                    "editing_item": item,
+                    "edit_form": WeeklyPlanForm(instance=plan),
+                    "mold_stats": mold_change_stats(plan),
+                    "insights": resolve_insights(item.product),
+                },
+            )
+
         from .uid import refresh_plan_uids
         collisions = refresh_plan_uids(plan)
         item.refresh_from_db(fields=["uid"])
-        # Transient warning only (not stored permanently) — soft advisory toast.
         if item.history_alarm:
             messages.warning(
                 request,
@@ -180,7 +235,6 @@ def item_save(request, pk):
         return redirect("plan_detail", pk=pk)
 
     messages.error(request, "خطا در ثبت کالا. مقادیر را بررسی کنید.")
-    line_formset = WeeklyPlanLineFormSet(request.POST, instance=instance, prefix="lines")
     return render(
         request,
         "planning/plan_detail.html",
@@ -189,7 +243,7 @@ def item_save(request, pk):
             "profile": profile,
             "editable": True,
             "item_form": form,
-            "line_formset": line_formset,
+            "line_formset": formset,
             "editing_item": instance,
             "edit_form": WeeklyPlanForm(instance=plan),
             "mold_stats": mold_change_stats(plan),
@@ -236,6 +290,20 @@ def plan_set_status(request, pk):
         messages.info(request, f"برنامه {plan.program_number} قابل ویرایش شد.")
     plan.save()
     return redirect(request.POST.get("next") or "plan_list")
+
+
+@login_required
+def weekday_for_date(request):
+    """JSON: Persian weekday name for a Jalali YYYY/MM/DD date."""
+    from .models import persian_weekday
+    from .utils import parse_jdate_string
+
+    raw = request.GET.get("date") or ""
+    try:
+        d = parse_jdate_string(raw)
+    except (TypeError, ValueError):
+        return JsonResponse({"weekday": ""})
+    return JsonResponse({"weekday": persian_weekday(d), "date": format_jdate(d)})
 
 
 @login_required

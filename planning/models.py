@@ -100,12 +100,20 @@ class WeeklyPlanItem(models.Model):
     product = models.ForeignKey(
         Product, on_delete=models.PROTECT, related_name="+", verbose_name="نام محصول"
     )
+    mold = models.ForeignKey(
+        MoldOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="نوع قالب",
+    )
 
     mold_change_weekday = models.IntegerField(
         "روز تعویض قالب", choices=Weekday.choices
     )
     mold_change_date = jmodels.jDateField("تاریخ تعویض قالب")
     active_cavities = models.PositiveSmallIntegerField("تعداد حفره فعال", default=1)
+    production_days = models.JSONField(
+        "روزهای تولید", default=list, blank=True,
+        help_text="فهرست {date, shift, note}",
+    )
 
     uid = models.CharField(
         "شناسه برنامه", max_length=16, unique=True, default=generate_program_uid,
@@ -127,6 +135,10 @@ class WeeklyPlanItem(models.Model):
         from .uid import uid_for_item
         return uid_for_item(self, production_type_index=production_type_index)
 
+    @property
+    def has_production_days(self) -> bool:
+        return bool(self.production_days)
+
 
 class WeeklyPlanLine(models.Model):
     """A repeatable (نوع تولید، قالب، مقدار تولید، سیکل تولید) row on a plan item."""
@@ -143,6 +155,7 @@ class WeeklyPlanLine(models.Model):
     )
     quantity = models.PositiveIntegerField("مقدار تولید", default=0)
     cycle = models.PositiveIntegerField("سیکل تولید (ثانیه)", default=0)
+    active_cavities = models.PositiveSmallIntegerField("تعداد حفره", default=1)
     uid = models.CharField(
         "شناسه ردیف تولید",
         max_length=16,
@@ -162,7 +175,7 @@ class WeeklyPlanLine(models.Model):
     @property
     def production_hours(self) -> float:
         """Estimated production hours: (qty / cavities) × cycle seconds / 3600."""
-        cavities = max(int(getattr(self.item, "active_cavities", 1) or 1), 1)
+        cavities = max(int(self.active_cavities or getattr(self.item, "active_cavities", 1) or 1), 1)
         qty = int(self.quantity or 0)
         cycle = int(self.cycle or 0)
         if qty <= 0 or cycle <= 0:

@@ -148,7 +148,7 @@ a { color: var(--brand); }
 .panel-body { padding: 18px 20px; }
 
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.table th, .table td { text-align: right; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+.table th, .table td { text-align: center; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .table th {
   font-size: 12px;
   color: #1e3a5f;
@@ -453,9 +453,6 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .plan-workspace-main .panel-compact .repeat-row {
   gap: 10px 14px !important;
 }
-.plan-workspace-main .form-grid-compact {
-  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-}
 .plan-workspace-main .panel-body-compact { padding: 14px 16px 12px; }
 .plan-workspace-main .insight-glass {
   margin-top: 12px;
@@ -464,6 +461,66 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   padding: calc(18px * var(--insight-scale, 1)) calc(20px * var(--insight-scale, 1));
   min-height: calc(72px * var(--insight-scale, 1));
+}
+.plan-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.plan-lines .plan-line-row,
+.lines-block.plan-lines .repeat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+.plan-heading-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.plan-heading-text { font-weight: 700; }
+.plan-status-inline {
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+}
+.editing-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+.prod-days-body { display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow: auto; padding: 4px 0; }
+.prod-day-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1.2fr;
+  gap: 10px;
+  align-items: end;
+}
+.prod-days-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 1100px) {
+  .plan-form-grid,
+  .plan-lines .plan-line-row,
+  .lines-block.plan-lines .repeat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .prod-day-row { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 700px) {
+  .plan-form-grid,
+  .plan-lines .plan-line-row,
+  .lines-block.plan-lines .repeat-row,
+  .prod-day-row {
+    grid-template-columns: 1fr;
+  }
 }
 .plan-matrix-panel {
   min-width: 0;
@@ -498,7 +555,7 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .plan-matrix-table td:first-child,
 .plan-matrix-table th:nth-child(2),
 .plan-matrix-table td:nth-child(2) {
-  text-align: right;
+  text-align: center;
 }
 .calendar-dialog-body { padding: 8px 0 4px; max-height: 60vh; overflow: auto; }
 .panel-items-scroll { padding: 0; overflow: hidden; }
@@ -520,16 +577,6 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .table-plan-items th,
 .table-plan-items td {
   padding: 8px 10px;
-}
-@media (max-width: 1100px) {
-  .plan-workspace-main .form-grid-compact {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-@media (max-width: 800px) {
-  .plan-workspace-main .form-grid-compact {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
 }
 
 /* Glass insight strip between form and کالاهای برنامه */

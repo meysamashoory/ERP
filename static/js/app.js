@@ -205,26 +205,112 @@
       var prodSel = form.querySelector("[data-role=product]");
       var codeSel = form.querySelector("[data-role=code]");
       if (!prodSel || sgSel.dataset.wired) return; sgSel.dataset.wired = "1";
+      var silencing = false;
+      var kind = form.getAttribute("data-product-kind") || "fitting";
+
+      function mapProducts(res) {
+        return (res || []).map(function (p) {
+          return { value: p.id, text: p.name, subgroup_id: p.subgroup_id, code: p.code };
+        });
+      }
+      function mapCodes(res) {
+        return (res || []).map(function (p) {
+          return { value: p.id, text: p.code, subgroup_id: p.subgroup_id };
+        });
+      }
       function refresh(preserve) {
         var sg = valOf(sgSel);
-        if (!sg) { repopulate(prodSel, [], {}); if (codeSel) repopulate(codeSel, [], {}); return; }
-        fetch(window.API.products + "?subgroup=" + encodeURIComponent(sg))
+        var url = window.API.products + "?kind=" + encodeURIComponent(kind);
+        if (sg) url += "&subgroup=" + encodeURIComponent(sg);
+        fetch(url)
           .then(function (r) { return r.json(); })
           .then(function (d) {
             var res = d.results || [];
-            repopulate(prodSel, res.map(function (p) { return { value: p.id, text: p.name }; }), { preserve: preserve });
-            if (codeSel) repopulate(codeSel, res.map(function (p) { return { value: p.id, text: p.code }; }), { preserve: preserve });
+            // Keep subgroup_id on Tom Select options via addOption below.
+            var pts = tsOf(prodSel);
+            var prev = pts ? pts.getValue() : prodSel.value;
+            if (pts) {
+              pts.clear(true);
+              tsOf(prodSel) && pts.clearOptions();
+              res.forEach(function (p) {
+                pts.addOption({
+                  value: String(p.id), text: p.name,
+                  subgroup_id: p.subgroup_id, code: p.code
+                });
+              });
+              pts.refreshOptions(false);
+              if (preserve && prev && res.some(function (p) { return String(p.id) === String(prev); })) {
+                pts.setValue(prev, true);
+              } else if (!preserve) {
+                pts.clear(true);
+              }
+            } else {
+              repopulate(prodSel, mapProducts(res), { preserve: preserve });
+            }
+            if (codeSel) {
+              var cts = tsOf(codeSel);
+              if (cts) {
+                var cprev = cts.getValue();
+                cts.clear(true); cts.clearOptions();
+                res.forEach(function (p) {
+                  cts.addOption({
+                    value: String(p.id), text: p.code,
+                    subgroup_id: p.subgroup_id
+                  });
+                });
+                cts.refreshOptions(false);
+                if (preserve && cprev && res.some(function (p) { return String(p.id) === String(cprev); })) {
+                  cts.setValue(cprev, true);
+                } else if (!preserve) {
+                  cts.clear(true);
+                }
+              } else {
+                repopulate(codeSel, mapCodes(res), { preserve: preserve });
+              }
+            }
           });
       }
+
+      function syncSubgroupFromProduct(productId) {
+        var pts = tsOf(prodSel);
+        if (!pts || !productId) return;
+        var opt = pts.options[productId];
+        if (!opt || !opt.subgroup_id) return;
+        var sgts = tsOf(sgSel);
+        var next = String(opt.subgroup_id);
+        if (sgts) {
+          if (String(sgts.getValue()) === next) return;
+          silencing = true;
+          sgts.setValue(next, true);
+          silencing = false;
+        } else if (String(sgSel.value) !== next) {
+          silencing = true;
+          sgSel.value = next;
+          silencing = false;
+        }
+      }
+
       var sgts = tsOf(sgSel);
-      if (sgts) sgts.on("change", function () { refresh(false); });
-      else sgSel.addEventListener("change", function () { refresh(false); });
+      if (sgts) sgts.on("change", function () { if (!silencing) refresh(false); });
+      else sgSel.addEventListener("change", function () { if (!silencing) refresh(false); });
+
       if (codeSel) {
         var pts = tsOf(prodSel), cts = tsOf(codeSel);
-        if (pts) pts.on("change", function (v) { if (cts && cts.getValue() !== v) cts.setValue(v, true); });
-        if (cts) cts.on("change", function (v) { if (pts && pts.getValue() !== v) pts.setValue(v, true); });
+        if (pts) pts.on("change", function (v) {
+          if (cts && cts.getValue() !== v) cts.setValue(v, true);
+          syncSubgroupFromProduct(v);
+        });
+        if (cts) cts.on("change", function (v) {
+          if (pts && pts.getValue() !== v) pts.setValue(v, true);
+          syncSubgroupFromProduct(v);
+        });
+      } else {
+        var ptsOnly = tsOf(prodSel);
+        if (ptsOnly) ptsOnly.on("change", function (v) { syncSubgroupFromProduct(v); });
       }
-      if (valOf(sgSel)) refresh(true);
+
+      // Always load product list (all fitting products when subgroup empty).
+      refresh(true);
     });
   }
 
@@ -328,6 +414,17 @@
         var container = document.querySelector('[data-formset="' + prefix + '"]');
         var totalEl = document.getElementById("id_" + prefix + "-TOTAL_FORMS");
         if (!container || !totalEl) return;
+
+        if (btn.getAttribute("data-require-first-type") === "1") {
+          var firstRow = container.querySelector("[data-formset-row]");
+          var typeSel = firstRow && firstRow.querySelector('select[name$="-production_type"]');
+          var typeVal = valOf(typeSel);
+          if (!typeVal) {
+            window.alert("برای افزودن ردیف بعدی، ابتدا «نوع تولید» ردیف اول را انتخاب کنید.");
+            return;
+          }
+        }
+
         var idx = parseInt(totalEl.value, 10);
         var clone;
         var emptyTpl = document.querySelector('[data-formset-empty="' + prefix + '"]');
@@ -366,6 +463,10 @@
         container.appendChild(clone);
         totalEl.value = idx + 1;
         enhance(clone);
+        if (btn.getAttribute("data-number-line-labels") === "1" &&
+            window.ERP_PLAN && window.ERP_PLAN.renumberLines) {
+          window.ERP_PLAN.renumberLines();
+        }
       });
     });
 
