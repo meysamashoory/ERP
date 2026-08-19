@@ -73,10 +73,11 @@
   <div class="panel-head"><h2>کالاهای برنامه</h2></div>
   {% if plan.items.all %}
   <table class="table">
-    <thead><tr><th>کد کالا</th><th>نام محصول</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th>{% if editable %}<th></th>{% endif %}</tr></thead>
+    <thead><tr><th>شناسه</th><th>کد کالا</th><th>نام محصول</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th>{% if editable %}<th></th>{% endif %}</tr></thead>
     <tbody>
       {% for item in plan.items.all %}
       <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
+        <td class="num" dir="ltr">{{ item.uid }}</td>
         <td>{{ item.product.code }}</td>
         <td>{{ item.product.name }}{% if item.history_alarm %} <span class="badge badge-rejected">بدون سابقه</span>{% endif %}</td>
         <td>واحد {{ item.unit.number }}</td>
@@ -86,7 +87,7 @@
         <td class="num">{{ item.active_cavities }}</td>
         <td>
           {% for line in item.lines.all %}
-            <div>{{ line.production_type }} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
+            <div>{{ line.production_type }} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}{% if line.uid %} <span class="muted" dir="ltr">({{ line.uid }})</span>{% endif %}</div>
           {% empty %}—{% endfor %}
         </td>
         {% if editable %}

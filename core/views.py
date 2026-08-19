@@ -149,7 +149,7 @@ def _fit_material_scrap(r):
 
 # Fitting report reads plan-driven day entries. (key, label, getter)
 FITTING_COLUMNS = [
-    ("uid", "شناسه برنامه", lambda r: r.program.item.uid),
+    ("uid", "شناسه برنامه", lambda r: r.program.resolved_uid),
     ("date", "تاریخ", lambda r: str(r.date)),
     ("machine", "دستگاه/واحد", lambda r: r.program.machine_label),
     ("code", "کد کالا", lambda r: r.program.item.product.code),
