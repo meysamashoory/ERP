@@ -1,7 +1,5 @@
 """Weekly production planning for fittings, with a manager-approval workflow."""
 
-import secrets
-
 from django.conf import settings
 from django.db import models
 from django_jalali.db import models as jmodels
@@ -10,8 +8,9 @@ from catalog.models import Machine, MoldOption, Product, ProductionTypeOption, P
 
 
 def generate_program_uid() -> str:
-    """A short, unique, human-referable id for a production program."""
-    return secrets.token_hex(4).upper()  # e.g. "9F3A2B10"
+    """Placeholder default; real UIDs are assigned via planning.uid after save."""
+    import secrets
+    return secrets.token_hex(4).upper()
 
 
 PERSIAN_WEEKDAYS = [
@@ -123,6 +122,10 @@ class WeeklyPlanItem(models.Model):
     def __str__(self) -> str:
         return f"{self.product.name} @ {self.machine}"
 
+    def uid_for_type(self, production_type_index: int = 1) -> str:
+        from .uid import uid_for_item
+        return uid_for_item(self, production_type_index=production_type_index)
+
 
 class WeeklyPlanLine(models.Model):
     """A repeatable (نوع تولید، قالب، مقدار تولید، سیکل تولید) row on a plan item."""
@@ -139,6 +142,14 @@ class WeeklyPlanLine(models.Model):
     )
     quantity = models.PositiveIntegerField("مقدار تولید", default=0)
     cycle = models.PositiveIntegerField("سیکل تولید (ثانیه)", default=0)
+    uid = models.CharField(
+        "شناسه ردیف تولید",
+        max_length=16,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="شناسه ۱۴ رقمی مخصوص این نوع تولید",
+    )
 
     class Meta:
         verbose_name = "ردیف تولید"

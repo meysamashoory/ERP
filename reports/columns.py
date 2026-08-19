@@ -21,7 +21,7 @@ def _dev_reason(r):
 
 
 FITTING_COLUMNS = [
-    ("uid", "شناسه برنامه", lambda r: r.program.item.uid),
+    ("uid", "شناسه برنامه", lambda r: r.program.resolved_uid),
     ("document_date", "تاریخ سند", lambda r: str(r.date)),
     ("date", "تاریخ", lambda r: str(r.date)),
     ("machine", "دستگاه/واحد", lambda r: r.program.machine_label),
