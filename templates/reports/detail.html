@@ -120,9 +120,21 @@
   }
 
   function cellText(td) {
-    var inp = td.querySelector("input, textarea");
+    var inp = td.querySelector("input.entry-cell-input, textarea.entry-cell-input");
     if (inp) return inp.value;
+    var checks = td.querySelectorAll("input[type=checkbox][data-mold-value]");
+    if (checks.length) {
+      var selected = [];
+      Array.prototype.forEach.call(checks, function (cb) {
+        if (cb.checked) selected.push(cb.getAttribute("data-mold-value"));
+      });
+      return selected.join(" ، ");
+    }
     return (td.textContent || "").trim();
+  }
+
+  function selectedValuesFromText(val) {
+    return String(val || "").split(" ، ").map(function (s) { return s.trim(); }).filter(Boolean);
   }
 
   function enterEditMode() {
@@ -138,6 +150,37 @@
         td.setAttribute("data-orig", val);
         td.classList.add("is-entry-edit");
         td.textContent = "";
+        if (meta.type === "awaiting_molds") {
+          var options = meta.options || [];
+          var wrap = document.createElement("div");
+          wrap.className = "entry-mold-list";
+          wrap.dataset.key = meta.key;
+          if (!options.length) {
+            var empty = document.createElement("p");
+            empty.className = "muted";
+            empty.style.margin = "0";
+            empty.textContent = "قالبی در وضعیت «در انتظار تولید» نیست.";
+            wrap.appendChild(empty);
+          } else {
+            var selected = selectedValuesFromText(val);
+            if (!selected.length) {
+              selected = options.map(function (o) { return o.value || o.label; });
+            }
+            options.forEach(function (opt, oi) {
+              var lab = document.createElement("label");
+              lab.className = "chk entry-mold-item";
+              var cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.setAttribute("data-mold-value", opt.value || opt.label || "");
+              cb.checked = selected.indexOf(opt.value || opt.label || "") >= 0;
+              lab.appendChild(cb);
+              lab.appendChild(document.createTextNode(" " + (opt.label || opt.value || ("قالب " + (oi + 1)))));
+              wrap.appendChild(lab);
+            });
+          }
+          td.appendChild(wrap);
+          return;
+        }
         var field;
         if (meta.type === "textarea") {
           field = document.createElement("textarea");
@@ -165,8 +208,7 @@
       Array.prototype.forEach.call(tr.children, function (td, ci) {
         var meta = entryByCol[ci];
         if (!meta) return;
-        var field = td.querySelector("input, textarea");
-        values[meta.key] = field ? field.value : cellText(td);
+        values[meta.key] = cellText(td);
       });
       if (Object.keys(values).length) cells[sig] = values;
     });

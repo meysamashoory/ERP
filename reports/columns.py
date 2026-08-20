@@ -91,9 +91,66 @@ DATA_ENTRY_KEYS = {k for k, _, _ in DATA_ENTRY_COLUMNS}
 
 DATA_ENTRY_FIELD_TYPES = {
     "data_titles": "text",
-    "awaiting_production": "text",
+    "awaiting_production": "awaiting_molds",
     "entry_notes": "textarea",
 }
+
+
+def list_awaiting_production_molds() -> list[dict]:
+    """Molds linked to production programs currently in «در انتظار تولید».
+
+    Each awaiting program is treated as a mold-change waiting to start.
+    Label prefers assigned mold, then plan-item/line mold, then product name.
+    """
+    from production.models import ProductionProgram
+
+    programs = (
+        ProductionProgram.objects.filter(status=ProductionProgram.Status.AWAITING)
+        .select_related(
+            "item__product",
+            "item__machine__unit",
+            "item__mold",
+            "mold",
+        )
+        .prefetch_related("item__lines__mold")
+        .order_by(
+            "item__machine__unit__number",
+            "item__machine__number",
+            "item__sequence",
+            "pk",
+        )
+    )
+    out: list[dict] = []
+    for prog in programs:
+        mold = prog.mold or getattr(prog.item, "mold", None)
+        if not mold:
+            for line in prog.item.lines.all():
+                if getattr(line, "mold_id", None):
+                    mold = line.mold
+                    break
+        mold_name = mold.label if mold else "بدون قالب"
+        product = prog.item.product.name if prog.item_id and prog.item.product_id else ""
+        machine = prog.machine_label
+        parts = [mold_name]
+        if product:
+            parts.append(product)
+        if machine:
+            parts.append(f"({machine})")
+        label = " — ".join(parts[:2]) + (f" {parts[2]}" if len(parts) > 2 else "")
+        out.append({
+            "id": f"prog-{prog.pk}",
+            "label": label,
+            "value": label,
+            "mold_label": mold_name,
+            "program_id": prog.pk,
+        })
+    return out
+
+
+def awaiting_molds_display_text(molds: list[dict] | None = None) -> str:
+    items = molds if molds is not None else list_awaiting_production_molds()
+    return " ، ".join(item["label"] for item in items if item.get("label"))
+
 
 COLUMNS_BY_SOURCE = {
     "fitting": FITTING_COLUMNS,
@@ -123,7 +180,7 @@ COLUMN_GROUPS = [
         "id": "data_entry",
         "label": "ثبت داده",
         "columns": [(k, label) for k, label, _ in DATA_ENTRY_COLUMNS],
-        "hint": "مقادیر این ستون‌ها در گزارش قابل‌ویرایش قابل ثبت و تغییر هستند.",
+        "hint": "ستون «فیلد در انتظار تولید» قالب‌های برنامه‌های در وضعیت در انتظار تولید را نشان می‌دهد.",
     },
     {
         "id": "file",
@@ -259,13 +316,27 @@ def _lookup_entry_values(entry_data: dict | None, signature: str) -> dict:
 def _build_records(data_source: str, specs: list[dict], entry_data: dict | None = None) -> list[dict]:
     entry_keys = [s["key"] for s in specs if is_data_entry_key(s["key"], s.get("source") or "")]
     non_entry_keys = [s["key"] for s in specs if s["key"] not in entry_keys]
+    live_awaiting = None
+
+    def fill_entry_cell(cell: dict, key: str, stored: dict) -> None:
+        nonlocal live_awaiting
+        value = stored.get(key, "")
+        if key == "awaiting_production" and not str(value or "").strip():
+            if live_awaiting is None:
+                live_awaiting = awaiting_molds_display_text()
+            cell[key] = live_awaiting
+        else:
+            cell[key] = value
 
     if data_source == "data_entry":
         stored = _lookup_entry_values(entry_data, "")
         cell = {}
         for spec in specs:
             key = spec["key"]
-            cell[key] = stored.get(key, "") if key in entry_keys or is_data_entry_key(key, spec.get("source") or "") else ""
+            if key in entry_keys or is_data_entry_key(key, spec.get("source") or ""):
+                fill_entry_cell(cell, key, stored)
+            else:
+                cell[key] = ""
         return [cell]
 
     rows = []
@@ -284,7 +355,7 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
             sig = row_signature(cell, non_entry_keys)
             stored = _lookup_entry_values(entry_data, sig)
             for key in entry_keys:
-                cell[key] = stored.get(key, "")
+                fill_entry_cell(cell, key, stored)
         rows.append(cell)
     return rows
 
@@ -391,18 +462,26 @@ def level_entry_meta(columns, level: int = 1) -> list[dict]:
     """Return editable meta for data-entry columns at a report level."""
     specs = normalize_columns(columns)
     level = max(1, min(10, int(level or 1)))
+    awaiting_options = None
     out = []
     for spec in specs:
         if int(spec.get("level") or 1) != level:
             continue
         if not is_data_entry_key(spec["key"], spec.get("source") or ""):
             continue
-        out.append({
+        field_type = entry_field_type(spec["key"])
+        item = {
             "key": spec["key"],
             "label": spec.get("label") or column_label_map("data_entry").get(spec["key"], spec["key"]),
-            "type": entry_field_type(spec["key"]),
+            "type": field_type,
             "col_index": None,
-        })
+        }
+        if field_type == "awaiting_molds":
+            if awaiting_options is None:
+                awaiting_options = list_awaiting_production_molds()
+            item["options"] = awaiting_options
+            item["options_text"] = awaiting_molds_display_text(awaiting_options)
+        out.append(item)
     # Fill col_index against level columns order
     level_keys = [s["key"] for s in specs if int(s.get("level") or 1) == level]
     for item in out:

@@ -100,6 +100,70 @@ class ReportFlowTests(TestCase):
         self.assertContains(after, "زانو ۱۱۰")
         self.assertContains(after, "۳۰ ثانیه")
 
+    def test_awaiting_production_field_lists_awaiting_molds(self):
+        from catalog.models import MoldOption
+        from planning.models import WeeklyPlan, WeeklyPlanItem, Weekday
+        from production.models import ProductionProgram
+        import jdatetime
+
+        mold = MoldOption.objects.filter(label="قالب اصلی").first()
+        self.assertIsNotNone(mold)
+        # Reuse an existing plan item without a program, or create a fresh awaiting program.
+        item = (
+            WeeklyPlanItem.objects.filter(program__isnull=True)
+            .select_related("product", "machine")
+            .first()
+        )
+        if item is None:
+            plan = WeeklyPlan.objects.filter(status=WeeklyPlan.Status.APPROVED).first()
+            self.assertIsNotNone(plan)
+            donor = WeeklyPlanItem.objects.select_related(
+                "subgroup", "unit", "machine", "product"
+            ).first()
+            item = WeeklyPlanItem.objects.create(
+                plan=plan,
+                subgroup=donor.subgroup,
+                unit=donor.unit,
+                machine=donor.machine,
+                product=donor.product,
+                mold=mold,
+                mold_change_weekday=Weekday.SHANBE,
+                mold_change_date=jdatetime.date.today(),
+                active_cavities=1,
+                sequence=99,
+            )
+        else:
+            item.mold = mold
+            item.save(update_fields=["mold"])
+        program = ProductionProgram.objects.create(
+            item=item,
+            status=ProductionProgram.Status.AWAITING,
+        )
+        self.assertEqual(program.status, ProductionProgram.Status.AWAITING)
+
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="قالب‌های در انتظار",
+            number=778,
+            access_mode="editable",
+            data_source="data_entry",
+            columns=[
+                {"key": "awaiting_production", "source": "data_entry", "level": 1, "label": "انتظار"},
+            ],
+        )
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "report-edit-toggle")
+        # Live awaiting molds appear in the table and in entry-meta options JSON
+        self.assertContains(detail, "قالب اصلی")
+        meta = detail.context["entry_meta"]
+        awaiting = next(m for m in meta if m["key"] == "awaiting_production")
+        self.assertEqual(awaiting["type"], "awaiting_molds")
+        self.assertTrue(awaiting["options"])
+        self.assertTrue(any("قالب اصلی" in (o.get("label") or "") for o in awaiting["options"]))
+
     def test_send_duplicate_number_alerts(self):
         self.client.login(username="expert", password="erp12345")
         report = SavedReport.objects.create(

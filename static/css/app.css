@@ -847,6 +847,23 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   min-width: 7rem;
   font: inherit;
 }
+.table-nav-cells .entry-mold-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+  text-align: right;
+  min-width: 14rem;
+}
+.table-nav-cells .entry-mold-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  white-space: normal;
+  line-height: 1.35;
+}
 
 
 .meta-strip {
