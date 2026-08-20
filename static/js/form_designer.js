@@ -29,11 +29,16 @@
     if (f.rotation == null) f.rotation = 0;
     var isShape = f.kind === "box" || f.kind === "line" || f.kind === "line_h" || f.kind === "line_v";
     if (isShape) {
-      if (f.extend_mode !== "page" && f.extend_mode !== "field" && f.extend_mode !== "none") {
+      if (f.extend_mode !== "page" && f.extend_mode !== "field" && f.extend_mode !== "none" && f.extend_mode !== "count") {
         f.extend_mode = f.data_extend ? "field" : "none";
+      }
+      if (f.extend_mode === "count") {
+        var ec = parseInt(f.extend_count, 10);
+        f.extend_count = Math.max(1, Math.min(99, isNaN(ec) ? 2 : ec));
       }
     } else {
       delete f.extend_mode;
+      delete f.extend_count;
     }
     delete f.data_extend;
     if (f.kind === "line" && !f.orientation) f.orientation = (f.height > f.width) ? "v" : "h";
@@ -171,10 +176,80 @@
 
   function borderCss(style) {
     if (style === "none") return "none";
+    if (style === "thick") return "3px solid #111";
     if (style === "dashed") return "1.5px dashed #111";
     if (style === "dotted") return "1.5px dotted #111";
-    if (style === "dashdot") return "1.5px dashed #111";
+    if (style === "dashdot") return "2px dashed #333";
     return "1.5px solid #111";
+  }
+
+  var LINE_STYLE_OPTS = [
+    { v: "solid", t: "ممتد", preview: "solid" },
+    { v: "thick", t: "ضخیم", preview: "thick" },
+    { v: "dashed", t: "خط‌چین", preview: "dashed" },
+    { v: "dotted", t: "نقطه‌چین", preview: "dotted" },
+    { v: "dashdot", t: "ترکیبی", preview: "dashdot" },
+    { v: "none", t: "بدون خط", preview: "none" }
+  ];
+
+  function buildLineStylePickers() {
+    document.querySelectorAll("[data-line-picker]").forEach(function (picker) {
+      if (picker.dataset.built) return;
+      picker.dataset.built = "1";
+      var allowNone = picker.getAttribute("data-allow-none") === "1";
+      var targetId = picker.getAttribute("data-line-picker");
+      LINE_STYLE_OPTS.forEach(function (opt) {
+        if (opt.v === "none" && !allowNone) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ls-btn";
+        btn.dataset.value = opt.v;
+        btn.title = opt.t;
+        btn.innerHTML = '<span class="ls-preview ls-' + opt.preview + '"></span><span class="ls-caption">' + opt.t + "</span>";
+        btn.addEventListener("click", function () {
+          if (picker.classList.contains("is-disabled")) return;
+          var hidden = document.getElementById(targetId);
+          if (!hidden) return;
+          hidden.value = opt.v;
+          syncLinePicker(picker, opt.v);
+          hidden.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        picker.appendChild(btn);
+      });
+    });
+  }
+
+  function syncLinePicker(picker, value) {
+    if (!picker) return;
+    picker.querySelectorAll(".ls-btn").forEach(function (btn) {
+      btn.classList.toggle("is-active", btn.dataset.value === value);
+    });
+  }
+
+  function setLinePickerValue(inputId, value) {
+    var hidden = document.getElementById(inputId);
+    if (hidden) hidden.value = value;
+    var picker = document.querySelector('[data-line-picker="' + inputId + '"]');
+    syncLinePicker(picker, value);
+  }
+
+  function setLinePickerDisabled(inputId, disabled) {
+    var picker = document.querySelector('[data-line-picker="' + inputId + '"]');
+    if (picker) picker.classList.toggle("is-disabled", !!disabled);
+  }
+
+  function applyTextStyle(el, f) {
+    if (!el || !f) return;
+    el.style.fontFamily = f.font_family || "";
+    el.style.fontSize = f.font_size ? (f.font_size + "px") : "";
+    el.style.color = f.font_color || "";
+    el.style.fontWeight = f.font_bold ? "700" : "";
+    el.style.fontStyle = f.font_italic ? "italic" : "";
+    el.style.textDecoration = f.font_underline ? "underline" : "";
+  }
+
+  function isTextish(f) {
+    return !!(f && (f.kind === "header" || f.kind === "field" || f.kind === "box" || f.kind === "row_number"));
   }
 
   function defaultFillColors() {
@@ -316,14 +391,14 @@
   }
 
   function extendModeOf(f) {
-    if (f.extend_mode === "page" || f.extend_mode === "field" || f.extend_mode === "none") {
+    if (f.extend_mode === "page" || f.extend_mode === "field" || f.extend_mode === "none" || f.extend_mode === "count") {
       return f.extend_mode;
     }
     if (f.data_extend) return "field";
     return "none";
   }
 
-  /** Designer preview mirrors detail view: fields = 1; box/line page = bottom; field = 1. */
+  /** Designer preview mirrors detail view: fields = 1; box/line page = bottom; count = N; field = 1. */
   function copiesForFrame(f) {
     var mode = extendModeOf(f);
     if (f.kind === "field" || f.kind === "row_number") {
@@ -331,6 +406,10 @@
     }
     if (f.kind === "box" || isLineKind(f.kind)) {
       if (mode === "page") return estimateExtendRows(f);
+      if (mode === "count") {
+        var n = parseInt(f.extend_count, 10);
+        return Math.max(1, Math.min(99, isNaN(n) ? 1 : n));
+      }
       return 1;
     }
     return 1;
@@ -414,7 +493,7 @@
 
   function updateAlignButtons() {
     var f = find(selectedId);
-    var textish = f && (f.kind === "header" || f.kind === "field" || f.kind === "box" || f.kind === "row_number");
+    var textish = isTextish(f);
     document.querySelectorAll("#align-group button").forEach(function (btn) {
       btn.disabled = !textish;
       btn.classList.toggle("active",
@@ -422,6 +501,33 @@
           (btn.dataset.valign && btn.dataset.valign === f.valign)))
       );
     });
+    updateFontToolbar();
+  }
+
+  function updateFontToolbar() {
+    var f = find(selectedId);
+    var textish = isTextish(f) && !(f && f.locked);
+    var fam = document.getElementById("tb-font-family");
+    var size = document.getElementById("tb-font-size");
+    var color = document.getElementById("tb-font-color");
+    var bold = document.getElementById("tb-font-bold");
+    var italic = document.getElementById("tb-font-italic");
+    var under = document.getElementById("tb-font-underline");
+    [fam, size, color, bold, italic, under].forEach(function (el) {
+      if (el) el.disabled = !textish;
+    });
+    if (!textish || !f) {
+      if (bold) bold.classList.remove("active");
+      if (italic) italic.classList.remove("active");
+      if (under) under.classList.remove("active");
+      return;
+    }
+    if (fam) fam.value = f.font_family || "Tahoma";
+    if (size) size.value = String(f.font_size || 12);
+    if (color) color.value = f.font_color || "#111111";
+    if (bold) bold.classList.toggle("active", !!f.font_bold);
+    if (italic) italic.classList.toggle("active", !!f.font_italic);
+    if (under) under.classList.toggle("active", !!f.font_underline);
   }
 
   function syncFormMetaUi() {
@@ -515,19 +621,24 @@
     }
     if (f.kind === "box" || isLineKind(f.kind)) {
       document.getElementById("prop-extend-mode").value = extendModeOf(f);
+      var countWrap = document.getElementById("extend-count-wrap");
+      var countInp = document.getElementById("prop-extend-count");
+      var isCount = extendModeOf(f) === "count";
+      if (countWrap) countWrap.hidden = !isCount;
+      if (countInp) countInp.value = f.extend_count || 2;
     }
     if (isLineKind(f.kind)) {
-      document.getElementById("prop-line-style").value = f.line_style || "solid";
+      setLinePickerValue("prop-line-style", f.line_style || "solid");
     }
     if (f.kind === "box") {
       var bs = f.border_styles || {};
-      document.getElementById("prop-border-top").value = bs.top || "solid";
-      document.getElementById("prop-border-bottom").value = bs.bottom || "solid";
-      document.getElementById("prop-border-right").value = bs.right || "solid";
-      document.getElementById("prop-border-left").value = bs.left || "solid";
+      setLinePickerValue("prop-border-top", bs.top || "solid");
+      setLinePickerValue("prop-border-bottom", bs.bottom || "solid");
+      setLinePickerValue("prop-border-right", bs.right || "solid");
+      setLinePickerValue("prop-border-left", bs.left || "solid");
       document.getElementById("prop-last-line-enable").checked = !!f.last_line_enable;
-      document.getElementById("prop-last-line-style").value = f.last_line_style || "solid";
-      document.getElementById("prop-last-line-style").disabled = !f.last_line_enable;
+      setLinePickerValue("prop-last-line-style", f.last_line_style || "solid");
+      setLinePickerDisabled("prop-last-line-style", !f.last_line_enable);
       renderFillPatternUI(f);
     }
   }
@@ -717,6 +828,9 @@
       var step = (f.kind === "field" || f.kind === "row_number")
         ? Math.max(f.height || 8, 6)
         : rowStep;
+      if ((f.kind === "box" || isLineKind(f.kind)) && extendModeOf(f) === "count") {
+        step = rowStep;
+      }
       for (var i = 0; i < copies; i++) {
         var item = {
           f: f, i: i, copies: copies, zi: zi,
@@ -751,12 +865,13 @@
         inner.style.justifyContent = f.align === "left" ? "flex-end" : (f.align === "right" ? "flex-start" : "center");
         inner.style.alignItems = f.valign === "top" ? "flex-start" : (f.valign === "bottom" ? "flex-end" : "center");
         inner.style.textAlign = f.align || "center";
+        applyTextStyle(inner, f);
 
         if (f.kind === "box") {
           var fills = (f.fill_colors && f.fill_colors.length) ? f.fill_colors : defaultFillColors();
           el.style.background = fills[i % fills.length];
           var bs = f.border_styles || {};
-          var repeats = mode === "page" || mode === "field";
+          var repeats = mode === "page" || mode === "field" || mode === "count";
           var isLast = previewMode && repeats && (i === item.copies - 1) && f.last_line_enable;
           var lastStyle = isLast ? (f.last_line_style || "solid") : null;
           var borders = resolveBoxBorders(item, boxInstances, bs, lastStyle);
@@ -805,10 +920,12 @@
         el.appendChild(inner);
 
         if (!previewMode && i === 0 && (f.kind === "box" || isLineKind(f.kind))) {
-          if (mode === "page" || mode === "field") {
+          if (mode === "page" || mode === "field" || mode === "count") {
             var badge = document.createElement("span");
             badge.className = "badge-extend";
-            badge.textContent = mode === "page" ? "تا پایین صفحه" : "وابسته به فیلد";
+            if (mode === "page") badge.textContent = "تا پایین صفحه";
+            else if (mode === "field") badge.textContent = "وابسته به فیلد";
+            else badge.textContent = "تعداد: " + (f.extend_count || 1);
             el.appendChild(badge);
           }
         }
@@ -866,6 +983,17 @@
     pushHistory();
     f.extend_mode = this.value;
     delete f.data_extend;
+    if (f.extend_mode === "count" && !f.extend_count) f.extend_count = 2;
+    var countWrap = document.getElementById("extend-count-wrap");
+    if (countWrap) countWrap.hidden = f.extend_mode !== "count";
+    render();
+  });
+  document.getElementById("prop-extend-count").addEventListener("change", function () {
+    var f = find(selectedId); if (!f || (f.kind !== "box" && !isLineKind(f.kind))) return;
+    pushHistory();
+    var n = parseInt(this.value, 10);
+    f.extend_count = Math.max(1, Math.min(99, isNaN(n) ? 1 : n));
+    this.value = f.extend_count;
     render();
   });
   document.getElementById("prop-line-style").addEventListener("change", function () {
@@ -888,7 +1016,7 @@
     var f = find(selectedId); if (!f || f.kind !== "box") return;
     pushHistory();
     f.last_line_enable = this.checked;
-    document.getElementById("prop-last-line-style").disabled = !this.checked;
+    setLinePickerDisabled("prop-last-line-style", !this.checked);
     render();
   });
   document.getElementById("prop-last-line-style").addEventListener("change", function () {
@@ -912,6 +1040,42 @@
       render();
     });
   });
+
+  function wireFontToolbar() {
+    var fam = document.getElementById("tb-font-family");
+    var size = document.getElementById("tb-font-size");
+    var color = document.getElementById("tb-font-color");
+    var bold = document.getElementById("tb-font-bold");
+    var italic = document.getElementById("tb-font-italic");
+    var under = document.getElementById("tb-font-underline");
+    function applyFont(mutator) {
+      var f = find(selectedId);
+      if (!isTextish(f) || f.locked) return;
+      pushHistory();
+      mutator(f);
+      render();
+    }
+    if (fam) fam.addEventListener("change", function () {
+      applyFont(function (f) { f.font_family = fam.value; });
+    });
+    if (size) size.addEventListener("change", function () {
+      applyFont(function (f) { f.font_size = parseInt(size.value, 10) || 12; });
+    });
+    if (color) color.addEventListener("input", function () {
+      applyFont(function (f) { f.font_color = color.value; });
+    });
+    if (bold) bold.addEventListener("click", function () {
+      applyFont(function (f) { f.font_bold = !f.font_bold; });
+    });
+    if (italic) italic.addEventListener("click", function () {
+      applyFont(function (f) { f.font_italic = !f.font_italic; });
+    });
+    if (under) under.addEventListener("click", function () {
+      applyFont(function (f) { f.font_underline = !f.font_underline; });
+    });
+  }
+  wireFontToolbar();
+  buildLineStylePickers();
 
   var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
   document.getElementById("paper-preset").addEventListener("change", function () {

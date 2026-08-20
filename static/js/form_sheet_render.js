@@ -5,9 +5,10 @@
 
   function borderCss(style) {
     if (style === "none") return "none";
+    if (style === "thick") return "3px solid #111";
     if (style === "dashed") return "1.5px dashed #111";
     if (style === "dotted") return "1.5px dotted #111";
-    if (style === "dashdot") return "1.5px dashed #111";
+    if (style === "dashdot") return "2px dashed #333";
     return "1.5px solid #111";
   }
 
@@ -42,7 +43,7 @@
 
   /** Normalize legacy data_extend → extend_mode for box/line. */
   function extendModeOf(f) {
-    if (f.extend_mode === "page" || f.extend_mode === "field" || f.extend_mode === "none") {
+    if (f.extend_mode === "page" || f.extend_mode === "field" || f.extend_mode === "none" || f.extend_mode === "count") {
       return f.extend_mode;
     }
     if (f.data_extend) return "field";
@@ -125,6 +126,10 @@
       if (f.kind === "box" || isLineKind(f.kind)) {
         if (mode === "page") return estimateExtendRows(pageH, settings.margin_bottom, f);
         if (mode === "field") return dataCount > 0 ? dataCount : 1;
+        if (mode === "count") {
+          var n = parseInt(f.extend_count, 10);
+          return Math.max(1, Math.min(99, isNaN(n) ? 1 : n));
+        }
         return 1;
       }
       return 1;
@@ -142,7 +147,7 @@
     function rowStepFor(f) {
       if (f.kind === "field" || f.kind === "row_number") return Math.max(f.height || 8, 6);
       var mode = extendModeOf(f);
-      if ((f.kind === "box" || isLineKind(f.kind)) && (mode === "field" || mode === "page")) {
+      if ((f.kind === "box" || isLineKind(f.kind)) && (mode === "field" || mode === "page" || mode === "count")) {
         return masterStep;
       }
       return Math.max(f.height || 8, 6);
@@ -196,11 +201,17 @@
       el.style.justifyContent = justify;
       el.style.alignItems = align;
       el.style.textAlign = f.align || "center";
+      if (f.font_family) el.style.fontFamily = f.font_family;
+      if (f.font_size) el.style.fontSize = f.font_size + (useMm ? "pt" : "px");
+      if (f.font_color) el.style.color = f.font_color;
+      if (f.font_bold) el.style.fontWeight = "700";
+      if (f.font_italic) el.style.fontStyle = "italic";
+      if (f.font_underline) el.style.textDecoration = "underline";
 
       if (f.kind === "box") {
         var fills = (f.fill_colors && f.fill_colors.length) ? f.fill_colors : defaultFillColors();
         el.style.background = fills[item.i % fills.length];
-        var repeats = mode === "page" || mode === "field";
+        var repeats = mode === "page" || mode === "field" || mode === "count";
         var isLast = repeats && (item.i === item.copies - 1) && f.last_line_enable;
         var lastStyle = isLast ? (f.last_line_style || "solid") : null;
         var borders = applyBoxBorders(item, boxInstances, f.border_styles, lastStyle);

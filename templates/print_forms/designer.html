@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=15">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=16">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -56,6 +56,36 @@
         <button type="button" data-valign="bottom" disabled title="پایین">
           <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="15.7" width="16" height="1.8" rx=".4"/><rect x="5.5" y="3.2" width="9" height="4.2" rx=".6"/><rect x="5.5" y="9.3" width="9" height="4.2" rx=".6"/></svg>
         </button>
+      </div>
+      <span class="sep"></span>
+      <div class="dz-font-group" id="font-toolbar" title="قالب‌بندی متن">
+        <select id="tb-font-family" disabled aria-label="فونت">
+          <option value="Tahoma">Tahoma</option>
+          <option value="Vazirmatn, Tahoma, sans-serif">وزیرمتن</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="'Times New Roman', Times, serif">Times New Roman</option>
+          <option value="'Courier New', monospace">Courier New</option>
+          <option value="Georgia, serif">Georgia</option>
+        </select>
+        <select id="tb-font-size" disabled aria-label="اندازه">
+          <option value="8">۸</option>
+          <option value="9">۹</option>
+          <option value="10">۱۰</option>
+          <option value="11">۱۱</option>
+          <option value="12" selected>۱۲</option>
+          <option value="14">۱۴</option>
+          <option value="16">۱۶</option>
+          <option value="18">۱۸</option>
+          <option value="20">۲۰</option>
+          <option value="24">۲۴</option>
+          <option value="28">۲۸</option>
+          <option value="32">۳۲</option>
+          <option value="36">۳۶</option>
+        </select>
+        <input type="color" id="tb-font-color" value="#111111" disabled title="رنگ فونت" aria-label="رنگ فونت">
+        <button type="button" id="tb-font-bold" disabled title="ضخیم (Bold)"><b>B</b></button>
+        <button type="button" id="tb-font-italic" disabled title="ایتالیک"><i>I</i></button>
+        <button type="button" id="tb-font-underline" disabled title="زیرخط"><u>U</u></button>
       </div>
       <span class="sep"></span>
       <label class="dz-chk"><input type="checkbox" id="chk-grid" checked> Gridlines</label>
@@ -176,19 +206,20 @@
                   <option value="none">بدون تکرار</option>
                   <option value="page">تکرار تا پایین صفحه</option>
                   <option value="field">تکرار وابسته به فیلد</option>
+                  <option value="count">تعداد تکرار</option>
                 </select>
               </div>
-              <p style="font-size:11px;color:#64748b;margin:4px 0 0">تا پایین صفحه مستقل از تعداد آیتم است؛ وابسته به فیلد با تعداد آیتم‌های داده هماهنگ می‌شود.</p>
+              <div class="dz-field" id="extend-count-wrap" hidden>
+                <label>تعداد تکرار</label>
+                <input type="number" id="prop-extend-count" min="1" max="99" step="1" value="2" lang="en" dir="ltr">
+              </div>
+              <p style="font-size:11px;color:#64748b;margin:4px 0 0">تا پایین صفحه مستقل از تعداد آیتم است؛ وابسته به فیلد با تعداد آیتم‌های داده هماهنگ می‌شود؛ تعداد تکرار تعداد ثابت ردیف‌ها را مشخص می‌کند.</p>
             </div>
             <div id="line-style-props" hidden>
               <div class="dz-field">
                 <label>نوع خط</label>
-                <select id="prop-line-style">
-                  <option value="solid">ممتد</option>
-                  <option value="dashed">خط‌چین</option>
-                  <option value="dotted">نقطه‌چین</option>
-                  <option value="dashdot">خط‌چین ترکیبی</option>
-                </select>
+                <input type="hidden" id="prop-line-style" value="solid">
+                <div class="line-style-picker" data-line-picker="prop-line-style" data-allow-none="0"></div>
               </div>
             </div>
             <div id="box-style-props" hidden>
@@ -200,52 +231,27 @@
               </div>
               <div class="dz-grid-2">
                 <div class="dz-field"><label>خط بالا</label>
-                  <select id="prop-border-top">
-                    <option value="solid">ممتد</option>
-                    <option value="dashed">خط‌چین</option>
-                    <option value="dotted">نقطه‌چین</option>
-                    <option value="dashdot">خط‌چین ترکیبی</option>
-                    <option value="none">بدون خط</option>
-                  </select>
+                  <input type="hidden" id="prop-border-top" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-top" data-allow-none="1"></div>
                 </div>
                 <div class="dz-field"><label>خط پایین</label>
-                  <select id="prop-border-bottom">
-                    <option value="solid">ممتد</option>
-                    <option value="dashed">خط‌چین</option>
-                    <option value="dotted">نقطه‌چین</option>
-                    <option value="dashdot">خط‌چین ترکیبی</option>
-                    <option value="none">بدون خط</option>
-                  </select>
+                  <input type="hidden" id="prop-border-bottom" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-bottom" data-allow-none="1"></div>
                 </div>
                 <div class="dz-field"><label>خط راست</label>
-                  <select id="prop-border-right">
-                    <option value="solid">ممتد</option>
-                    <option value="dashed">خط‌چین</option>
-                    <option value="dotted">نقطه‌چین</option>
-                    <option value="dashdot">خط‌چین ترکیبی</option>
-                    <option value="none">بدون خط</option>
-                  </select>
+                  <input type="hidden" id="prop-border-right" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-right" data-allow-none="1"></div>
                 </div>
                 <div class="dz-field"><label>خط چپ</label>
-                  <select id="prop-border-left">
-                    <option value="solid">ممتد</option>
-                    <option value="dashed">خط‌چین</option>
-                    <option value="dotted">نقطه‌چین</option>
-                    <option value="dashdot">خط‌چین ترکیبی</option>
-                    <option value="none">بدون خط</option>
-                  </select>
+                  <input type="hidden" id="prop-border-left" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-left" data-allow-none="1"></div>
                 </div>
               </div>
               <label class="dz-chk"><input type="checkbox" id="prop-last-line-enable"> خط آخر مستقل</label>
               <div class="dz-field" id="last-line-wrap">
                 <label>نوع خط آخر (پایین)</label>
-                <select id="prop-last-line-style" disabled>
-                  <option value="solid">ممتد</option>
-                  <option value="dashed">خط‌چین</option>
-                  <option value="dotted">نقطه‌چین</option>
-                  <option value="dashdot">خط‌چین ترکیبی</option>
-                  <option value="none">بدون خط</option>
-                </select>
+                <input type="hidden" id="prop-last-line-style" value="solid">
+                <div class="line-style-picker" data-line-picker="prop-last-line-style" data-allow-none="1" id="last-line-picker"></div>
               </div>
             </div>
           </div>
@@ -293,7 +299,7 @@
 {{ saved_reports|json_script:"saved-reports" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_sheet_render.js' %}?v=4"></script>
-<script src="{% static 'js/form_designer.js' %}?v=16"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=5"></script>
+<script src="{% static 'js/form_designer.js' %}?v=17"></script>
 </body>
 </html>

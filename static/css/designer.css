@@ -158,6 +158,125 @@ body.designer-app {
   color: #fff;
 }
 
+.dz-font-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dz-font-group select,
+.dz-font-group input[type="color"],
+.dz-font-group button {
+  height: 28px;
+  border: 1px solid #3a4250;
+  border-radius: 4px;
+  background: #2f3540;
+  color: #e8eaed;
+}
+.dz-font-group select {
+  min-width: 110px;
+  max-width: 150px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+.dz-font-group #tb-font-size { min-width: 52px; max-width: 60px; }
+.dz-font-group input[type="color"] {
+  width: 32px;
+  padding: 2px;
+  cursor: pointer;
+}
+.dz-font-group button {
+  width: 28px;
+  padding: 0;
+  font-size: 13px;
+  font-family: "Times New Roman", serif;
+}
+.dz-font-group button.active {
+  background: #3d8bfd;
+  border-color: #3d8bfd;
+  color: #fff;
+}
+.dz-font-group select:disabled,
+.dz-font-group input:disabled,
+.dz-font-group button:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.line-style-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.line-style-picker.is-disabled {
+  opacity: .4;
+  pointer-events: none;
+}
+.ls-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 58px;
+  padding: 6px 6px 4px;
+  border: 1px solid #3a4250;
+  border-radius: 6px;
+  background: #1e2229;
+  color: #c5c9d2;
+  cursor: pointer;
+}
+.ls-btn:hover { background: #2f3540; }
+.ls-btn.is-active {
+  border-color: #3d8bfd;
+  background: #243044;
+  color: #fff;
+}
+.ls-preview {
+  display: block;
+  width: 44px;
+  height: 12px;
+  background: no-repeat center / 100% 100%;
+}
+.ls-preview.ls-solid {
+  background: linear-gradient(#e8eaed, #e8eaed) center / 100% 2px no-repeat;
+}
+.ls-preview.ls-thick {
+  background: linear-gradient(#e8eaed, #e8eaed) center / 100% 4px no-repeat;
+}
+.ls-preview.ls-dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    #e8eaed 0 8px,
+    transparent 8px 12px
+  ) center / 100% 2px no-repeat;
+}
+.ls-preview.ls-dotted {
+  background: repeating-linear-gradient(
+    90deg,
+    #e8eaed 0 2px,
+    transparent 2px 6px
+  ) center / 100% 2px no-repeat;
+}
+.ls-preview.ls-dashdot {
+  background: repeating-linear-gradient(
+    90deg,
+    #e8eaed 0 10px,
+    transparent 10px 13px,
+    #e8eaed 13px 15px,
+    transparent 15px 19px
+  ) center / 100% 2px no-repeat;
+}
+.ls-preview.ls-none {
+  background:
+    linear-gradient(135deg, transparent 46%, #c42b1c 46%, #c42b1c 54%, transparent 54%) center / 100% 100% no-repeat,
+    linear-gradient(#555, #555) center / 100% 1px no-repeat;
+  opacity: .7;
+}
+.ls-caption {
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .dz-field input[type="number"] {
   direction: ltr;
   text-align: left;
