@@ -81,11 +81,26 @@ FILE_COLUMNS = [
     ("file_col_2", "ستون فایل ۲", None),
 ]
 
+DATA_ENTRY_COLUMNS = [
+    ("data_titles", "عناوین ورودی داده", None),
+    ("awaiting_production", "فیلد در انتظار تولید", None),
+    ("entry_notes", "توضیحات", None),
+]
+
+DATA_ENTRY_KEYS = {k for k, _, _ in DATA_ENTRY_COLUMNS}
+
+DATA_ENTRY_FIELD_TYPES = {
+    "data_titles": "text",
+    "awaiting_production": "text",
+    "entry_notes": "textarea",
+}
+
 COLUMNS_BY_SOURCE = {
     "fitting": FITTING_COLUMNS,
     "pipe": PIPE_COLUMNS,
     "product": PRODUCT_COLUMNS,
     "file": [(k, label, getter) for k, label, getter in FILE_COLUMNS],
+    "data_entry": [(k, label, getter) for k, label, getter in DATA_ENTRY_COLUMNS],
 }
 
 COLUMN_GROUPS = [
@@ -105,6 +120,12 @@ COLUMN_GROUPS = [
         "columns": [(k, label) for k, label, _ in PRODUCT_COLUMNS],
     },
     {
+        "id": "data_entry",
+        "label": "ثبت داده",
+        "columns": [(k, label) for k, label, _ in DATA_ENTRY_COLUMNS],
+        "hint": "مقادیر این ستون‌ها در گزارش قابل‌ویرایش قابل ثبت و تغییر هستند.",
+    },
+    {
         "id": "file",
         "label": "ستون‌های فایل / داده خارجی",
         "columns": [(k, label) for k, label, _ in FILE_COLUMNS],
@@ -113,9 +134,23 @@ COLUMN_GROUPS = [
 ]
 
 
+def is_data_entry_key(key: str, source: str = "") -> bool:
+    return key in DATA_ENTRY_KEYS or source == "data_entry"
+
+
+def entry_field_type(key: str) -> str:
+    return DATA_ENTRY_FIELD_TYPES.get(key, "text")
+
+
+def row_signature(row: dict, keys: list[str]) -> str:
+    return "|".join(f"{k}={row.get(k, '')}" for k in keys)
+
+
 def column_label_map(source: str) -> dict[str, str]:
     mapping = {k: label for k, label, _ in COLUMNS_BY_SOURCE.get(source, [])}
     for k, label, _ in FILE_COLUMNS:
+        mapping[k] = label
+    for k, label, _ in DATA_ENTRY_COLUMNS:
         mapping[k] = label
     return mapping
 
@@ -123,6 +158,7 @@ def column_label_map(source: str) -> dict[str, str]:
 def available_keys(source: str) -> set[str]:
     keys = {k for k, _, _ in COLUMNS_BY_SOURCE.get(source, [])}
     keys.update(k for k, _, _ in FILE_COLUMNS)
+    keys.update(DATA_ENTRY_KEYS)
     return keys
 
 
@@ -159,6 +195,8 @@ def _getter_map(source: str) -> dict:
         by_key[k] = (label, getter)
     for k, label, getter in FILE_COLUMNS:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
+    for k, label, getter in DATA_ENTRY_COLUMNS:
+        by_key.setdefault(k, (label, getter or (lambda _r: "")))
     return by_key
 
 
@@ -169,6 +207,8 @@ def _queryset(data_source: str):
         ).all()
     if data_source == "product":
         return Product.objects.select_related("subgroup").filter(is_active=True)
+    if data_source == "data_entry":
+        return []
     return ProductionDayEntry.objects.select_related(
         "program__item__product",
         "program__item__machine__unit",
@@ -178,14 +218,14 @@ def _queryset(data_source: str):
 
 def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
     by_key = _getter_map(data_source)
-    # Also allow file getters
     for k, label, getter in FILE_COLUMNS:
+        by_key.setdefault(k, (label, getter or (lambda _r: "")))
+    for k, label, getter in DATA_ENTRY_COLUMNS:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
     resolved = []
     for spec in column_specs:
         key = spec["key"]
         if key not in by_key and spec.get("source") and spec["source"] != data_source:
-            # Try source-specific map (e.g. product keys on fitting already exist)
             alt = _getter_map(spec["source"])
             if key in alt:
                 label, getter = alt[key]
@@ -203,15 +243,48 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
     return resolved
 
 
-def _build_records(data_source: str, specs: list[dict]) -> list[dict]:
+def _lookup_entry_values(entry_data: dict | None, signature: str) -> dict:
+    if not entry_data or not isinstance(entry_data, dict):
+        return {}
+    cells = entry_data.get("cells") or {}
+    if isinstance(cells, dict) and signature in cells and isinstance(cells[signature], dict):
+        return dict(cells[signature])
+    if signature == "" or signature == "__empty__":
+        values = entry_data.get("values") or {}
+        if isinstance(values, dict):
+            return dict(values)
+    return {}
+
+
+def _build_records(data_source: str, specs: list[dict], entry_data: dict | None = None) -> list[dict]:
+    entry_keys = [s["key"] for s in specs if is_data_entry_key(s["key"], s.get("source") or "")]
+    non_entry_keys = [s["key"] for s in specs if s["key"] not in entry_keys]
+
+    if data_source == "data_entry":
+        stored = _lookup_entry_values(entry_data, "")
+        cell = {}
+        for spec in specs:
+            key = spec["key"]
+            cell[key] = stored.get(key, "") if key in entry_keys or is_data_entry_key(key, spec.get("source") or "") else ""
+        return [cell]
+
     rows = []
     for record in _queryset(data_source):
         cell = {}
         for spec in specs:
+            key = spec["key"]
+            if is_data_entry_key(key, spec.get("source") or ""):
+                cell[key] = ""
+                continue
             try:
-                cell[spec["key"]] = spec["getter"](record) if spec.get("getter") else ""
+                cell[key] = spec["getter"](record) if spec.get("getter") else ""
             except Exception:
-                cell[spec["key"]] = ""
+                cell[key] = ""
+        if entry_keys:
+            sig = row_signature(cell, non_entry_keys)
+            stored = _lookup_entry_values(entry_data, sig)
+            for key in entry_keys:
+                cell[key] = stored.get(key, "")
         rows.append(cell)
     return rows
 
@@ -222,6 +295,7 @@ def run_report(
     *,
     level: int = 1,
     filters: dict | None = None,
+    entry_data: dict | None = None,
 ) -> tuple[list[str], list[list], list[dict], bool]:
     """Return headers, display rows, row filter payloads, and whether drill-down exists.
 
@@ -235,7 +309,10 @@ def run_report(
             src = spec.get("source") or data_source
             spec["label"] = column_label_map(src).get(spec["key"], spec["key"])
         if not spec.get("source"):
-            spec["source"] = data_source
+            if is_data_entry_key(spec["key"]):
+                spec["source"] = "data_entry"
+            else:
+                spec["source"] = data_source
 
     if not specs:
         # Default all columns of source at level 1
@@ -250,7 +327,7 @@ def run_report(
 
     level = max(1, min(10, int(level or 1)))
     filters = filters or {}
-    all_records = _build_records(data_source, resolved)
+    all_records = _build_records(data_source, resolved, entry_data=entry_data)
 
     # Apply parent filters
     filtered = []
@@ -281,6 +358,8 @@ def run_report(
     deeper = any(s["level"] > level for s in resolved)
     headers = [s["label"] for s in level_cols]
     keys = [s["key"] for s in level_cols]
+    entry_keys_level = [s["key"] for s in level_cols if is_data_entry_key(s["key"], s.get("source") or "")]
+    non_entry_level = [k for k in keys if k not in entry_keys_level]
 
     display_rows: list[list] = []
     payloads: list[dict] = []
@@ -292,7 +371,9 @@ def run_report(
                 continue
             seen.add(values)
         display_rows.append([row.get(k, "") for k in keys])
-        payloads.append({k: row.get(k, "") for k in keys})
+        payload = {k: row.get(k, "") for k in keys}
+        payload["_entry_sig"] = row_signature(row, non_entry_level)
+        payloads.append(payload)
 
     return headers, display_rows, payloads, deeper
 
@@ -304,3 +385,29 @@ def run_report_flat(data_source: str, column_keys: list) -> tuple[list[str], lis
         specs = [{"key": k, "source": data_source, "level": 1} for k in column_keys]
     headers, rows, _payloads, _deeper = run_report(data_source, specs, level=1)
     return headers, rows
+
+
+def level_entry_meta(columns, level: int = 1) -> list[dict]:
+    """Return editable meta for data-entry columns at a report level."""
+    specs = normalize_columns(columns)
+    level = max(1, min(10, int(level or 1)))
+    out = []
+    for spec in specs:
+        if int(spec.get("level") or 1) != level:
+            continue
+        if not is_data_entry_key(spec["key"], spec.get("source") or ""):
+            continue
+        out.append({
+            "key": spec["key"],
+            "label": spec.get("label") or column_label_map("data_entry").get(spec["key"], spec["key"]),
+            "type": entry_field_type(spec["key"]),
+            "col_index": None,
+        })
+    # Fill col_index against level columns order
+    level_keys = [s["key"] for s in specs if int(s.get("level") or 1) == level]
+    for item in out:
+        try:
+            item["col_index"] = level_keys.index(item["key"])
+        except ValueError:
+            item["col_index"] = -1
+    return out

@@ -8,11 +8,15 @@
 <div class="topbar-actions topbar-actions-pair">
   <span class="topbar-meta-num">شماره {{ report.number }}</span>
   {% if report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
+  {% if is_editable_report %}<span class="type-label">قابل ویرایش</span>{% else %}<span class="type-label">فقط خواندنی</span>{% endif %}
   <span class="level-chip" title="سطح فعلی">{{ path_label }}</span>
   {% if can_go_back %}
   <a class="btn btn-sm btn-ghost" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
   {% endif %}
   <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
+  {% if can_edit_entry %}
+  <button type="button" class="btn btn-sm" id="report-edit-toggle">ویرایش</button>
+  {% endif %}
   <div class="menu-drop">
     <button type="button" class="btn btn-sm btn-primary-soft" data-menu-toggle>خروجی گزارش ▾</button>
     <div class="menu-panel" hidden>
@@ -25,13 +29,21 @@
 {% endblock %}
 
 {% block content %}
+{% if can_edit_entry %}
+<form method="post" id="entry-save-form" class="no-print" hidden>
+  {% csrf_token %}
+  <input type="hidden" name="action" value="save_entry">
+  <input type="hidden" name="entry_payload" id="entry-payload" value="{}">
+</form>
+{% endif %}
 <div class="panel" id="report-print-area">
   <div class="panel-head panel-head-compact no-print">
     <h2>نتایج ({{ rows|length }} ردیف){% if deeper %} — برای ورود به سطح بعد روی ردیف دوبار کلیک کنید{% endif %}</h2>
   </div>
   {% if rows %}
   <div class="table-scroll">
-    <table class="table table-nav-cells {% if deeper %}table-drill{% endif %}" id="report-data-table" tabindex="0">
+    <table class="table table-nav-cells {% if deeper %}table-drill{% endif %}" id="report-data-table" tabindex="0"
+           data-editing="0">
       <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
       <tbody>
         {% for row in rows %}
@@ -53,6 +65,7 @@
 {% block scripts %}
 {{ payloads|json_script:"report-payloads" }}
 {{ filters|json_script:"report-filters" }}
+{{ entry_meta_json|json_script:"entry-meta" }}
 <script>
 (function () {
   document.querySelectorAll("[data-menu-toggle]").forEach(function (btn) {
@@ -75,8 +88,17 @@
   var rows = Array.prototype.slice.call(table.querySelectorAll("tbody tr"));
   var selRow = 0;
   var selCol = 0;
+  var editing = false;
+  var editToggle = document.getElementById("report-edit-toggle");
+  var entryMeta = [];
+  try { entryMeta = JSON.parse(document.getElementById("entry-meta").textContent || "[]") || []; } catch (e) { entryMeta = []; }
+  var entryByCol = {};
+  entryMeta.forEach(function (m) {
+    if (m && m.col_index != null && m.col_index >= 0) entryByCol[m.col_index] = m;
+  });
 
   function paint() {
+    if (editing) return;
     rows.forEach(function (tr, ri) {
       tr.classList.toggle("is-row-selected", ri === selRow);
       Array.prototype.forEach.call(tr.children, function (td, ci) {
@@ -90,21 +112,88 @@
   }
 
   function selectAt(ri, ci) {
-    if (!rows.length) return;
+    if (!rows.length || editing) return;
     selRow = Math.max(0, Math.min(rows.length - 1, ri));
     var cols = rows[selRow].children.length;
     selCol = Math.max(0, Math.min(cols - 1, ci));
     paint();
   }
 
+  function cellText(td) {
+    var inp = td.querySelector("input, textarea");
+    if (inp) return inp.value;
+    return (td.textContent || "").trim();
+  }
+
+  function enterEditMode() {
+    if (!editToggle || !entryMeta.length) return;
+    editing = true;
+    table.setAttribute("data-editing", "1");
+    editToggle.textContent = "ذخیره";
+    rows.forEach(function (tr) {
+      Array.prototype.forEach.call(tr.children, function (td, ci) {
+        var meta = entryByCol[ci];
+        if (!meta) return;
+        var val = cellText(td);
+        td.setAttribute("data-orig", val);
+        td.classList.add("is-entry-edit");
+        td.textContent = "";
+        var field;
+        if (meta.type === "textarea") {
+          field = document.createElement("textarea");
+          field.rows = 2;
+        } else {
+          field = document.createElement("input");
+          field.type = "text";
+        }
+        field.className = "input entry-cell-input";
+        field.value = val;
+        field.dataset.key = meta.key;
+        td.appendChild(field);
+      });
+    });
+  }
+
+  function collectAndSave() {
+    var payloads = [];
+    try { payloads = JSON.parse(document.getElementById("report-payloads").textContent || "[]") || []; } catch (e) {}
+    var cells = {};
+    rows.forEach(function (tr, ri) {
+      var payload = payloads[ri] || {};
+      var sig = payload._entry_sig != null ? String(payload._entry_sig) : "";
+      var values = {};
+      Array.prototype.forEach.call(tr.children, function (td, ci) {
+        var meta = entryByCol[ci];
+        if (!meta) return;
+        var field = td.querySelector("input, textarea");
+        values[meta.key] = field ? field.value : cellText(td);
+      });
+      if (Object.keys(values).length) cells[sig] = values;
+    });
+    var form = document.getElementById("entry-save-form");
+    var hidden = document.getElementById("entry-payload");
+    if (!form || !hidden) return;
+    hidden.value = JSON.stringify({ cells: cells });
+    form.submit();
+  }
+
+  if (editToggle) {
+    editToggle.addEventListener("click", function () {
+      if (!editing) enterEditMode();
+      else collectAndSave();
+    });
+  }
+
   rows.forEach(function (tr, ri) {
     tr.addEventListener("click", function (e) {
+      if (editing) return;
       var td = e.target.closest("td");
       var ci = td ? Array.prototype.indexOf.call(tr.children, td) : 0;
       selectAt(ri, ci);
       table.focus();
     });
     tr.addEventListener("dblclick", function () {
+      if (editing) return;
       if (!tr.hasAttribute("data-drill-index")) return;
       var deeper = {{ deeper|yesno:"true,false" }};
       if (!deeper) return;
@@ -116,13 +205,16 @@
       var params = new URLSearchParams();
       params.set("level", String(level + 1));
       Object.keys(filters).forEach(function (k) { params.set("f_" + k, filters[k]); });
-      Object.keys(payload).forEach(function (k) { params.set("f_" + k, payload[k]); });
+      Object.keys(payload).forEach(function (k) {
+        if (k === "_entry_sig") return;
+        params.set("f_" + k, payload[k]);
+      });
       window.location = "?" + params.toString();
     });
   });
 
   table.addEventListener("keydown", function (e) {
-    if (!rows.length) return;
+    if (!rows.length || editing) return;
     var cols = rows[selRow] ? rows[selRow].children.length : 0;
     if (e.key === "ArrowDown") { e.preventDefault(); selectAt(selRow + 1, selCol); }
     else if (e.key === "ArrowUp") { e.preventDefault(); selectAt(selRow - 1, selCol); }

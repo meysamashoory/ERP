@@ -10,6 +10,12 @@ class DataSource(models.TextChoices):
     FITTING = "fitting", "تولید اتصالات"
     PIPE = "pipe", "تولید لوله"
     PRODUCT = "product", "اطلاعات کالا و موجودی"
+    DATA_ENTRY = "data_entry", "ثبت داده"
+
+
+class ReportAccessMode(models.TextChoices):
+    READONLY = "readonly", "گزارش فقط خواندنی"
+    EDITABLE = "editable", "گزارش قابل ویرایش"
 
 
 class SavedReport(models.Model):
@@ -34,10 +40,19 @@ class SavedReport(models.Model):
     data_source = models.CharField(
         "منبع داده", max_length=20, choices=DataSource.choices, default=DataSource.FITTING
     )
+    access_mode = models.CharField(
+        "نوع دسترسی",
+        max_length=20,
+        choices=ReportAccessMode.choices,
+        default=ReportAccessMode.READONLY,
+    )
     # Ordered: [{"key", "source", "level", "label"}, ...]
     columns = models.JSONField("ستون‌ها", default=list)
     # Join keys across sources: [{"keys": {"fitting": "code", "file": "file_col_1"}}]
     source_links = models.JSONField("ربط منابع", default=list, blank=True)
+    # Manual values for «ثبت داده» columns:
+    # {"cells": {"sig": {"data_titles": "...", ...}}, "values": {...}}
+    entry_data = models.JSONField("داده ثبت‌شده", default=dict, blank=True)
     is_standard = models.BooleanField("گزارش استاندارد", default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

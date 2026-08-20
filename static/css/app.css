@@ -837,6 +837,16 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .table-nav-cells tbody tr.data-row.is-row-selected:hover td.is-cell-focus {
   background: #fde68a;
 }
+.table-nav-cells[data-editing="1"] tbody tr.data-row { cursor: default; }
+.table-nav-cells td.is-entry-edit {
+  padding: 4px !important;
+  vertical-align: middle;
+}
+.table-nav-cells .entry-cell-input {
+  width: 100%;
+  min-width: 7rem;
+  font: inherit;
+}
 
 
 .meta-strip {

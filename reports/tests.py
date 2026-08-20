@@ -57,6 +57,49 @@ class ReportFlowTests(TestCase):
         self.assertEqual(excel.status_code, 200)
         self.assertIn("spreadsheetml", excel["Content-Type"])
 
+    def test_editable_data_entry_report_save(self):
+        self.client.login(username="expert", password="erp12345")
+        resp = self.client.post(
+            reverse("report_create"),
+            {
+                "title": "ثبت داده تست",
+                "description": "",
+                "number": 777,
+                "access_mode": "editable",
+                "columns_json": (
+                    '[{"key":"data_titles","source":"data_entry","level":1,"label":"عناوین"},'
+                    '{"key":"awaiting_production","source":"data_entry","level":1,"label":"انتظار"},'
+                    '{"key":"entry_notes","source":"data_entry","level":1,"label":"توضیح"}]'
+                ),
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        report = SavedReport.objects.get(number=777, owner=self.expert)
+        self.assertEqual(report.access_mode, "editable")
+        self.assertEqual(report.data_source, "data_entry")
+
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "report-edit-toggle")
+        self.assertContains(detail, "قابل ویرایش")
+
+        save = self.client.post(
+            reverse("report_detail", args=[report.pk]),
+            {
+                "action": "save_entry",
+                "entry_payload": (
+                    '{"cells":{"":{"data_titles":"زانو ۱۱۰",'
+                    '"awaiting_production":"۳۰ ثانیه","entry_notes":"تستی"}}}'
+                ),
+            },
+        )
+        self.assertEqual(save.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(report.entry_data["cells"][""]["data_titles"], "زانو ۱۱۰")
+        after = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertContains(after, "زانو ۱۱۰")
+        self.assertContains(after, "۳۰ ثانیه")
+
     def test_send_duplicate_number_alerts(self):
         self.client.login(username="expert", password="erp12345")
         report = SavedReport.objects.create(

@@ -27,7 +27,7 @@ from .access import (
     visible_forms,
     visible_reports,
 )
-from .columns import COLUMN_GROUPS, normalize_columns, run_report
+from .columns import COLUMN_GROUPS, level_entry_meta, normalize_columns, run_report
 from .form_purposes import (
     PURPOSE_PRODUCTION,
     PURPOSE_REPORTS,
@@ -42,7 +42,7 @@ from .forms import (
     SendOrCopyPrintFormForm,
     SendOrCopyReportForm,
 )
-from .models import PrintForm, SavedReport
+from .models import PrintForm, ReportAccessMode, SavedReport
 
 User = get_user_model()
 
@@ -183,6 +183,7 @@ def report_create(request: HttpRequest) -> HttpResponse:
             report.created_by = request.user
             report.columns = form.cleaned_data["columns_json"]
             report.data_source = form.primary_source()
+            report.access_mode = form.cleaned_data.get("access_mode") or ReportAccessMode.READONLY
             try:
                 report.source_links = json.loads(request.POST.get("source_links_json") or "[]")
             except json.JSONDecodeError:
@@ -217,6 +218,7 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
             obj = form.save(commit=False)
             obj.columns = form.cleaned_data["columns_json"]
             obj.data_source = form.primary_source()
+            obj.access_mode = form.cleaned_data.get("access_mode") or ReportAccessMode.READONLY
             try:
                 obj.source_links = json.loads(request.POST.get("source_links_json") or "[]")
             except json.JSONDecodeError:
@@ -247,6 +249,40 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     if not can_view_report(request.user, report):
         return HttpResponseForbidden("مجاز به مشاهده این گزارش نیستید.")
 
+    if request.method == "POST" and request.POST.get("action") == "save_entry":
+        if report.access_mode != ReportAccessMode.EDITABLE:
+            return HttpResponseForbidden("این گزارش قابل ویرایش نیست.")
+        if not can_edit_report(request.user, report):
+            return HttpResponseForbidden("مجاز به ویرایش داده این گزارش نیستید.")
+        try:
+            payload = json.loads(request.POST.get("entry_payload") or "{}")
+        except json.JSONDecodeError:
+            messages.error(request, "داده ورودی نامعتبر است.")
+            return redirect(request.get_full_path())
+        cells_in = payload.get("cells") if isinstance(payload, dict) else {}
+        if not isinstance(cells_in, dict):
+            cells_in = {}
+        entry = dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {}
+        cells = dict(entry.get("cells") or {}) if isinstance(entry.get("cells"), dict) else {}
+        for sig, values in cells_in.items():
+            if not isinstance(values, dict):
+                continue
+            clean = {}
+            for k, v in values.items():
+                key = str(k)[:80]
+                if not key:
+                    continue
+                clean[key] = str(v)[:2000]
+            cells[str(sig)] = clean
+            if str(sig) in ("", "__empty__"):
+                entry["values"] = clean
+        entry["cells"] = cells
+        report.entry_data = entry
+        report.save(update_fields=["entry_data", "updated_at"])
+        messages.success(request, "تغییرات ذخیره شد.")
+        q = request.GET.urlencode()
+        return redirect(request.path + (("?" + q) if q else ""))
+
     try:
         level = int(request.GET.get("level") or 1)
     except ValueError:
@@ -258,6 +294,7 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         report.columns or [],
         level=level,
         filters=filters,
+        entry_data=report.entry_data or {},
     )
 
     export = request.GET.get("export")
@@ -270,8 +307,6 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     crumbs = _breadcrumb(filters, level)
     parent_query = ""
     if level > 1 and crumbs:
-        # Back goes to previous crumb
-        prev = crumbs[max(0, level - 2)] if level - 2 < len(crumbs) else crumbs[0]
         # Better: strip last filter
         items = list(filters.items())
         if items:
@@ -290,6 +325,10 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         parts = [f"{v}" for v in filters.values()]
         path_label = f"سطح {level} — " + " ← ".join(parts)
 
+    entry_meta = level_entry_meta(report.columns or [], level=level)
+    is_editable_report = report.access_mode == ReportAccessMode.EDITABLE
+    can_edit_entry = is_editable_report and can_edit_report(request.user, report) and bool(entry_meta)
+
     return render(
         request,
         "reports/detail.html",
@@ -305,6 +344,10 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "parent_level": max(1, level - 1),
             "parent_query": parent_query,
             "can_go_back": level > 1 or bool(filters),
+            "is_editable_report": is_editable_report,
+            "can_edit_entry": can_edit_entry,
+            "entry_meta": entry_meta,
+            "entry_meta_json": entry_meta,
         },
     )
 
@@ -345,8 +388,10 @@ def report_send(request: HttpRequest, pk: int) -> HttpResponse:
         description=form.cleaned_data.get("description") or "",
         number=form.cleaned_data["number"],
         data_source=report.data_source,
+        access_mode=getattr(report, "access_mode", ReportAccessMode.READONLY) or ReportAccessMode.READONLY,
         columns=list(report.columns or []),
         source_links=list(report.source_links or []),
+        entry_data=dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {},
         is_standard=False,
         created_by=request.user,
         source_report=report,
@@ -378,8 +423,10 @@ def report_copy(request: HttpRequest, pk: int) -> HttpResponse:
         description=form.cleaned_data.get("description") or "",
         number=form.cleaned_data["number"],
         data_source=report.data_source,
+        access_mode=getattr(report, "access_mode", ReportAccessMode.READONLY) or ReportAccessMode.READONLY,
         columns=list(report.columns or []),
         source_links=list(report.source_links or []),
+        entry_data=dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {},
         is_standard=False,
         created_by=request.user,
         source_report=report,

@@ -24,6 +24,7 @@
       <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
       <div class="meta-sub">
         شماره <span id="sum-number">{{ form.number.value|default:"" }}</span>
+        <span id="sum-access"> · {% if form.access_mode.value == 'editable' %}قابل ویرایش{% else %}فقط خواندنی{% endif %}</span>
         {% if form.is_manager %}<span id="sum-standard-wrap">{% if form.is_standard.value %} · استاندارد{% endif %}</span>{% endif %}
       </div>
       <div class="meta-desc" id="sum-desc">{% if form.description.value %}({{ form.description.value }}){% endif %}</div>
@@ -33,27 +34,32 @@
 
   <div class="panel panel-compact" id="meta-editor">
     <div class="panel-body panel-body-compact">
-      <div class="form-grid form-grid-compact form-grid-3">
-        <div class="field">
-          <label>{{ form.title.label }}</label>
-          {{ form.title }}
-          {{ form.title.errors }}
-        </div>
+      <div class="form-grid form-grid-compact form-grid-2">
         <div class="field">
           <label>{{ form.number.label }} (۱–۹۹۹)</label>
           {{ form.number }}
           {{ form.number.errors }}
         </div>
-        {% if form.is_manager %}
-        <div class="field field-check">
-          <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+        <div class="field">
+          <label>{{ form.access_mode.label }}</label>
+          {{ form.access_mode }}
+          {{ form.access_mode.errors }}
         </div>
-        {% endif %}
       </div>
       <div class="field">
         <label>{{ form.description.label }}</label>
         {{ form.description }}
       </div>
+      <div class="field">
+        <label>{{ form.title.label }}</label>
+        {{ form.title }}
+        {{ form.title.errors }}
+      </div>
+      {% if form.is_manager %}
+      <div class="field field-check">
+        <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+      </div>
+      {% endif %}
       {{ form.columns_json.errors }}
       <div class="line-actions">
         <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
@@ -142,13 +148,21 @@
   var numberInput = document.getElementById("id_number");
   var descInput = document.getElementById("id_description");
   var stdInput = document.getElementById("id_is_standard");
+  var accessInput = document.getElementById("id_access_mode");
   var confirmedOnce = (mode === "edit");
+
+  function accessLabel() {
+    if (!accessInput) return "فقط خواندنی";
+    return accessInput.value === "editable" ? "قابل ویرایش" : "فقط خواندنی";
+  }
 
   function syncSummary() {
     document.getElementById("sum-title").textContent = titleInput.value || "—";
     document.getElementById("sum-number").textContent = numberInput.value || "—";
     var desc = (descInput.value || "").trim();
     document.getElementById("sum-desc").textContent = desc ? "(" + desc + ")" : "";
+    var accessEl = document.getElementById("sum-access");
+    if (accessEl) accessEl.textContent = " · " + accessLabel();
     var wrap = document.getElementById("sum-standard-wrap");
     if (wrap && stdInput) wrap.textContent = stdInput.checked ? " · استاندارد" : "";
   }

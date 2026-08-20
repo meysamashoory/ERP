@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from accounts.permissions import get_profile
 
 from .columns import COLUMN_GROUPS, normalize_columns
-from .models import PrintForm, SavedReport
+from .models import PrintForm, ReportAccessMode, SavedReport
 
 User = get_user_model()
 
@@ -28,14 +28,21 @@ class SavedReportForm(forms.ModelForm):
         label="ایجاد گزارش استاندارد (قابل مشاهده برای همه)",
         required=False,
     )
+    access_mode = forms.ChoiceField(
+        label="نوع گزارش",
+        choices=ReportAccessMode.choices,
+        initial=ReportAccessMode.READONLY,
+        required=False,
+    )
 
     class Meta:
         model = SavedReport
-        fields = ["title", "description", "number", "is_standard"]
+        fields = ["title", "description", "number", "is_standard", "access_mode"]
         labels = {
             "title": "عنوان گزارش",
             "description": "توضیحات",
             "number": "شماره گزارش",
+            "access_mode": "نوع گزارش",
         }
         widgets = {
             "description": forms.TextInput(attrs={"placeholder": "توضیح کوتاه (اختیاری)"}),
@@ -56,6 +63,9 @@ class SavedReportForm(forms.ModelForm):
             self.source_links_json = json.dumps(
                 getattr(self.instance, "source_links", None) or [], ensure_ascii=False
             )
+            self.fields["access_mode"].initial = getattr(
+                self.instance, "access_mode", ReportAccessMode.READONLY
+            ) or ReportAccessMode.READONLY
         else:
             self.fields["columns_json"].initial = "[]"
             self.source_links_json = "[]"
@@ -93,12 +103,23 @@ class SavedReportForm(forms.ModelForm):
             raise ValidationError("فقط مدیر می‌تواند گزارش استاندارد ایجاد کند.")
         return bool(value)
 
+    def clean_access_mode(self):
+        value = self.cleaned_data.get("access_mode") or ReportAccessMode.READONLY
+        allowed = {c[0] for c in ReportAccessMode.choices}
+        if value not in allowed:
+            return ReportAccessMode.READONLY
+        return value
+
     def primary_source(self) -> str:
         cols = self.cleaned_data.get("columns_json") or []
         for col in cols:
             src = col.get("source") or ""
-            if src and src != "file":
+            if src and src not in ("file", "data_entry"):
                 return src
+        for col in cols:
+            src = col.get("source") or ""
+            if src == "data_entry":
+                return "data_entry"
         return "fitting"
 
 
@@ -282,6 +303,28 @@ class PrintFormForm(forms.ModelForm):
             if kind in ("field", "row_number"):
                 frame["source"] = str(item.get("source") or "")[:40]
                 frame["source_key"] = str(item.get("source_key") or "")[:80]
+                raw_bindings = item.get("bindings")
+                clean_bindings = []
+                if isinstance(raw_bindings, list):
+                    for b in raw_bindings[:12]:
+                        if not isinstance(b, dict):
+                            continue
+                        b_src = str(b.get("source") or "")[:40]
+                        b_key = str(b.get("source_key") or "")[:80]
+                        if not b_src and not b_key:
+                            continue
+                        clean_bindings.append({"source": b_src, "source_key": b_key})
+                if not clean_bindings and (frame["source"] or frame["source_key"]):
+                    clean_bindings = [{
+                        "source": frame["source"],
+                        "source_key": frame["source_key"],
+                    }]
+                if clean_bindings:
+                    frame["bindings"] = clean_bindings
+                    frame["source"] = clean_bindings[0]["source"]
+                    frame["source_key"] = clean_bindings[0]["source_key"]
+                else:
+                    frame["bindings"] = []
             frame["locked"] = bool(item.get("locked"))
             if kind == "line":
                 orient = str(item.get("orientation") or "h")[:4]
