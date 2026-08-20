@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=17">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=18">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -247,8 +247,10 @@
               </div>
               <div class="dz-field"><label>منبع</label><select id="prop-source"></select></div>
               <div class="dz-field"><label>ستون</label><select id="prop-source-key"></select></div>
+              <div id="extra-key-bindings"></div>
+              <button type="button" class="btn btn-sm btn-ghost" id="btn-add-key-bind" style="margin-top:6px">اتصال کلید</button>
               <p id="field-bind-path" style="font-size:11px;color:#64748b;margin:4px 0 0"></p>
-              <p style="font-size:11px;color:#64748b;margin:6px 0 0">تکرار فیلد به تعداد آیتم‌های مرتبط (برنامه / گزارش) است.</p>
+              <p style="font-size:11px;color:#64748b;margin:6px 0 0">تکرار فیلد به تعداد آیتم‌های مرتبط (برنامه / گزارش) است. چند اتصال در چاپ با « ، » جدا می‌شوند.</p>
             </div>
             <div id="row-number-props" hidden>
               <p style="font-size:11px;color:#64748b;margin:0">شماره ردیف به تعداد آیتم‌های مرتبط (۱…N) ساخته می‌شود.</p>
@@ -353,7 +355,7 @@
 {{ saved_reports|json_script:"saved-reports" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_sheet_render.js' %}?v=5"></script>
-<script src="{% static 'js/form_designer.js' %}?v=18"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=6"></script>
+<script src="{% static 'js/form_designer.js' %}?v=19"></script>
 </body>
 </html>

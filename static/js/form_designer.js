@@ -55,6 +55,7 @@
   try { groups = JSON.parse(document.getElementById("column-groups").textContent || "[]"); } catch (e) {}
 
   var selectedId = null;
+  var selectedIds = [];
   var selectedGuideIdx = null;
   var zoom = 1;
   var snap = pageSettings.snap_mm || 2;
@@ -107,6 +108,18 @@
   function snapMm(v) { return Math.round(v / snap) * snap; }
   function find(id) { return frames.find(function (f) { return f.id === id; }); }
   function findIndex(id) { return frames.findIndex(function (f) { return f.id === id; }); }
+  function isSelected(id) { return selectedIds.indexOf(id) >= 0; }
+  function clearSelection() { selectedId = null; selectedIds = []; }
+  function selectOnly(id) {
+    selectedId = id || null;
+    selectedIds = id ? [id] : [];
+  }
+  function toggleSelect(id) {
+    var idx = selectedIds.indexOf(id);
+    if (idx >= 0) selectedIds.splice(idx, 1);
+    else selectedIds.push(id);
+    selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
+  }
   function toast(msg) {
     var t = document.getElementById("dz-toast");
     t.textContent = msg; t.classList.add("show");
@@ -132,7 +145,7 @@
     if (snap < 1) snap = 1;
     if (snap > 10) snap = 10;
     pageSettings.snap_mm = snap;
-    selectedId = null;
+    clearSelection();
     selectedGuideIdx = null;
     syncUiChecks();
     render();
@@ -389,13 +402,36 @@
     var copyBtn = document.getElementById("btn-copy");
     var pasteBtn = document.getElementById("btn-paste");
     if (copyBtn) {
-      copyBtn.disabled = !selectedId;
-      copyBtn.classList.toggle("is-ready", !!selectedId);
+      copyBtn.disabled = !selectedIds.length;
+      copyBtn.classList.toggle("is-ready", !!selectedIds.length);
     }
     if (pasteBtn) {
       pasteBtn.disabled = !clipboard;
       pasteBtn.classList.toggle("is-ready", !!clipboard);
     }
+  }
+
+  function ensureBindings(f) {
+    if (!f) return [];
+    if (!Array.isArray(f.bindings) || !f.bindings.length) {
+      if (f.source || f.source_key) {
+        f.bindings = [{ source: f.source || "", source_key: f.source_key || "" }];
+      } else {
+        f.bindings = [{ source: "", source_key: "" }];
+      }
+    }
+    f.source = f.bindings[0].source || "";
+    f.source_key = f.bindings[0].source_key || "";
+    return f.bindings;
+  }
+
+  function bindingPathText(f) {
+    var binds = ensureBindings(f);
+    var parts = [];
+    binds.forEach(function (b) {
+      if (b.source && b.source_key) parts.push(b.source + " → " + b.source_key);
+    });
+    return parts.length ? ("آدرس: " + parts.join("  |  ")) : "وصل نشده";
   }
 
   function columnLabel(source, key) {
@@ -549,7 +585,7 @@
     list.innerHTML = "";
     frames.slice().reverse().forEach(function (f) {
       var row = document.createElement("div");
-      row.className = "dz-clip" + (f.id === selectedId ? " is-active" : "") + (f.hidden ? " is-layer-hidden" : "") + (f.locked ? " is-locked" : "");
+      row.className = "dz-clip" + (isSelected(f.id) ? " is-active" : "") + (f.hidden ? " is-layer-hidden" : "") + (f.locked ? " is-locked" : "");
       row.draggable = true;
       row.dataset.id = f.id;
       row.innerHTML =
@@ -568,7 +604,9 @@
         "</button>";
       row.addEventListener("click", function (e) {
         if (e.target.closest(".dz-icon-btn")) return;
-        selectedId = f.id; selectedGuideIdx = null; render();
+        if (e.ctrlKey || e.metaKey) toggleSelect(f.id);
+        else selectOnly(f.id);
+        selectedGuideIdx = null; render();
       });
       row.querySelector(".dz-eye").addEventListener("click", function (e) {
         e.stopPropagation();
@@ -588,7 +626,8 @@
         if (f.locked) return;
         pushHistory();
         frames = frames.filter(function (x) { return x.id !== f.id; });
-        if (selectedId === f.id) selectedId = null;
+        selectedIds = selectedIds.filter(function (id) { return id !== f.id; });
+        selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
         render();
       });
       row.addEventListener("dragstart", function (e) {
@@ -613,7 +652,7 @@
         if (from < 0 || to < 0) return;
         var item = frames.splice(from, 1)[0];
         frames.splice(to, 0, item);
-        selectedId = layerDragId;
+        selectOnly(layerDragId);
         render();
       });
       list.appendChild(row);
@@ -805,24 +844,66 @@
     var keySel = document.getElementById("prop-source-key");
     var levelWrap = document.getElementById("report-level-wrap");
     var levelSel = document.getElementById("prop-report-level");
+    var extraHost = document.getElementById("extra-key-bindings");
+    var addBindBtn = document.getElementById("btn-add-key-bind");
     var active = activeSourceGroups();
+    var binds = ensureBindings(f);
+
+    function populateSourceSelect(sel, selected) {
+      sel.innerHTML = '<option value="">— منبع —</option>';
+      active.forEach(function (g) {
+        if (g.enabled === false) {
+          var oDis = document.createElement("option");
+          oDis.value = g.id;
+          oDis.textContent = g.label + " (هنوز ایجاد نشده)";
+          oDis.disabled = true;
+          sel.appendChild(oDis);
+          return;
+        }
+        var o = document.createElement("option");
+        o.value = g.id;
+        o.textContent = g.label;
+        sel.appendChild(o);
+      });
+      sel.value = selected || "";
+    }
+
+    function populateKeySelect(sel, sourceId, selected) {
+      sel.innerHTML = '<option value="">— ستون —</option>';
+      var g = active.find(function (x) { return x.id === sourceId; });
+      if (g) (g.columns || []).forEach(function (c) {
+        var o = document.createElement("option");
+        o.value = c[0];
+        o.textContent = c[1];
+        sel.appendChild(o);
+      });
+      sel.value = selected || "";
+    }
+
+    function populateLevelSelect(sel, selected) {
+      sel.innerHTML = "";
+      active.forEach(function (g) {
+        var o = document.createElement("option");
+        o.value = g.id;
+        o.textContent = g.label;
+        sel.appendChild(o);
+      });
+      sel.value = selected || (active[0] && active[0].id) || "";
+    }
 
     if (levelWrap && levelSel) {
       var showLevel = formPurpose === "reports" && !!linkedReportId && active.length > 0;
       levelWrap.hidden = !showLevel;
       if (showLevel) {
-        levelSel.innerHTML = "";
-        active.forEach(function (g) {
-          var o = document.createElement("option");
-          o.value = g.id;
-          o.textContent = g.label;
-          levelSel.appendChild(o);
-        });
-        if (!reportLevelFilter && active[0]) reportLevelFilter = active[0].id;
-        levelSel.value = reportLevelFilter || (active[0] && active[0].id) || "";
+        populateLevelSelect(levelSel, binds[0].source || reportLevelFilter);
         reportLevelFilter = levelSel.value;
+        binds[0].source = levelSel.value;
+        f.source = levelSel.value;
         levelSel.onchange = function () {
+          pushHistory();
           reportLevelFilter = levelSel.value;
+          binds[0].source = levelSel.value;
+          binds[0].source_key = "";
           f.source = levelSel.value;
           f.source_key = "";
           fillSources(f);
@@ -831,52 +912,116 @@
       }
     }
 
-    srcSel.innerHTML = '<option value="">— منبع —</option>';
-    active.forEach(function (g) {
-      if (g.enabled === false) {
-        var oDis = document.createElement("option");
-        oDis.value = g.id;
-        oDis.textContent = g.label + " (هنوز ایجاد نشده)";
-        oDis.disabled = true;
-        srcSel.appendChild(oDis);
-        return;
-      }
-      var o = document.createElement("option");
-      o.value = g.id;
-      o.textContent = g.label;
-      srcSel.appendChild(o);
-    });
-
-    if (formPurpose === "reports" && reportLevelFilter) {
-      srcSel.value = reportLevelFilter;
-      f.source = reportLevelFilter;
-    } else {
-      srcSel.value = f.source || "";
+    populateSourceSelect(srcSel, binds[0].source || "");
+    if (formPurpose === "reports" && (binds[0].source || reportLevelFilter)) {
+      srcSel.value = binds[0].source || reportLevelFilter;
+      binds[0].source = srcSel.value;
+      f.source = srcSel.value;
     }
 
-    function fillKeys() {
-      keySel.innerHTML = '<option value="">— ستون —</option>';
-      var g = active.find(function (x) { return x.id === srcSel.value; });
-      if (g) (g.columns || []).forEach(function (c) {
-        var o = document.createElement("option");
-        o.value = c[0];
-        o.textContent = c[1];
-        keySel.appendChild(o);
-      });
-      keySel.value = f.source_key || "";
-      document.getElementById("field-bind-path").textContent =
-        (f.source && f.source_key) ? ("آدرس: " + f.source + " → " + f.source_key) : "وصل نشده";
-    }
-    fillKeys();
+    populateKeySelect(keySel, srcSel.value, binds[0].source_key || "");
+    document.getElementById("field-bind-path").textContent = bindingPathText(f);
+
     srcSel.onchange = function () {
       pushHistory();
+      binds[0].source = srcSel.value;
+      binds[0].source_key = "";
       f.source = srcSel.value;
       f.source_key = "";
       if (formPurpose === "reports") reportLevelFilter = srcSel.value;
-      fillKeys();
+      fillSources(f);
       render();
     };
-    keySel.onchange = function () { pushHistory(); f.source_key = keySel.value; fillKeys(); render(); };
+    keySel.onchange = function () {
+      pushHistory();
+      binds[0].source_key = keySel.value;
+      f.source_key = keySel.value;
+      document.getElementById("field-bind-path").textContent = bindingPathText(f);
+      render();
+    };
+
+    if (extraHost) {
+      extraHost.innerHTML = "";
+      for (var bi = 1; bi < binds.length; bi++) {
+        (function (bindIndex) {
+          var block = document.createElement("div");
+          block.className = "key-bind-extra";
+          block.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1";
+          var head = document.createElement("div");
+          head.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:4px";
+          head.innerHTML = "<strong style='font-size:12px'>اتصال " + (bindIndex + 1) + "</strong>";
+          var rm = document.createElement("button");
+          rm.type = "button";
+          rm.className = "btn btn-xs btn-ghost";
+          rm.textContent = "حذف";
+          rm.onclick = function () {
+            pushHistory();
+            binds.splice(bindIndex, 1);
+            ensureBindings(f);
+            fillSources(f);
+            render();
+          };
+          head.appendChild(rm);
+          block.appendChild(head);
+
+          if (formPurpose === "reports" && linkedReportId && active.length) {
+            var lvField = document.createElement("div");
+            lvField.className = "dz-field";
+            lvField.innerHTML = "<label>انتخاب سطح گزارش</label>";
+            var lv = document.createElement("select");
+            populateLevelSelect(lv, binds[bindIndex].source || "");
+            lv.onchange = function () {
+              pushHistory();
+              binds[bindIndex].source = lv.value;
+              binds[bindIndex].source_key = "";
+              fillSources(f);
+              render();
+            };
+            lvField.appendChild(lv);
+            block.appendChild(lvField);
+          }
+
+          var srcField = document.createElement("div");
+          srcField.className = "dz-field";
+          srcField.innerHTML = "<label>منبع</label>";
+          var src = document.createElement("select");
+          populateSourceSelect(src, binds[bindIndex].source || "");
+          src.onchange = function () {
+            pushHistory();
+            binds[bindIndex].source = src.value;
+            binds[bindIndex].source_key = "";
+            fillSources(f);
+            render();
+          };
+          srcField.appendChild(src);
+          block.appendChild(srcField);
+
+          var keyField = document.createElement("div");
+          keyField.className = "dz-field";
+          keyField.innerHTML = "<label>ستون</label>";
+          var key = document.createElement("select");
+          populateKeySelect(key, binds[bindIndex].source || "", binds[bindIndex].source_key || "");
+          key.onchange = function () {
+            pushHistory();
+            binds[bindIndex].source_key = key.value;
+            document.getElementById("field-bind-path").textContent = bindingPathText(f);
+            render();
+          };
+          keyField.appendChild(key);
+          block.appendChild(keyField);
+          extraHost.appendChild(block);
+        })(bi);
+      }
+    }
+
+    if (addBindBtn) {
+      addBindBtn.onclick = function () {
+        pushHistory();
+        ensureBindings(f).push({ source: "", source_key: "" });
+        fillSources(f);
+        render();
+      };
+    }
   }
 
   function syncPurposeUi() {
@@ -942,7 +1087,7 @@
           e.preventDefault();
           e.stopPropagation();
           selectedGuideIdx = gi;
-          selectedId = null;
+          clearSelection();
           dragGuide = { axis: g.axis, pos: g.pos, index: gi, moving: true };
           render();
         });
@@ -996,7 +1141,7 @@
         var mode = extendModeOf(f);
         var el = document.createElement("div");
         el.className = "dz-frame kind-" + (f.kind || "box") +
-          (f.id === selectedId && i === 0 && !previewMode ? " selected" : "") +
+          (isSelected(f.id) && i === 0 && !previewMode ? " selected" : "") +
           (f.locked ? " is-locked" : "");
         el.style.zIndex = String(2 + item.zi);
         el.style.left = px(item.x) + "px";
@@ -1050,10 +1195,17 @@
           inner.textContent = previewMode ? String(i + 1) : (f.label || "ردیف");
         } else if (f.kind === "field") {
           if (previewMode) {
-            inner.textContent = columnLabel(f.source, f.source_key) || "";
+            if (window.ERPFormSheetRender && window.ERPFormSheetRender.resolveFieldDisplay) {
+              inner.textContent = window.ERPFormSheetRender.resolveFieldDisplay(activeSourceGroups(), f, {}) || "";
+            } else {
+              inner.textContent = columnLabel(f.source, f.source_key) || "";
+            }
           } else {
             var txt = f.label || "کلید منابع";
-            if (f.source && f.source_key) txt += " ⟨" + f.source + "." + f.source_key + "⟩";
+            var binds = ensureBindings(f).filter(function (b) { return b.source && b.source_key; });
+            if (binds.length) {
+              txt += " ⟨" + binds.map(function (b) { return b.source + "." + b.source_key; }).join(" + ") + "⟩";
+            }
             inner.textContent = txt;
           }
         } else if (f.kind !== "box") {
@@ -1080,7 +1232,7 @@
           el.dataset.id = f.id;
           if (!previewMode) {
             el.addEventListener("mousedown", startDrag);
-            if (f.id === selectedId) {
+            if (isSelected(f.id) && selectedIds.length === 1) {
               ["nw","n","ne","e","se","s","sw","w"].forEach(function (c) {
                 var hndl = document.createElement("span");
                 hndl.className = "dz-handle " + c;
@@ -1308,20 +1460,45 @@
   function startDrag(e) {
     if (e.target.classList.contains("dz-handle")) return;
     e.preventDefault();
-    selectedId = e.currentTarget.dataset.id;
+    var id = e.currentTarget.dataset.id;
     selectedGuideIdx = null;
+    if (e.ctrlKey || e.metaKey) {
+      toggleSelect(id);
+      render();
+      return;
+    }
+    if (!isSelected(id) || selectedIds.length <= 1) {
+      selectOnly(id);
+    } else {
+      selectedId = id;
+    }
     var f = find(selectedId);
     if (!f) return;
-    if (f.locked) { render(); return; }
+    if (f.locked && selectedIds.length === 1) { render(); return; }
     pushHistory();
-    drag = { mode: "move", id: selectedId, startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y || 0 };
+    var origins = {};
+    selectedIds.forEach(function (sid) {
+      var ff = find(sid);
+      if (!ff) return;
+      origins[sid] = { ox: ff.left || 0, oy: ff.y || 0 };
+    });
+    drag = {
+      mode: "move",
+      id: selectedId,
+      ids: selectedIds.slice(),
+      origins: origins,
+      startX: e.clientX,
+      startY: e.clientY,
+      ox: f.left || 0,
+      oy: f.y || 0
+    };
     render();
   }
   function startResize(e) {
     e.preventDefault(); e.stopPropagation();
     var id = e.currentTarget.parentElement.dataset.id;
     var f = find(id); if (!f || f.locked) return;
-    selectedId = id; selectedGuideIdx = null;
+    selectOnly(id); selectedGuideIdx = null;
     pushHistory();
     drag = {
       mode: "resize", corner: e.currentTarget.dataset.corner, id: id,
@@ -1332,7 +1509,7 @@
     e.preventDefault(); e.stopPropagation();
     var id = e.currentTarget.parentElement.dataset.id;
     var f = find(id); if (!f || f.locked) return;
-    selectedId = id;
+    selectOnly(id);
     pushHistory();
     var rect = e.currentTarget.parentElement.getBoundingClientRect();
     drag = {
@@ -1368,8 +1545,18 @@
     var dx = mmFromPx(e.clientX - drag.startX);
     var dy = mmFromPx(e.clientY - drag.startY);
     if (drag.mode === "move") {
-      f.left = snapMm(Math.max(0, drag.ox + dx));
-      f.y = snapMm(Math.max(0, drag.oy + dy));
+      if (drag.ids && drag.origins) {
+        drag.ids.forEach(function (sid) {
+          var ff = find(sid);
+          var o = drag.origins[sid];
+          if (!ff || !o || ff.locked) return;
+          ff.left = snapMm(Math.max(0, o.ox + dx));
+          ff.y = snapMm(Math.max(0, o.oy + dy));
+        });
+      } else {
+        f.left = snapMm(Math.max(0, drag.ox + dx));
+        f.y = snapMm(Math.max(0, drag.oy + dy));
+      }
     } else {
       var c = drag.corner;
       if (c.indexOf("e") >= 0) f.width = snapMm(Math.max(snap, drag.ow + dx));
@@ -1400,7 +1587,7 @@
 
   canvas.addEventListener("mousedown", function (e) {
     if (e.target === canvas || e.target.classList.contains("dz-grid") || e.target.classList.contains("dz-margin")) {
-      selectedId = null; selectedGuideIdx = null; render();
+      clearSelection(); selectedGuideIdx = null; render();
     }
   });
 
@@ -1408,7 +1595,7 @@
     if (!guidesEnabled || !pageSettings.show_ruler) return;
     e.preventDefault();
     var rect = canvas.getBoundingClientRect();
-    selectedId = null;
+    clearSelection();
     dragGuide = {
       axis: axis,
       pos: axis === "h"
@@ -1453,9 +1640,9 @@
         f.extend_mode = "none";
       }
       if (kind === "field" || kind === "row_number") {
-        f.source = ""; f.source_key = "";
+        f.source = ""; f.source_key = ""; f.bindings = [{ source: "", source_key: "" }];
       }
-      frames.push(f); selectedId = f.id; render();
+      frames.push(f); selectOnly(f.id); render();
     });
   });
 
@@ -1471,7 +1658,7 @@
     if (exitBtn) exitBtn.hidden = !previewMode;
     var prevBtn = document.getElementById("btn-preview");
     if (prevBtn) prevBtn.textContent = previewMode ? "بازگشت به طراحی" : "پیش‌نمایش چاپ";
-    selectedId = null;
+    clearSelection();
     selectedGuideIdx = null;
     render();
     if (previewMode) {
@@ -1501,41 +1688,66 @@
       render();
       return;
     }
-    var f = find(selectedId);
-    if (!f || f.locked) return;
+    if (!selectedIds.length) return;
+    var ids = selectedIds.slice();
+    if (ids.length === 1) {
+      var one = find(ids[0]);
+      if (!one || one.locked) return;
+    }
     pushHistory();
-    frames = frames.filter(function (x) { return x.id !== f.id; });
-    selectedId = null;
+    frames = frames.filter(function (x) {
+      if (ids.indexOf(x.id) < 0) return true;
+      return !!x.locked;
+    });
+    clearSelection();
     render();
   }
   function copySelected() {
-    var f = find(selectedId);
-    if (!f) return;
-    clipboard = JSON.parse(JSON.stringify(f));
+    if (!selectedIds.length) return;
+    if (selectedIds.length === 1) {
+      var f = find(selectedId);
+      if (!f) return;
+      clipboard = JSON.parse(JSON.stringify(f));
+    } else {
+      clipboard = selectedIds.map(function (id) {
+        var ff = find(id);
+        return ff ? JSON.parse(JSON.stringify(ff)) : null;
+      }).filter(Boolean);
+    }
     updateClipboardButtons();
     toast("کپی شد");
   }
   function cutSelected() {
-    var f = find(selectedId);
-    if (!f || f.locked) return;
-    clipboard = JSON.parse(JSON.stringify(f));
+    if (!selectedIds.length) return;
+    copySelected();
+    var ids = selectedIds.slice();
     pushHistory();
-    frames = frames.filter(function (x) { return x.id !== f.id; });
-    selectedId = null;
+    frames = frames.filter(function (x) {
+      if (ids.indexOf(x.id) < 0) return true;
+      return !!x.locked;
+    });
+    clearSelection();
     render();
     toast("برش شد");
   }
   function pasteClipboard() {
     if (!clipboard) return;
     pushHistory();
-    var f = JSON.parse(JSON.stringify(clipboard));
-    f.id = "f" + Date.now() + "-" + (uid++);
-    f.left = snapMm((f.left || 0) + 5);
-    f.y = snapMm((f.y || 0) + 5);
-    f.x = f.left;
-    f.locked = false;
-    frames.push(f);
-    selectedId = f.id;
+    var items = Array.isArray(clipboard) ? clipboard : [clipboard];
+    var newIds = [];
+    items.forEach(function (src, i) {
+      if (!src) return;
+      var f = JSON.parse(JSON.stringify(src));
+      f.id = "f" + Date.now() + "-" + (uid++) + "-" + i;
+      f.left = snapMm((f.left || 0) + 5);
+      f.y = snapMm((f.y || 0) + 5);
+      f.x = f.left;
+      f.locked = false;
+      frames.push(f);
+      newIds.push(f.id);
+    });
+    selectedIds = newIds;
+    selectedId = newIds.length ? newIds[newIds.length - 1] : null;
     clipboard = null;
     render();
     toast("جای‌گذاری شد");

@@ -34,6 +34,35 @@
     return key;
   }
 
+  function fieldBindings(f) {
+    if (!f) return [];
+    if (Array.isArray(f.bindings) && f.bindings.length) {
+      return f.bindings.filter(function (b) {
+        return b && (b.source || b.source_key);
+      });
+    }
+    if (f.source || f.source_key) {
+      return [{ source: f.source || "", source_key: f.source_key || "" }];
+    }
+    return [];
+  }
+
+  function resolveFieldDisplay(groups, f, row) {
+    var binds = fieldBindings(f);
+    if (!binds.length) return "";
+    var parts = [];
+    binds.forEach(function (b) {
+      var key = b.source_key || "";
+      if (key && row && row[key] != null && row[key] !== "") {
+        parts.push(String(row[key]));
+      } else {
+        var lab = columnLabel(groups, b.source, key);
+        if (lab) parts.push(lab);
+      }
+    });
+    return parts.join(" ، ");
+  }
+
   function estimateExtendRows(pageH, marginBottom, f) {
     var mb = marginBottom || 0;
     var avail = pageH - (f.y || 0) - mb;
@@ -249,11 +278,7 @@
         el.style.border = "none";
         el.style.background = "transparent";
         var row = fillRows[item.i] || {};
-        if (f.source_key && row[f.source_key] != null && row[f.source_key] !== "") {
-          el.textContent = String(row[f.source_key]);
-        } else {
-          el.textContent = columnLabel(groups, f.source, f.source_key) || "";
-        }
+        el.textContent = resolveFieldDisplay(groups, f, row);
       } else {
         el.style.border = "none";
         el.style.background = "transparent";
@@ -268,6 +293,8 @@
     render: render,
     borderCss: borderCss,
     columnLabel: columnLabel,
+    fieldBindings: fieldBindings,
+    resolveFieldDisplay: resolveFieldDisplay,
     applyBoxBorders: applyBoxBorders,
     isLineKind: isLineKind,
     defaultFillColors: defaultFillColors,
