@@ -36,24 +36,26 @@
     <div class="panel-body panel-body-compact">
       <div class="form-grid form-grid-compact form-grid-2">
         <div class="field">
+          <label>{{ form.title.label }}</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
+        <div class="field">
           <label>{{ form.number.label }} (۱–۹۹۹)</label>
           {{ form.number }}
           {{ form.number.errors }}
+        </div>
+      </div>
+      <div class="form-grid form-grid-compact form-grid-2">
+        <div class="field">
+          <label>{{ form.description.label }}</label>
+          {{ form.description }}
         </div>
         <div class="field">
           <label>{{ form.access_mode.label }}</label>
           {{ form.access_mode }}
           {{ form.access_mode.errors }}
         </div>
-      </div>
-      <div class="field">
-        <label>{{ form.description.label }}</label>
-        {{ form.description }}
-      </div>
-      <div class="field">
-        <label>{{ form.title.label }}</label>
-        {{ form.title }}
-        {{ form.title.errors }}
       </div>
       {% if form.is_manager %}
       <div class="field field-check">
@@ -90,8 +92,9 @@
             <strong>نحوه نمایش</strong>
             <span class="muted">بالا = راست · پایین = چپ</span>
             <div class="move-controls">
-              <button type="button" class="btn btn-xs btn-ghost" id="move-up" title="بالا">↑</button>
-              <button type="button" class="btn btn-xs btn-ghost" id="move-down" title="پایین">↓</button>
+              <button type="button" class="btn btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا">▲</button>
+              <button type="button" class="btn btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین">▼</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده">کپی</button>
             </div>
           </div>
           <div class="selected-cols" id="selected-cols"></div>
@@ -327,6 +330,24 @@
 
   document.getElementById("move-up").addEventListener("click", function () { moveActive(-1); });
   document.getElementById("move-down").addEventListener("click", function () { moveActive(1); });
+  document.getElementById("copy-col").addEventListener("click", function () {
+    if (activeIdx < 0 || !selected[activeIdx]) {
+      alert("ابتدا یک ردیف را انتخاب کنید.");
+      return;
+    }
+    var src = selected[activeIdx];
+    var copy = {
+      key: src.key,
+      source: src.source,
+      level: src.level,
+      label: (src.label || src.origLabel || src.key) + " (کپی)",
+      origLabel: src.origLabel || src.label || src.key
+    };
+    selected.splice(activeIdx + 1, 0, copy);
+    activeIdx = activeIdx + 1;
+    renderSelected();
+    syncHidden();
+  });
 
   function updatePath() {
     if (activeIdx < 0 || !selected[activeIdx]) {

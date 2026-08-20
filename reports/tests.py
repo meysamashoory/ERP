@@ -69,6 +69,7 @@ class ReportFlowTests(TestCase):
                 "columns_json": (
                     '[{"key":"data_titles","source":"data_entry","level":1,"label":"عناوین"},'
                     '{"key":"awaiting_production","source":"data_entry","level":1,"label":"انتظار"},'
+                    '{"key":"running_production","source":"data_entry","level":1,"label":"در حال تولید"},'
                     '{"key":"entry_notes","source":"data_entry","level":1,"label":"توضیح"}]'
                 ),
             },
@@ -82,23 +83,26 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "report-edit-toggle")
         self.assertContains(detail, "قابل ویرایش")
+        self.assertContains(detail, "افزودن ردیف")
 
         save = self.client.post(
             reverse("report_detail", args=[report.pk]),
             {
                 "action": "save_entry",
                 "entry_payload": (
-                    '{"cells":{"":{"data_titles":"زانو ۱۱۰",'
-                    '"awaiting_production":"۳۰ ثانیه","entry_notes":"تستی"}}}'
+                    '{"rows":[{"data_titles":"زانو ۱۱۰",'
+                    '"awaiting_production":"سرپیچ ۹۰",'
+                    '"running_production":"زانو پروتکت ۱۱۰",'
+                    '"entry_notes":"تستی"}]}'
                 ),
             },
         )
         self.assertEqual(save.status_code, 302)
         report.refresh_from_db()
-        self.assertEqual(report.entry_data["cells"][""]["data_titles"], "زانو ۱۱۰")
+        self.assertEqual(report.entry_data["rows"][0]["data_titles"], "زانو ۱۱۰")
         after = self.client.get(reverse("report_detail", args=[report.pk]))
         self.assertContains(after, "زانو ۱۱۰")
-        self.assertContains(after, "۳۰ ثانیه")
+        self.assertContains(after, "سرپیچ ۹۰")
 
     def test_awaiting_production_field_lists_awaiting_molds(self):
         from catalog.models import MoldOption
@@ -108,7 +112,6 @@ class ReportFlowTests(TestCase):
 
         mold = MoldOption.objects.filter(label="قالب اصلی").first()
         self.assertIsNotNone(mold)
-        # Reuse an existing plan item without a program, or create a fresh awaiting program.
         item = (
             WeeklyPlanItem.objects.filter(program__isnull=True)
             .select_related("product", "machine")
@@ -140,6 +143,7 @@ class ReportFlowTests(TestCase):
             status=ProductionProgram.Status.AWAITING,
         )
         self.assertEqual(program.status, ProductionProgram.Status.AWAITING)
+        product_name = item.product.name
 
         self.client.login(username="expert", password="erp12345")
         report = SavedReport.objects.create(
@@ -151,18 +155,22 @@ class ReportFlowTests(TestCase):
             data_source="data_entry",
             columns=[
                 {"key": "awaiting_production", "source": "data_entry", "level": 1, "label": "انتظار"},
+                {"key": "running_production", "source": "data_entry", "level": 1, "label": "در حال تولید"},
             ],
         )
         detail = self.client.get(reverse("report_detail", args=[report.pk]))
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "report-edit-toggle")
-        # Live awaiting molds appear in the table and in entry-meta options JSON
-        self.assertContains(detail, "قالب اصلی")
         meta = detail.context["entry_meta"]
         awaiting = next(m for m in meta if m["key"] == "awaiting_production")
-        self.assertEqual(awaiting["type"], "awaiting_molds")
-        self.assertTrue(awaiting["options"])
-        self.assertTrue(any("قالب اصلی" in (o.get("label") or "") for o in awaiting["options"]))
+        running = next(m for m in meta if m["key"] == "running_production")
+        self.assertEqual(awaiting["type"], "product_select")
+        self.assertEqual(running["type"], "product_select")
+        self.assertTrue(any(product_name == (o.get("value") or "") for o in awaiting["options"]))
+        # Options are product names only (no machine/mold details)
+        for opt in awaiting["options"]:
+            self.assertEqual(opt["label"], opt["value"])
+            self.assertNotIn("(", opt["label"])
 
     def test_send_duplicate_number_alerts(self):
         self.client.login(username="expert", password="erp12345")

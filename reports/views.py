@@ -259,11 +259,36 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         except json.JSONDecodeError:
             messages.error(request, "داده ورودی نامعتبر است.")
             return redirect(request.get_full_path())
+        entry = dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {}
+
+        rows_in = payload.get("rows") if isinstance(payload, dict) else None
+        if isinstance(rows_in, list):
+            clean_rows = []
+            for row in rows_in[:200]:
+                if not isinstance(row, dict):
+                    continue
+                clean = {}
+                for k, v in row.items():
+                    key = str(k)[:80]
+                    if not key or key.startswith("_"):
+                        continue
+                    clean[key] = str(v)[:2000]
+                clean_rows.append(clean)
+            entry["rows"] = clean_rows or [{}]
+            if clean_rows:
+                entry["values"] = dict(clean_rows[0])
+                entry["cells"] = {"": dict(clean_rows[0])}
+            report.entry_data = entry
+            report.save(update_fields=["entry_data", "updated_at"])
+            messages.success(request, "تغییرات ذخیره شد.")
+            q = request.GET.urlencode()
+            return redirect(request.path + (("?" + q) if q else ""))
+
         cells_in = payload.get("cells") if isinstance(payload, dict) else {}
         if not isinstance(cells_in, dict):
             cells_in = {}
-        entry = dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {}
         cells = dict(entry.get("cells") or {}) if isinstance(entry.get("cells"), dict) else {}
+        ordered_rows = []
         for sig, values in cells_in.items():
             if not isinstance(values, dict):
                 continue
@@ -274,9 +299,12 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
                     continue
                 clean[key] = str(v)[:2000]
             cells[str(sig)] = clean
+            ordered_rows.append(clean)
             if str(sig) in ("", "__empty__"):
                 entry["values"] = clean
         entry["cells"] = cells
+        if ordered_rows:
+            entry["rows"] = ordered_rows
         report.entry_data = entry
         report.save(update_fields=["entry_data", "updated_at"])
         messages.success(request, "تغییرات ذخیره شد.")
