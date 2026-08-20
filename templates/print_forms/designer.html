@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=16">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=17">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -60,12 +60,50 @@
       <span class="sep"></span>
       <div class="dz-font-group" id="font-toolbar" title="قالب‌بندی متن">
         <select id="tb-font-family" disabled aria-label="فونت">
-          <option value="Tahoma">Tahoma</option>
-          <option value="Vazirmatn, Tahoma, sans-serif">وزیرمتن</option>
-          <option value="Arial, sans-serif">Arial</option>
-          <option value="'Times New Roman', Times, serif">Times New Roman</option>
-          <option value="'Courier New', monospace">Courier New</option>
-          <option value="Georgia, serif">Georgia</option>
+          <optgroup label="فارسی">
+            <option value="Vazirmatn, Tahoma, sans-serif">وزیرمتن</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="'IRANSans', Tahoma, sans-serif">ایران‌سنس</option>
+            <option value="'IRANSansX', Tahoma, sans-serif">ایران‌سنس X</option>
+            <option value="'Shabnam', Tahoma, sans-serif">شبنم</option>
+            <option value="'Samim', Tahoma, sans-serif">صمیم</option>
+            <option value="'Sahel', Tahoma, sans-serif">ساحل</option>
+            <option value="'Tanha', Tahoma, sans-serif">تنها</option>
+            <option value="'Parastoo', Tahoma, sans-serif">پرستو</option>
+            <option value="'Gandom', Tahoma, serif">گندم</option>
+            <option value="'Nahid', Tahoma, sans-serif">ناهید</option>
+            <option value="'B Nazanin', Tahoma, sans-serif">بی‌نازنین</option>
+            <option value="'B Lotus', Tahoma, serif">بی‌لوتوس</option>
+            <option value="'B Mitra', Tahoma, serif">بی‌میترا</option>
+            <option value="'B Traffic', Tahoma, sans-serif">بی‌ترافیک</option>
+            <option value="'B Yekan', Tahoma, sans-serif">بی‌یکان</option>
+            <option value="'B Zar', Tahoma, serif">بی‌زر</option>
+            <option value="'B Titr', Tahoma, sans-serif">بی‌تیتر</option>
+            <option value="'B Koodak', Tahoma, sans-serif">بی‌کودک</option>
+            <option value="'B Homa', Tahoma, sans-serif">بی‌هما</option>
+            <option value="'XB Niloofar', Tahoma, serif">ایکس‌بی نیلوفر</option>
+            <option value="'XB Zar', Tahoma, serif">ایکس‌بی زر</option>
+          </optgroup>
+          <optgroup label="لاتین">
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+            <option value="'Helvetica Neue', Helvetica, Arial, sans-serif">Helvetica</option>
+            <option value="'Times New Roman', Times, serif">Times New Roman</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Garamond, serif">Garamond</option>
+            <option value="'Courier New', monospace">Courier New</option>
+            <option value="Verdana, sans-serif">Verdana</option>
+            <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+            <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+            <option value="Impact, sans-serif">Impact</option>
+            <option value="'Palatino Linotype', Palatino, serif">Palatino</option>
+            <option value="'Lucida Console', monospace">Lucida Console</option>
+            <option value="'Lucida Sans Unicode', 'Lucida Grande', sans-serif">Lucida Sans</option>
+            <option value="'Gill Sans', 'Gill Sans MT', sans-serif">Gill Sans</option>
+            <option value="Calibri, Candara, sans-serif">Calibri</option>
+            <option value="Cambria, serif">Cambria</option>
+            <option value="'Century Gothic', sans-serif">Century Gothic</option>
+          </optgroup>
         </select>
         <select id="tb-font-size" disabled aria-label="اندازه">
           <option value="8">۸</option>
@@ -81,8 +119,24 @@
           <option value="28">۲۸</option>
           <option value="32">۳۲</option>
           <option value="36">۳۶</option>
+          <option value="48">۴۸</option>
+          <option value="72">۷۲</option>
         </select>
-        <input type="color" id="tb-font-color" value="#111111" disabled title="رنگ فونت" aria-label="رنگ فونت">
+        <div class="dz-color-wrap" id="tb-color-wrap">
+          <button type="button" id="tb-font-color-btn" disabled title="رنگ فونت" aria-label="رنگ فونت">
+            <span class="dz-color-swatch" id="tb-font-color-swatch"></span>
+            <span class="dz-color-caret">▾</span>
+          </button>
+          <input type="hidden" id="tb-font-color" value="#111111">
+          <input type="color" id="tb-font-color-native" value="#111111" tabindex="-1" aria-hidden="true">
+          <div class="dz-color-panel" id="tb-color-panel" hidden>
+            <div class="dz-color-section-label">رنگ‌های زمینه</div>
+            <div class="dz-color-grid" id="tb-color-theme"></div>
+            <div class="dz-color-section-label">رنگ‌های استاندارد</div>
+            <div class="dz-color-grid" id="tb-color-standard"></div>
+            <button type="button" class="dz-color-more" id="tb-color-more">رنگ‌های بیشتر…</button>
+          </div>
+        </div>
         <button type="button" id="tb-font-bold" disabled title="ضخیم (Bold)"><b>B</b></button>
         <button type="button" id="tb-font-italic" disabled title="ایتالیک"><i>I</i></button>
         <button type="button" id="tb-font-underline" disabled title="زیرخط"><u>U</u></button>
@@ -209,9 +263,9 @@
                   <option value="count">تعداد تکرار</option>
                 </select>
               </div>
-              <div class="dz-field" id="extend-count-wrap" hidden>
+              <div class="dz-field" id="extend-count-wrap">
                 <label>تعداد تکرار</label>
-                <input type="number" id="prop-extend-count" min="1" max="99" step="1" value="2" lang="en" dir="ltr">
+                <input type="number" id="prop-extend-count" min="1" max="99" step="1" value="2" lang="en" dir="ltr" disabled>
               </div>
               <p style="font-size:11px;color:#64748b;margin:4px 0 0">تا پایین صفحه مستقل از تعداد آیتم است؛ وابسته به فیلد با تعداد آیتم‌های داده هماهنگ می‌شود؛ تعداد تکرار تعداد ثابت ردیف‌ها را مشخص می‌کند.</p>
             </div>
@@ -300,6 +354,6 @@
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
 <script src="{% static 'js/form_sheet_render.js' %}?v=5"></script>
-<script src="{% static 'js/form_designer.js' %}?v=17"></script>
+<script src="{% static 'js/form_designer.js' %}?v=18"></script>
 </body>
 </html>

@@ -192,12 +192,39 @@
     { v: "none", t: "بدون خط", preview: "none" }
   ];
 
+  function lineOptByValue(value) {
+    for (var i = 0; i < LINE_STYLE_OPTS.length; i++) {
+      if (LINE_STYLE_OPTS[i].v === value) return LINE_STYLE_OPTS[i];
+    }
+    return LINE_STYLE_OPTS[0];
+  }
+
+  function closeAllLineMenus(except) {
+    document.querySelectorAll(".line-style-picker.is-open").forEach(function (p) {
+      if (p !== except) p.classList.remove("is-open");
+    });
+  }
+
   function buildLineStylePickers() {
     document.querySelectorAll("[data-line-picker]").forEach(function (picker) {
       if (picker.dataset.built) return;
       picker.dataset.built = "1";
+      picker.classList.add("ls-dropdown");
       var allowNone = picker.getAttribute("data-allow-none") === "1";
       var targetId = picker.getAttribute("data-line-picker");
+
+      var trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "ls-trigger";
+      trigger.innerHTML =
+        '<span class="ls-preview ls-solid" data-ls-preview></span>' +
+        '<span class="ls-caption" data-ls-label>ممتد</span>' +
+        '<span class="ls-caret">▾</span>';
+
+      var menu = document.createElement("div");
+      menu.className = "ls-menu";
+      menu.hidden = true;
+
       LINE_STYLE_OPTS.forEach(function (opt) {
         if (opt.v === "none" && !allowNone) return;
         var btn = document.createElement("button");
@@ -205,24 +232,60 @@
         btn.className = "ls-btn";
         btn.dataset.value = opt.v;
         btn.title = opt.t;
-        btn.innerHTML = '<span class="ls-preview ls-' + opt.preview + '"></span><span class="ls-caption">' + opt.t + "</span>";
-        btn.addEventListener("click", function () {
+        btn.innerHTML =
+          '<span class="ls-preview ls-' + opt.preview + '"></span>' +
+          '<span class="ls-caption">' + opt.t + "</span>";
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
           if (picker.classList.contains("is-disabled")) return;
           var hidden = document.getElementById(targetId);
           if (!hidden) return;
           hidden.value = opt.v;
           syncLinePicker(picker, opt.v);
+          picker.classList.remove("is-open");
+          menu.hidden = true;
           hidden.dispatchEvent(new Event("change", { bubbles: true }));
         });
-        picker.appendChild(btn);
+        menu.appendChild(btn);
       });
+
+      trigger.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (picker.classList.contains("is-disabled")) return;
+        var open = !picker.classList.contains("is-open");
+        closeAllLineMenus(picker);
+        picker.classList.toggle("is-open", open);
+        menu.hidden = !open;
+      });
+
+      picker.appendChild(trigger);
+      picker.appendChild(menu);
+      syncLinePicker(picker, (document.getElementById(targetId) || {}).value || "solid");
     });
+
+    if (!window.__lsMenuDocWired) {
+      window.__lsMenuDocWired = true;
+      document.addEventListener("click", function () {
+        closeAllLineMenus(null);
+        document.querySelectorAll(".ls-menu").forEach(function (m) { m.hidden = true; });
+      });
+    }
   }
 
   function syncLinePicker(picker, value) {
     if (!picker) return;
+    var opt = lineOptByValue(value || "solid");
+    var preview = picker.querySelector("[data-ls-preview]");
+    var label = picker.querySelector("[data-ls-label]");
+    if (preview) {
+      preview.className = "ls-preview ls-" + opt.preview;
+      preview.setAttribute("data-ls-preview", "");
+    }
+    if (label) label.textContent = opt.t;
     picker.querySelectorAll(".ls-btn").forEach(function (btn) {
-      btn.classList.toggle("is-active", btn.dataset.value === value);
+      btn.classList.toggle("is-active", btn.dataset.value === opt.v);
     });
   }
 
@@ -235,7 +298,73 @@
 
   function setLinePickerDisabled(inputId, disabled) {
     var picker = document.querySelector('[data-line-picker="' + inputId + '"]');
-    if (picker) picker.classList.toggle("is-disabled", !!disabled);
+    if (!picker) return;
+    picker.classList.toggle("is-disabled", !!disabled);
+    if (disabled) {
+      picker.classList.remove("is-open");
+      var menu = picker.querySelector(".ls-menu");
+      if (menu) menu.hidden = true;
+    }
+  }
+
+  var THEME_COLORS = [
+    "#ffffff", "#000000", "#e7e6e6", "#44546a", "#5b9bd5", "#ed7d31", "#a5a5a5", "#ffc000", "#4472c4", "#70ad47",
+    "#f2f2f2", "#7f7f7f", "#d0cece", "#d6dce4", "#ddebf7", "#fce4d6", "#ededed", "#fff2cc", "#d6dce4", "#e2efda",
+    "#d8d8d8", "#595959", "#aeabab", "#adb9ca", "#bdd7ee", "#f8cbad", "#dbdbdb", "#ffe699", "#b4c6e7", "#c6efce",
+    "#bfbfbf", "#3f3f3f", "#757070", "#8496b0", "#9bc2e6", "#f4b183", "#c9c9c9", "#ffd966", "#8ea9db", "#a9d08e",
+    "#a5a5a5", "#262626", "#3a3838", "#323f4f", "#2f5496", "#c65911", "#7b7b7b", "#bf8f00", "#2f5496", "#548235",
+    "#7f7f7f", "#0d0d0d", "#171616", "#222a35", "#1f4e79", "#833c0c", "#525252", "#806000", "#1f4e79", "#375623"
+  ];
+  var STANDARD_COLORS = [
+    "#c00000", "#ff0000", "#ffc000", "#ffff00", "#92d050", "#00b050", "#00b0f0", "#0070c0", "#002060", "#7030a0"
+  ];
+
+  function closeColorPanel() {
+    var panel = document.getElementById("tb-color-panel");
+    if (panel) panel.hidden = true;
+  }
+
+  function syncColorSwatch(hex) {
+    var sw = document.getElementById("tb-font-color-swatch");
+    var hidden = document.getElementById("tb-font-color");
+    var native = document.getElementById("tb-font-color-native");
+    if (hidden) hidden.value = hex;
+    if (native) native.value = hex;
+    if (sw) sw.style.background = hex;
+  }
+
+  function buildColorPalette() {
+    var theme = document.getElementById("tb-color-theme");
+    var standard = document.getElementById("tb-color-standard");
+    if (!theme || theme.dataset.built) return;
+    theme.dataset.built = "1";
+    function addSwatches(host, colors) {
+      colors.forEach(function (hex) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "dz-color-chip";
+        b.style.background = hex;
+        b.title = hex;
+        b.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          applyFontColor(hex);
+          closeColorPanel();
+        });
+        host.appendChild(b);
+      });
+    }
+    addSwatches(theme, THEME_COLORS);
+    addSwatches(standard, STANDARD_COLORS);
+  }
+
+  function applyFontColor(hex) {
+    var f = find(selectedId);
+    if (!isTextish(f) || f.locked) return;
+    pushHistory();
+    f.font_color = hex;
+    syncColorSwatch(hex);
+    render();
   }
 
   function applyTextStyle(el, f) {
@@ -509,22 +638,36 @@
     var textish = isTextish(f) && !(f && f.locked);
     var fam = document.getElementById("tb-font-family");
     var size = document.getElementById("tb-font-size");
-    var color = document.getElementById("tb-font-color");
+    var colorBtn = document.getElementById("tb-font-color-btn");
     var bold = document.getElementById("tb-font-bold");
     var italic = document.getElementById("tb-font-italic");
     var under = document.getElementById("tb-font-underline");
-    [fam, size, color, bold, italic, under].forEach(function (el) {
+    [fam, size, colorBtn, bold, italic, under].forEach(function (el) {
       if (el) el.disabled = !textish;
     });
+    if (!textish) closeColorPanel();
     if (!textish || !f) {
       if (bold) bold.classList.remove("active");
       if (italic) italic.classList.remove("active");
       if (under) under.classList.remove("active");
       return;
     }
-    if (fam) fam.value = f.font_family || "Tahoma";
+    if (fam) {
+      var want = f.font_family || "Tahoma";
+      var matched = false;
+      Array.prototype.forEach.call(fam.options, function (o) {
+        if (o.value === want) matched = true;
+      });
+      if (!matched) {
+        var opt = document.createElement("option");
+        opt.value = want;
+        opt.textContent = want.split(",")[0].replace(/['"]/g, "");
+        fam.appendChild(opt);
+      }
+      fam.value = want;
+    }
     if (size) size.value = String(f.font_size || 12);
-    if (color) color.value = f.font_color || "#111111";
+    syncColorSwatch(f.font_color || "#111111");
     if (bold) bold.classList.toggle("active", !!f.font_bold);
     if (italic) italic.classList.toggle("active", !!f.font_italic);
     if (under) under.classList.toggle("active", !!f.font_underline);
@@ -624,8 +767,11 @@
       var countWrap = document.getElementById("extend-count-wrap");
       var countInp = document.getElementById("prop-extend-count");
       var isCount = extendModeOf(f) === "count";
-      if (countWrap) countWrap.hidden = !isCount;
-      if (countInp) countInp.value = f.extend_count || 2;
+      if (countWrap) countWrap.hidden = false;
+      if (countInp) {
+        countInp.disabled = !isCount;
+        countInp.value = f.extend_count || 2;
+      }
     }
     if (isLineKind(f.kind)) {
       setLinePickerValue("prop-line-style", f.line_style || "solid");
@@ -984,8 +1130,11 @@
     f.extend_mode = this.value;
     delete f.data_extend;
     if (f.extend_mode === "count" && !f.extend_count) f.extend_count = 2;
-    var countWrap = document.getElementById("extend-count-wrap");
-    if (countWrap) countWrap.hidden = f.extend_mode !== "count";
+    var countInp = document.getElementById("prop-extend-count");
+    if (countInp) {
+      countInp.disabled = f.extend_mode !== "count";
+      if (f.extend_mode === "count") countInp.value = f.extend_count || 2;
+    }
     render();
   });
   document.getElementById("prop-extend-count").addEventListener("change", function () {
@@ -1044,7 +1193,10 @@
   function wireFontToolbar() {
     var fam = document.getElementById("tb-font-family");
     var size = document.getElementById("tb-font-size");
-    var color = document.getElementById("tb-font-color");
+    var colorBtn = document.getElementById("tb-font-color-btn");
+    var colorPanel = document.getElementById("tb-color-panel");
+    var colorMore = document.getElementById("tb-color-more");
+    var colorNative = document.getElementById("tb-font-color-native");
     var bold = document.getElementById("tb-font-bold");
     var italic = document.getElementById("tb-font-italic");
     var under = document.getElementById("tb-font-underline");
@@ -1055,15 +1207,35 @@
       mutator(f);
       render();
     }
+    buildColorPalette();
+    syncColorSwatch("#111111");
     if (fam) fam.addEventListener("change", function () {
       applyFont(function (f) { f.font_family = fam.value; });
     });
     if (size) size.addEventListener("change", function () {
       applyFont(function (f) { f.font_size = parseInt(size.value, 10) || 12; });
     });
-    if (color) color.addEventListener("input", function () {
-      applyFont(function (f) { f.font_color = color.value; });
-    });
+    if (colorBtn && colorPanel) {
+      colorBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (colorBtn.disabled) return;
+        colorPanel.hidden = !colorPanel.hidden;
+      });
+    }
+    if (colorMore && colorNative) {
+      colorMore.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeColorPanel();
+        colorNative.click();
+      });
+    }
+    if (colorNative) {
+      colorNative.addEventListener("input", function () {
+        applyFontColor(colorNative.value);
+      });
+    }
     if (bold) bold.addEventListener("click", function () {
       applyFont(function (f) { f.font_bold = !f.font_bold; });
     });
@@ -1072,6 +1244,10 @@
     });
     if (under) under.addEventListener("click", function () {
       applyFont(function (f) { f.font_underline = !f.font_underline; });
+    });
+    document.addEventListener("click", function (e) {
+      var wrap = document.getElementById("tb-color-wrap");
+      if (wrap && !wrap.contains(e.target)) closeColorPanel();
     });
   }
   wireFontToolbar();
