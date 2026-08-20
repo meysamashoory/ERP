@@ -20,11 +20,29 @@ from catalog.models import Product
 
 @login_required
 def plan_list(request):
+    from django.db.models import Count
+
     from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
+
     profile = get_profile(request.user)
-    plans = list(WeeklyPlan.objects.select_related("created_by", "approved_by").all())
+    sort = (request.GET.get("sort") or "date").strip()
+    direction = (request.GET.get("dir") or "desc").strip().lower()
+    if sort not in {"number", "date"}:
+        sort = "date"
+    if direction not in {"asc", "desc"}:
+        direction = "desc"
+    order_field = "program_number" if sort == "number" else "date"
+    if direction == "desc":
+        order_field = f"-{order_field}"
+
+    plans = list(
+        WeeklyPlan.objects.select_related("created_by", "approved_by")
+        .annotate(mold_count=Count("items", distinct=True))
+        .order_by(order_field, "-id")
+    )
     for plan in plans:
         plan.can_edit_by_user = _can_request_edit(request.user, profile, plan)
+        plan.can_delete_by_user = _can_delete_plan(request.user, profile)
     forms_weekly = [
         {"id": f.pk, "number": f.number, "title": f.title}
         for f in forms_for_purpose(request.user, PURPOSE_WEEKLY)
@@ -37,6 +55,8 @@ def plan_list(request):
             "profile": profile,
             "forms_weekly": forms_weekly,
             "forms_weekly_json": __import__("json").dumps(forms_weekly, ensure_ascii=False),
+            "sort": sort,
+            "dir": direction,
         },
     )
 
@@ -75,37 +95,53 @@ def plan_create(request):
 def _is_plan_owner(user, plan) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_superuser", False):
-        return True
     return bool(plan.created_by_id and plan.created_by_id == user.id)
 
 
+def _is_planning_manager(user, profile) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    return bool(profile and profile.is_manager)
+
+
 def _can_edit_plan(user, profile, plan) -> bool:
-    """Creator with create-permission may edit their own draft plan."""
-    return bool(
-        profile
-        and profile.can_create_plans
-        and _is_plan_owner(user, plan)
-        and plan.status == WeeklyPlan.Status.DRAFT
-    )
+    """Creator or planning manager may edit a draft plan."""
+    if not profile or not profile.can_create_plans:
+        return False
+    if plan.status != WeeklyPlan.Status.DRAFT:
+        return False
+    return _is_planning_manager(user, profile) or _is_plan_owner(user, plan)
 
 
 def _can_request_edit(user, profile, plan) -> bool:
-    """Creator may choose ویرایش (approved plans are reopened to draft)."""
-    return bool(profile and profile.can_create_plans and _is_plan_owner(user, plan))
+    """Creator or manager may choose ویرایش (approved plans reopen to draft)."""
+    if not profile or not profile.can_create_plans:
+        return False
+    return _is_planning_manager(user, profile) or _is_plan_owner(user, plan)
+
+
+def _can_delete_plan(user, profile) -> bool:
+    """Only planning manager (or superuser) may delete a plan."""
+    return _is_planning_manager(user, profile)
 
 
 @login_required
 def plan_operate(request, pk):
-    """List operations: مشاهده (default) or ویرایش (owner only)."""
+    """List operations: مشاهده / ویرایش / حذف برنامه."""
     plan = get_object_or_404(WeeklyPlan, pk=pk)
     profile = get_profile(request.user)
     action = (request.POST.get("action") or "view").strip()
     if request.method != "POST":
-        return redirect("plan_detail", pk=pk)
+        return redirect(f"{reverse('plan_detail', args=[pk])}?mode=view")
+    if action == "delete":
+        if not _can_delete_plan(request.user, profile):
+            raise PermissionDenied("فقط مدیر برنامه‌ریزی می‌تواند برنامه را حذف کند.")
+        plan.delete()
+        messages.success(request, "برنامه حذف شد.")
+        return redirect("plan_list")
     if action == "edit":
         if not _can_request_edit(request.user, profile, plan):
-            raise PermissionDenied("فقط ایجادکنندهٔ برنامه می‌تواند آن را ویرایش کند.")
+            raise PermissionDenied("فقط ایجادکننده یا مدیر می‌تواند برنامه را ویرایش کند.")
         if plan.status != WeeklyPlan.Status.DRAFT:
             plan.status = WeeklyPlan.Status.DRAFT
             plan.approved_by = None
