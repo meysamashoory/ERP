@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}{% endblock %}
 {% block heading %}
-<div class="entity-heading" id="entity-heading">
+<div class="entity-heading entity-heading-stack" id="entity-heading">
   <div class="entity-heading-view" id="heading-view" {% if mode != 'edit' and not form.title.value %}hidden{% endif %}>
     <span class="entity-heading-text" id="heading-text">{% if report %}{{ report.heading_label }}{% elif form.title.value %}{{ form.number.value }}- {{ form.title.value }}{% if form.description.value %} ({{ form.description.value }}){% endif %}{% endif %}</span>
-    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش عنوان</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش</button>
   </div>
   <div class="entity-heading-edit" id="heading-edit" {% if mode == 'edit' or form.title.value %}hidden{% endif %}>
     <span class="muted">پس از تایید اطلاعات، عنوان اینجا نمایش داده می‌شود.</span>

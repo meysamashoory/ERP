@@ -110,6 +110,9 @@ a { color: var(--brand); }
 .entity-heading {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
 }
+.entity-heading-stack {
+  flex-direction: column; align-items: flex-start; gap: 8px;
+}
 .entity-heading-view {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
 }
@@ -120,11 +123,24 @@ a { color: var(--brand); }
 .entity-heading-form {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
+.entity-heading-form[hidden],
+.btn[hidden],
+[hidden] {
+  display: none !important;
+}
 .entity-heading-form .input-sm {
   padding: 5px 8px; font-size: 13px; width: auto; min-width: 72px;
 }
 .entity-heading-form input[name="title"] { min-width: 160px; }
 .entity-heading-form input[name="description"] { min-width: 140px; }
+.panel-head-start {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+}
+.panel-head-start h2 { margin: 0; }
+.position-chip {
+  font-size: 12px; color: var(--muted); background: rgba(148,163,184,.16);
+  border-radius: 8px; padding: 3px 8px; white-space: nowrap;
+}
 .topbar-user { display: flex; align-items: center; gap: 12px; font-size: 14px; flex-shrink: 0; }
 .user-name { font-weight: 600; }
 .inline-form { display: inline; margin: 0; }

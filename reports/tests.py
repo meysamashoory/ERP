@@ -54,8 +54,10 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "100- گزارش تست")
         self.assertContains(detail, "(توضیح نمونه)")
-        self.assertContains(detail, "ویرایش عنوان")
+        self.assertContains(detail, ">ویرایش<")
         self.assertContains(detail, "خروجی")
+        self.assertContains(detail, "موقعیت:")
+        self.assertNotContains(detail, "قابل اصلاح")
         self.assertNotContains(detail, "ارسال گزارش برای کاربر دیگر")
 
         excel = self.client.get(reverse("report_detail", args=[report.pk]), {"export": "excel"})
@@ -88,8 +90,10 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "report-edit-toggle")
         self.assertContains(detail, "اصلاح گزارش")
-        self.assertContains(detail, "قابل اصلاح")
+        self.assertNotContains(detail, "قابل اصلاح")
         self.assertContains(detail, "افزودن ردیف")
+        self.assertContains(detail, 'id="add-entry-row" hidden')
+        self.assertContains(detail, "موقعیت:")
 
         # Persist column uids used by the report for entry storage
         report.refresh_from_db()
@@ -534,7 +538,7 @@ class PrintFormFlowTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, report.title)
         self.assertContains(resp, "نحوه نمایش")
-        self.assertContains(resp, "ویرایش عنوان")
+        self.assertContains(resp, ">ویرایش<")
         self.assertNotContains(resp, "بالا = راست")
 
     def test_sidebar_labels(self):
