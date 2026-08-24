@@ -208,10 +208,6 @@
   document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
   cancelBtn.addEventListener("click", showBuilder);
 
-  if (mode === "edit") showBuilder();
-  else showMetaEditor();
-  {% if form.errors %}showMetaEditor();{% endif %}
-
   var trees = document.getElementById("source-trees");
   var list = document.getElementById("selected-cols");
   var pathEl = document.getElementById("col-path");
@@ -497,7 +493,15 @@
     syncHidden();
   }
 
+  {% if form.errors %}
+  showMetaEditor();
   renderAll();
+  {% elif mode == 'edit' %}
+  showBuilder();
+  {% else %}
+  showMetaEditor();
+  renderAll();
+  {% endif %}
 })();
 </script>
 {% endblock %}
