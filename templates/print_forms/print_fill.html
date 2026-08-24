@@ -9,10 +9,23 @@
     html, body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { position: fixed; top: 10px; left: 10px; z-index: 10; }
     .btn { padding: 6px 12px; border: 1px solid #94a3b8; background: #f8fafc; border-radius: 6px; cursor: pointer; }
-    #sheet { margin: 12px auto; }
+    #sheets-host { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 12px 0; }
+    .print-sheet {
+      margin: 0 auto;
+      box-shadow: 0 0 0 1px #e2e8f0;
+    }
     @media print {
       .no-print { display: none !important; }
-      #sheet { margin: 0 auto; }
+      #sheets-host { gap: 0; padding: 0; }
+      .print-sheet {
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+      }
+      .print-sheet:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
     }
   </style>
 </head>
@@ -21,12 +34,11 @@
     <button type="button" class="btn" onclick="window.print()">چاپ</button>
     <button type="button" class="btn" onclick="window.close()">بستن</button>
   </div>
-  <div id="sheet" class="form-canvas print-sheet"
-       style="--page-w: {{ print_form.page_width_mm }}; --page-h: {{ print_form.page_height_mm }};"></div>
+  <div id="sheets-host"></div>
   <script id="frames-view" type="application/json">{{ frames_json|safe }}</script>
   <script id="page-settings-view" type="application/json">{{ page_settings_json|safe }}</script>
   <script id="fill-rows" type="application/json">{{ fill_rows_json|safe }}</script>
-  <script src="{% static 'js/form_sheet_render.js' %}?v=6"></script>
+  <script src="{% static 'js/form_sheet_render.js' %}?v=7"></script>
   <script>
   (function () {
     var frames = [], settings = {}, fillRows = [];
@@ -34,20 +46,58 @@
     try { settings = JSON.parse(document.getElementById("page-settings-view").textContent || "{}") || {}; } catch (e) {}
     try { fillRows = JSON.parse(document.getElementById("fill-rows").textContent || "[]") || []; } catch (e) {}
     if (!Array.isArray(fillRows)) fillRows = [];
-    var canvas = document.getElementById("sheet");
-    if (window.ERPFormSheetRender) {
-      window.ERPFormSheetRender.render({
-        canvas: canvas,
-        frames: frames,
-        pageWidthMm: {{ print_form.page_width_mm|default:210 }},
-        pageHeightMm: {{ print_form.page_height_mm|default:297 }},
-        pageSettings: settings,
-        columnGroups: [],
-        useMm: true,
-        fillRows: fillRows,
-        viewMode: "context"
-      });
+    if (!Array.isArray(frames)) frames = [];
+
+    function sheetOfFrame(f) {
+      try { return Math.max(1, parseInt(f && f.sheet, 10) || 1); } catch (e) { return 1; }
     }
+    function sheetOfRow(r) {
+      try { return Math.max(1, parseInt(r && r._sheet, 10) || 1); } catch (e) { return 1; }
+    }
+
+    var sheetCount = 1;
+    frames.forEach(function (f) { sheetCount = Math.max(sheetCount, sheetOfFrame(f)); });
+    fillRows.forEach(function (r) { sheetCount = Math.max(sheetCount, sheetOfRow(r)); });
+    try {
+      var declared = parseInt("{{ sheet_count|default:1 }}", 10);
+      if (!isNaN(declared) && declared > sheetCount) sheetCount = declared;
+    } catch (e) {}
+
+    var host = document.getElementById("sheets-host");
+    var pageW = {{ print_form.page_width_mm|default:210 }};
+    var pageH = {{ print_form.page_height_mm|default:297 }};
+
+    for (var s = 1; s <= sheetCount; s++) {
+      var pageFrames = frames.filter(function (f) { return sheetOfFrame(f) === s; });
+      // Legacy forms without sheet: all frames are sheet 1
+      if (s === 1 && !frames.some(function (f) { return f.sheet != null && parseInt(f.sheet, 10) > 1; })) {
+        pageFrames = frames.slice();
+      }
+      var pageRows = fillRows.filter(function (r) { return sheetOfRow(r) === s; });
+      // If no sheet metadata on rows and single sheet, use all rows
+      if (s === 1 && sheetCount === 1) {
+        pageRows = fillRows.slice();
+      }
+      var canvas = document.createElement("div");
+      canvas.className = "form-canvas print-sheet";
+      canvas.style.setProperty("--page-w", String(pageW));
+      canvas.style.setProperty("--page-h", String(pageH));
+      host.appendChild(canvas);
+      if (window.ERPFormSheetRender) {
+        window.ERPFormSheetRender.render({
+          canvas: canvas,
+          frames: pageFrames,
+          pageWidthMm: pageW,
+          pageHeightMm: pageH,
+          pageSettings: settings,
+          columnGroups: [],
+          useMm: true,
+          fillRows: pageRows,
+          viewMode: "context"
+        });
+      }
+    }
+
     {% if auto_print %}
     setTimeout(function () { window.print(); }, 200);
     {% endif %}

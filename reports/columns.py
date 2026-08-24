@@ -382,18 +382,58 @@ def _lookup_entry_values(entry_data: dict | None, signature: str) -> dict:
     return {}
 
 
-def _entry_rows_from_data(entry_data: dict | None) -> list[dict]:
-    """Normalize stored entry_data into a list of row dicts."""
+def row_sheet_number(row: dict | None) -> int:
+    """Return 1-based sheet index stored on an entry row (default 1)."""
+    if not isinstance(row, dict):
+        return 1
+    try:
+        n = int(row.get("sheet") or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, min(200, n))
+
+
+def entry_sheet_count(entry_data: dict | None) -> int:
+    """How many sheets exist for an editable report's entry data."""
+    if not entry_data or not isinstance(entry_data, dict):
+        return 1
+    try:
+        declared = int(entry_data.get("sheet_count") or 0)
+    except (TypeError, ValueError):
+        declared = 0
+    max_from_rows = 1
+    rows = entry_data.get("rows")
+    if isinstance(rows, list):
+        for row in rows:
+            max_from_rows = max(max_from_rows, row_sheet_number(row))
+    return max(1, declared, max_from_rows)
+
+
+def _entry_rows_from_data(
+    entry_data: dict | None,
+    *,
+    sheet: int | None = None,
+) -> list[dict]:
+    """Normalize stored entry_data into a list of row dicts.
+
+    When ``sheet`` is set, only rows belonging to that sheet are returned.
+    View/run_report pass ``sheet=None`` so all sheets appear stacked.
+    """
     if not entry_data or not isinstance(entry_data, dict):
         return [{}]
     rows = entry_data.get("rows")
     if isinstance(rows, list) and rows:
         out = []
         for row in rows:
-            if isinstance(row, dict):
-                out.append(dict(row))
-        return out or [{}]
+            if not isinstance(row, dict):
+                continue
+            if sheet is not None and row_sheet_number(row) != int(sheet):
+                continue
+            out.append(dict(row))
+        return out or ([{}] if sheet is None else [])
     stored = _lookup_entry_values(entry_data, "")
+    if sheet is not None and sheet != 1:
+        return []
     return [stored] if stored else [{}]
 
 
@@ -419,7 +459,7 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
     if data_source == "data_entry":
         rows_out = []
         for stored in _entry_rows_from_data(entry_data):
-            cell = {}
+            cell = {"_sheet": row_sheet_number(stored)}
             legacy_used: set[str] = set()
             for spec in specs:
                 sk = storage_key(spec)
@@ -429,7 +469,7 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
                 else:
                     cell[sk] = ""
             rows_out.append(cell)
-        return rows_out or [{}]
+        return rows_out or [{"_sheet": 1}]
 
     rows = []
     for record in _queryset(data_source):
@@ -558,6 +598,10 @@ def run_report(
             payload["_row_index"] = row_i
         else:
             payload["_entry_sig"] = row_signature(row, non_entry_level)
+        try:
+            payload["_sheet"] = int(row.get("_sheet") or 1)
+        except (TypeError, ValueError):
+            payload["_sheet"] = 1
         payloads.append(payload)
 
     return headers, display_rows, payloads, deeper

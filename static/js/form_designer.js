@@ -27,6 +27,11 @@
     if (f.hidden == null) f.hidden = false;
     if (f.locked == null) f.locked = false;
     if (f.rotation == null) f.rotation = 0;
+    try {
+      f.sheet = Math.max(1, Math.min(200, parseInt(f.sheet, 10) || 1));
+    } catch (e) {
+      f.sheet = 1;
+    }
     var isShape = f.kind === "box" || f.kind === "line" || f.kind === "line_h" || f.kind === "line_v";
     if (isShape) {
       if (f.extend_mode !== "page" && f.extend_mode !== "field" && f.extend_mode !== "none" && f.extend_mode !== "count") {
@@ -68,6 +73,7 @@
   var formPurpose = "";
   var linkedReportId = "";
   var reportLevelFilter = "";
+  var currentSheet = 1;
   var purposeCatalogs = {};
   var savedReports = [];
   try { purposeCatalogs = JSON.parse(document.getElementById("purpose-catalogs").textContent || "{}") || {}; } catch (e) {}
@@ -108,6 +114,42 @@
   function snapMm(v) { return Math.round(v / snap) * snap; }
   function find(id) { return frames.find(function (f) { return f.id === id; }); }
   function findIndex(id) { return frames.findIndex(function (f) { return f.id === id; }); }
+
+  function frameSheet(f) {
+    try {
+      return Math.max(1, Math.min(200, parseInt(f && f.sheet, 10) || 1));
+    } catch (e) {
+      return 1;
+    }
+  }
+
+  function linkedReportMeta() {
+    if (!linkedReportId) return null;
+    return savedReports.find(function (r) { return String(r.id) === String(linkedReportId); }) || null;
+  }
+
+  function reportSheetCount() {
+    var rep = linkedReportMeta();
+    var n = 1;
+    if (rep) {
+      try { n = Math.max(1, parseInt(rep.sheet_count, 10) || 1); } catch (e) { n = 1; }
+    }
+    frames.forEach(function (f) {
+      n = Math.max(n, frameSheet(f));
+    });
+    return n;
+  }
+
+  function sheetsEnabled() {
+    if (formPurpose !== "reports" || !linkedReportId) return false;
+    var rep = linkedReportMeta();
+    return !!(rep && rep.access_mode === "editable");
+  }
+
+  function visibleFrames() {
+    if (!sheetsEnabled()) return frames;
+    return frames.filter(function (f) { return frameSheet(f) === currentSheet; });
+  }
   function isSelected(id) { return selectedIds.indexOf(id) >= 0; }
   function clearSelection() { selectedId = null; selectedIds = []; }
   function selectOnly(id) {
@@ -127,7 +169,13 @@
   }
 
   function cloneState() {
-    return JSON.stringify({ frames: frames, pageSettings: pageSettings, pageW: pageW(), pageH: pageH() });
+    return JSON.stringify({
+      frames: frames,
+      pageSettings: pageSettings,
+      pageW: pageW(),
+      pageH: pageH(),
+      currentSheet: currentSheet
+    });
   }
   function pushHistory() {
     history.push(cloneState());
@@ -145,6 +193,9 @@
     if (snap < 1) snap = 1;
     if (snap > 10) snap = 10;
     pageSettings.snap_mm = snap;
+    if (s.currentSheet != null) {
+      try { currentSheet = Math.max(1, parseInt(s.currentSheet, 10) || 1); } catch (e) { currentSheet = 1; }
+    }
     clearSelection();
     selectedGuideIdx = null;
     syncUiChecks();
@@ -583,7 +634,7 @@
   function renderLayers() {
     var list = document.getElementById("layers-list");
     list.innerHTML = "";
-    frames.slice().reverse().forEach(function (f) {
+    visibleFrames().slice().reverse().forEach(function (f) {
       var row = document.createElement("div");
       row.className = "dz-clip" + (isSelected(f.id) ? " is-active" : "") + (f.hidden ? " is-layer-hidden" : "") + (f.locked ? " is-locked" : "");
       row.draggable = true;
@@ -733,6 +784,61 @@
       });
       numberUi.dataset.bound = "1";
     }
+  }
+
+  function syncSheetUi() {
+    var wrapEl = document.getElementById("report-sheet-controls");
+    var sheetUi = document.getElementById("ui-form-sheet");
+    var transferUi = document.getElementById("ui-transfer-from");
+    if (!wrapEl || !sheetUi || !transferUi) return;
+    var enabled = sheetsEnabled();
+    wrapEl.hidden = !enabled;
+    if (!enabled) {
+      currentSheet = 1;
+      return;
+    }
+    var count = reportSheetCount();
+    if (currentSheet > count) currentSheet = 1;
+    sheetUi.innerHTML = "";
+    for (var i = 1; i <= count; i++) {
+      var o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = "برگه " + i;
+      sheetUi.appendChild(o);
+    }
+    sheetUi.value = String(currentSheet);
+    transferUi.innerHTML = '<option value="">— انتخاب برگه —</option>';
+    for (var j = 1; j <= count; j++) {
+      if (j === currentSheet) continue;
+      var t = document.createElement("option");
+      t.value = String(j);
+      t.textContent = "برگه " + j;
+      transferUi.appendChild(t);
+    }
+  }
+
+  function transferSheetFrom(sourceSheet) {
+    sourceSheet = parseInt(sourceSheet, 10);
+    if (isNaN(sourceSheet) || sourceSheet < 1 || sourceSheet === currentSheet) {
+      toast("برگه مبدأ معتبر نیست");
+      return;
+    }
+    var srcFrames = frames.filter(function (f) { return frameSheet(f) === sourceSheet; });
+    if (!srcFrames.length) {
+      toast("برگه مبدأ خالی است");
+      return;
+    }
+    pushHistory();
+    frames = frames.filter(function (f) { return frameSheet(f) !== currentSheet; });
+    srcFrames.forEach(function (src, i) {
+      var f = JSON.parse(JSON.stringify(src));
+      f.id = "f" + Date.now() + "-" + (uid++) + "-t" + i;
+      f.sheet = currentSheet;
+      frames.push(f);
+    });
+    clearSelection();
+    render();
+    toast("محتوای برگه " + sourceSheet + " به برگه " + currentSheet + " منتقل شد");
   }
 
   function renderFillPatternUI(f) {
@@ -1051,6 +1157,8 @@
     syncHidden();
     syncUiChecks();
     syncPurposeUi();
+    syncFormMetaUi();
+    syncSheetUi();
     var w = pageW(), h = pageH();
     canvas.style.width = px(w) + "px";
     canvas.style.height = px(h) + "px";
@@ -1102,7 +1210,8 @@
       }
     }
 
-    var masterField = frames.find(function (fr) {
+    var sheetFrames = visibleFrames();
+    var masterField = sheetFrames.find(function (fr) {
       return !fr.hidden && fr.kind === "field";
     });
     var rowStep = masterField ? Math.max(masterField.height || 8, 6) : 14;
@@ -1110,7 +1219,7 @@
     var pending = [];
     var boxInstances = [];
 
-    frames.forEach(function (f, zi) {
+    sheetFrames.forEach(function (f, zi) {
       if (f.hidden) return;
       var copies = 1;
       if (previewMode) {
@@ -1617,9 +1726,10 @@
       var f = {
         id: "f" + Date.now() + "-" + (uid++),
         label: kind === "header" ? "عنوان" : kind === "field" ? "کلید منابع" : kind === "logo" ? "لوگو" : kind === "row_number" ? "ردیف" : kind === "box" ? "کادر" : "",
-        kind: kind, left: 15, x: 15, y: 20 + frames.length * 8,
+        kind: kind, left: 15, x: 15, y: 20 + visibleFrames().length * 8,
         width: 60, height: 14,
-        rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false, locked: false
+        rotation: 0, stroke: 0.5, align: "center", valign: "middle", hidden: false, locked: false,
+        sheet: sheetsEnabled() ? currentSheet : 1
       };
       if (kind === "line_h" || kind === "line") {
         f.kind = "line"; f.orientation = "h"; f.width = Math.max(40, pageW() - 30); f.height = 1; f.line_style = "solid";
@@ -1743,6 +1853,7 @@
       f.y = snapMm((f.y || 0) + 5);
       f.x = f.left;
       f.locked = false;
+      f.sheet = sheetsEnabled() ? currentSheet : (f.sheet || 1);
       frames.push(f);
       newIds.push(f.id);
     });
@@ -1765,6 +1876,7 @@
       if (formPurpose !== "reports") {
         linkedReportId = "";
         reportLevelFilter = "";
+        currentSheet = 1;
       }
       if (purposeHidden) purposeHidden.value = formPurpose;
       if (linkedReportHidden) linkedReportHidden.value = linkedReportId;
@@ -1776,8 +1888,31 @@
     linkedReportSel.addEventListener("change", function () {
       linkedReportId = this.value || "";
       reportLevelFilter = "";
+      currentSheet = 1;
       if (linkedReportHidden) linkedReportHidden.value = linkedReportId;
       render();
+    });
+  }
+
+  var formSheetSel = document.getElementById("ui-form-sheet");
+  if (formSheetSel) {
+    formSheetSel.addEventListener("change", function () {
+      var n = parseInt(this.value || "1", 10);
+      if (isNaN(n) || n < 1) n = 1;
+      currentSheet = n;
+      clearSelection();
+      render();
+    });
+  }
+  var transferBtn = document.getElementById("btn-transfer-sheet");
+  if (transferBtn) {
+    transferBtn.addEventListener("click", function () {
+      var src = document.getElementById("ui-transfer-from");
+      if (!src || !src.value) {
+        toast("برگه مبدأ را انتخاب کنید");
+        return;
+      }
+      transferSheetFrom(src.value);
     });
   }
 

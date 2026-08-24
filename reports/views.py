@@ -27,7 +27,15 @@ from .access import (
     visible_forms,
     visible_reports,
 )
-from .columns import COLUMN_GROUPS, level_entry_meta, normalize_columns, persist_column_uids, run_report
+from .columns import (
+    COLUMN_GROUPS,
+    entry_sheet_count,
+    level_entry_meta,
+    normalize_columns,
+    persist_column_uids,
+    row_sheet_number,
+    run_report,
+)
 from .form_purposes import (
     PURPOSE_PRODUCTION,
     PURPOSE_REPORTS,
@@ -63,6 +71,8 @@ def _designer_extra(user) -> dict:
             "id": rep.pk,
             "number": rep.number,
             "title": rep.title,
+            "access_mode": rep.access_mode,
+            "sheet_count": entry_sheet_count(rep.entry_data),
             "levels": report_level_groups(rep),
         })
     return {
@@ -289,21 +299,31 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
 
         rows_in = payload.get("rows") if isinstance(payload, dict) else None
         if isinstance(rows_in, list):
+            try:
+                sheet_count = int(payload.get("sheet_count") or 1)
+            except (TypeError, ValueError):
+                sheet_count = 1
+            sheet_count = max(1, min(200, sheet_count))
             clean_rows = []
             for row in rows_in[:200]:
                 if not isinstance(row, dict):
                     continue
                 clean = {}
+                sheet_n = row_sheet_number(row)
+                sheet_count = max(sheet_count, sheet_n)
+                clean["sheet"] = sheet_n
                 for k, v in row.items():
                     key = str(k)[:80]
-                    if not key or key.startswith("_"):
+                    if not key or key.startswith("_") or key == "sheet":
                         continue
                     clean[key] = str(v)[:2000]
                 clean_rows.append(clean)
-            entry["rows"] = clean_rows or [{}]
+            entry["rows"] = clean_rows or [{"sheet": 1}]
+            entry["sheet_count"] = sheet_count
             if clean_rows:
-                entry["values"] = dict(clean_rows[0])
-                entry["cells"] = {"": dict(clean_rows[0])}
+                first_vals = {k: v for k, v in clean_rows[0].items() if k != "sheet"}
+                entry["values"] = dict(first_vals)
+                entry["cells"] = {"": dict(first_vals)}
             report.entry_data = entry
             report.save(update_fields=["entry_data", "updated_at"])
             messages.success(request, "تغییرات ذخیره شد.")
@@ -385,6 +405,8 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     is_editable_report = report.access_mode == ReportAccessMode.EDITABLE
     can_edit_entry = is_editable_report and can_edit_report(request.user, report) and bool(entry_meta)
     can_edit_meta = can_edit_report(request.user, report)
+    sheet_count = entry_sheet_count(report.entry_data)
+    row_sheets = [int(p.get("_sheet") or 1) for p in payloads] if payloads else [1]
 
     return render(
         request,
@@ -406,6 +428,8 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "can_edit_meta": can_edit_meta,
             "entry_meta": entry_meta,
             "entry_meta_json": entry_meta,
+            "entry_sheet_count": sheet_count,
+            "entry_row_sheets": row_sheets,
         },
     )
 
@@ -783,7 +807,7 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
         for c in level_cols:
             dk = data_key(c)
             key_counts[dk] = key_counts.get(dk, 0) + 1
-        for data_row in data_rows:
+        for idx, data_row in enumerate(data_rows):
             row = {
                 "report_title": report.title,
                 "report_number": str(report.number),
@@ -802,6 +826,13 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
                 # Backward-compatible bind by semantic key when unique.
                 if dk and key_counts.get(dk, 0) == 1:
                     row[dk] = str(val)
+            if idx < len(_payloads):
+                try:
+                    row["_sheet"] = int(_payloads[idx].get("_sheet") or 1)
+                except (TypeError, ValueError):
+                    row["_sheet"] = 1
+            else:
+                row["_sheet"] = 1
             rows.append(row)
         return rows
     return rows
@@ -816,7 +847,7 @@ def _context_row_values(ctx: str, obj_id: int, item_id: int | None = None) -> di
 @login_required
 def form_print_fill(request: HttpRequest, pk: int) -> HttpResponse:
     """Render a form filled with values from a planning/production/report context row."""
-    form_obj = get_object_or_404(PrintForm, pk=pk)
+    form_obj = get_object_or_404(PrintForm.objects.select_related("linked_report"), pk=pk)
     if not can_view_form(request.user, form_obj):
         return HttpResponseForbidden("مجاز به مشاهده این فرم نیستید.")
     ctx = (request.GET.get("ctx") or "").strip()
@@ -830,6 +861,21 @@ def form_print_fill(request: HttpRequest, pk: int) -> HttpResponse:
     except ValueError:
         item_id_int = None
     fill_rows = _context_fill_rows(ctx, obj_id, item_id_int) if obj_id else []
+    sheet_count = 1
+    for fr in form_obj.frames or []:
+        if isinstance(fr, dict):
+            try:
+                sheet_count = max(sheet_count, int(fr.get("sheet") or 1))
+            except (TypeError, ValueError):
+                pass
+    for row in fill_rows:
+        if isinstance(row, dict):
+            try:
+                sheet_count = max(sheet_count, int(row.get("_sheet") or 1))
+            except (TypeError, ValueError):
+                pass
+    if form_obj.linked_report_id and getattr(form_obj, "linked_report", None):
+        sheet_count = max(sheet_count, entry_sheet_count(form_obj.linked_report.entry_data))
     return render(
         request,
         "print_forms/print_fill.html",
@@ -838,6 +884,7 @@ def form_print_fill(request: HttpRequest, pk: int) -> HttpResponse:
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
             "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
             "fill_rows_json": json.dumps(fill_rows, ensure_ascii=False),
+            "sheet_count": sheet_count,
             "auto_print": request.GET.get("autoprint") == "1",
         },
     )

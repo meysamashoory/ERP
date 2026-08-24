@@ -147,6 +147,50 @@ a { color: var(--brand); }
 
 .content { padding: 26px; max-width: 1500px; width: 100%; }
 
+.entry-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.entry-sheet-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.entry-sheet-pick select {
+  min-width: 96px;
+}
+.entry-sheet-toolbar {
+  padding: 10px 4px 4px;
+  border-top: 1px dashed var(--line);
+  margin-top: 8px;
+}
+.sheet-sep-row td {
+  padding: 10px 4px !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+.sheet-sep-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sheet-sep-line::before,
+.sheet-sep-line::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #cbd5e1;
+}
+.sheet-sep-line span {
+  white-space: nowrap;
+}
+
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
 .page-head h1 { margin: 0; font-size: 22px; }
 .muted { color: var(--muted); }

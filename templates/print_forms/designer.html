@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=18">
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=19">
 </head>
 <body class="designer-app">
 <form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
@@ -184,6 +184,20 @@
             <label>شماره فرم</label>
             <input type="number" id="ui-form-number" min="1" max="999" step="1" lang="en" dir="ltr">
           </div>
+          <div id="report-sheet-controls" hidden>
+            <div class="dz-field">
+              <label>برگه</label>
+              <select id="ui-form-sheet"></select>
+            </div>
+            <div class="dz-field">
+              <label>انتقال از</label>
+              <div class="dz-transfer-row">
+                <select id="ui-transfer-from"></select>
+                <button type="button" class="dz-btn" id="btn-transfer-sheet">اعمال</button>
+              </div>
+            </div>
+            <p class="muted" style="font-size:11px;margin:0">هر برگه یک صفحه چاپ است. با جابه‌جایی برگه، کادرها و عناوین همان برگه نمایش داده می‌شود.</p>
+          </div>
         </div>
         <div class="dz-section">
           <h3>کاغذ و حاشیه چاپ</h3>
@@ -355,7 +369,7 @@
 {{ saved_reports|json_script:"saved-reports" }}
 <script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
 <script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
-<script src="{% static 'js/form_sheet_render.js' %}?v=6"></script>
-<script src="{% static 'js/form_designer.js' %}?v=19"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=7"></script>
+<script src="{% static 'js/form_designer.js' %}?v=20"></script>
 </body>
 </html>

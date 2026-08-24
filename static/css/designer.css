@@ -451,6 +451,19 @@ body.designer-app {
   font-size: 12px;
   color: #c5c9d2;
 }
+.dz-transfer-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.dz-transfer-row select {
+  flex: 1;
+  min-width: 0;
+}
+.dz-transfer-row .dz-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .dz-field label { font-size: 11px; color: #8b93a7; }
 .dz-field input,
 .dz-field select,

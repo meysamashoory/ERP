@@ -92,7 +92,8 @@ class ReportFlowTests(TestCase):
         self.assertContains(detail, "اصلاح گزارش")
         self.assertNotContains(detail, "قابل اصلاح")
         self.assertContains(detail, "افزودن ردیف")
-        self.assertContains(detail, 'id="add-entry-row" hidden')
+        self.assertContains(detail, 'id="entry-edit-actions" hidden')
+        self.assertContains(detail, "برگه جدید")
         self.assertContains(detail, "موقعیت:")
 
         # Persist column uids used by the report for entry storage
@@ -550,3 +551,75 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(resp, "فرم‌ها")
         self.assertContains(resp, "مشاهده فرم‌ها")
         self.assertContains(resp, "ایجاد فرم")
+
+    def test_entry_sheets_save_and_flatten_in_view(self):
+        from reports.columns import entry_sheet_count
+
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="گزارش چندبرگه",
+            number=790,
+            access_mode="editable",
+            data_source="data_entry",
+            columns=[
+                {"key": "data_titles", "source": "data_entry", "level": 1, "label": "عنوان", "uid": "s1"},
+            ],
+        )
+        save = self.client.post(
+            reverse("report_detail", args=[report.pk]),
+            {
+                "action": "save_entry",
+                "entry_payload": (
+                    '{"sheet_count":2,"rows":['
+                    '{"sheet":1,"s1":"ردیف برگه۱"},'
+                    '{"sheet":2,"s1":"ردیف برگه۲"}'
+                    "]}"
+                ),
+            },
+        )
+        self.assertEqual(save.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(entry_sheet_count(report.entry_data), 2)
+        self.assertEqual(report.entry_data["rows"][0]["sheet"], 1)
+        self.assertEqual(report.entry_data["rows"][1]["sheet"], 2)
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertEqual(detail.status_code, 200)
+        # View mode stacks all sheets without sheet labels
+        self.assertContains(detail, "ردیف برگه۱")
+        self.assertContains(detail, "ردیف برگه۲")
+        # Separators are only injected in edit mode via JS
+        self.assertEqual(detail.context["entry_sheet_count"], 2)
+        self.assertEqual(detail.context["entry_row_sheets"], [1, 2])
+        self.assertContains(detail, 'id="entry-sheet-toolbar" hidden')
+
+        form_obj = PrintForm.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="فرم چندبرگه",
+            number=91,
+            purpose="reports",
+            linked_report=report,
+            frames=[
+                {
+                    "id": "f1", "kind": "field", "label": "عنوان", "sheet": 1,
+                    "left": 10, "x": 10, "y": 10, "width": 60, "height": 10,
+                    "source": "level_1", "source_key": "s1",
+                },
+                {
+                    "id": "f2", "kind": "field", "label": "عنوان", "sheet": 2,
+                    "left": 10, "x": 10, "y": 10, "width": 60, "height": 10,
+                    "source": "level_1", "source_key": "s1",
+                },
+            ],
+        )
+        fill = self.client.get(
+            reverse("print_form_print_fill", args=[form_obj.pk]),
+            {"ctx": "report", "id": report.pk},
+        )
+        self.assertEqual(fill.status_code, 200)
+        self.assertEqual(fill.context["sheet_count"], 2)
+        self.assertContains(fill, "ردیف برگه۱")
+        self.assertContains(fill, "ردیف برگه۲")
+        self.assertContains(fill, "sheets-host")
