@@ -18,10 +18,7 @@
 {% block content %}
 <div class="panel print-sheet-panel">
   <div class="panel-body">
-    <div class="form-canvas-wrap preview-only form-view-wrap">
-      <div class="form-canvas print-sheet" id="form-view-canvas"
-           style="--page-w: {{ print_form.page_width_mm }}; --page-h: {{ print_form.page_height_mm }};"></div>
-    </div>
+    <div class="form-canvas-wrap preview-only form-view-wrap" id="form-view-host"></div>
   </div>
 </div>
 {{ column_groups|json_script:"column-groups" }}
@@ -30,7 +27,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/form_sheet_render.js' %}?v=6"></script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=8"></script>
 <script>
 (function () {
   var frames = [];
@@ -39,13 +36,36 @@
   try { frames = JSON.parse(document.getElementById("frames-view").textContent || "[]") || []; } catch (e) {}
   try { settings = JSON.parse(document.getElementById("page-settings-view").textContent || "{}") || {}; } catch (e) {}
   try { groups = JSON.parse(document.getElementById("column-groups").textContent || "[]") || []; } catch (e) {}
-  var canvas = document.getElementById("form-view-canvas");
-  if (canvas && window.ERPFormSheetRender) {
+  var host = document.getElementById("form-view-host");
+  if (!host || !window.ERPFormSheetRender) return;
+
+  function sheetOf(f) {
+    try { return Math.max(1, parseInt(f && f.sheet, 10) || 1); } catch (e) { return 1; }
+  }
+  var sheetCount = 1;
+  frames.forEach(function (f) { sheetCount = Math.max(sheetCount, sheetOf(f)); });
+
+  var pageW = {{ print_form.page_width_mm|default:210 }};
+  var pageH = {{ print_form.page_height_mm|default:297 }};
+
+  for (var s = 1; s <= sheetCount; s++) {
+    var pageFrames = frames.filter(function (f) { return sheetOf(f) === s; });
+    if (sheetCount === 1) pageFrames = frames.slice();
+    var canvas = document.createElement("div");
+    canvas.className = "form-canvas print-sheet";
+    canvas.id = s === 1 ? "form-view-canvas" : ("form-view-canvas-" + s);
+    canvas.setAttribute("data-sheet", String(s));
+    canvas.style.setProperty("--page-w", String(pageW));
+    canvas.style.setProperty("--page-h", String(pageH));
+    if (sheetCount > 1) {
+      canvas.style.marginBottom = "20px";
+    }
+    host.appendChild(canvas);
     window.ERPFormSheetRender.render({
       canvas: canvas,
-      frames: frames,
-      pageWidthMm: {{ print_form.page_width_mm|default:210 }},
-      pageHeightMm: {{ print_form.page_height_mm|default:297 }},
+      frames: pageFrames,
+      pageWidthMm: pageW,
+      pageHeightMm: pageH,
       pageSettings: settings,
       columnGroups: groups,
       useMm: true,
@@ -53,6 +73,7 @@
       viewMode: "detail"
     });
   }
+
   var printBtn = document.querySelector("[data-print-form]");
   if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
 })();

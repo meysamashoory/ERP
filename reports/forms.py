@@ -295,11 +295,40 @@ class PrintFormForm(forms.ModelForm):
                 "valign": str(item.get("valign") or "middle")[:20],
                 "hidden": bool(item.get("hidden")),
             }
+            try:
+                sheet_n = int(item.get("sheet") or 1)
+            except (TypeError, ValueError):
+                sheet_n = 1
+            frame["sheet"] = max(1, min(200, sheet_n))
+            # Optional text styling (designer toolbar)
+            if item.get("font_family"):
+                frame["font_family"] = str(item.get("font_family") or "")[:120]
+            try:
+                if item.get("font_size") is not None and str(item.get("font_size")).strip() != "":
+                    frame["font_size"] = max(6, min(200, int(item.get("font_size"))))
+            except (TypeError, ValueError):
+                pass
+            if item.get("font_color"):
+                color = str(item.get("font_color") or "")[:20]
+                if color.startswith("#"):
+                    frame["font_color"] = color
+            if item.get("font_bold"):
+                frame["font_bold"] = True
+            if item.get("font_italic"):
+                frame["font_italic"] = True
+            if item.get("font_underline"):
+                frame["font_underline"] = True
             if kind in ("box", "line"):
                 mode = str(item.get("extend_mode") or "").strip()
-                if mode not in ("page", "field", "none"):
+                if mode not in ("page", "field", "none", "count"):
                     mode = "field" if item.get("data_extend") else "none"
                 frame["extend_mode"] = mode
+                if mode == "count":
+                    try:
+                        ec = int(item.get("extend_count") or 2)
+                    except (TypeError, ValueError):
+                        ec = 2
+                    frame["extend_count"] = max(1, min(99, ec))
             if kind in ("field", "row_number"):
                 frame["source"] = str(item.get("source") or "")[:40]
                 frame["source_key"] = str(item.get("source_key") or "")[:80]

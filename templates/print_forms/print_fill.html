@@ -6,16 +6,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>چاپ — {{ print_form.title }}</title>
   <style>
-    html, body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .no-print { position: fixed; top: 10px; left: 10px; z-index: 10; }
+    html, body { margin: 0; background: #eef2f7; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { position: fixed; top: 10px; left: 10px; z-index: 10; display: flex; gap: 8px; }
     .btn { padding: 6px 12px; border: 1px solid #94a3b8; background: #f8fafc; border-radius: 6px; cursor: pointer; }
-    #sheets-host { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 12px 0; }
+    #sheets-host { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 48px 12px 24px; }
     .print-sheet {
       margin: 0 auto;
-      box-shadow: 0 0 0 1px #e2e8f0;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+      box-sizing: border-box;
+      overflow: hidden;
+      width: calc(var(--page-w, 210) * 1mm);
+      height: calc(var(--page-h, 297) * 1mm);
+      position: relative;
+    }
+    .sheet-page-label {
+      position: absolute;
+      top: -22px;
+      right: 0;
+      font: 12px Tahoma, sans-serif;
+      color: #64748b;
     }
     @media print {
-      .no-print { display: none !important; }
+      html, body { background: #fff; }
+      .no-print, .sheet-page-label { display: none !important; }
       #sheets-host { gap: 0; padding: 0; }
       .print-sheet {
         box-shadow: none;
@@ -38,7 +52,7 @@
   <script id="frames-view" type="application/json">{{ frames_json|safe }}</script>
   <script id="page-settings-view" type="application/json">{{ page_settings_json|safe }}</script>
   <script id="fill-rows" type="application/json">{{ fill_rows_json|safe }}</script>
-  <script src="{% static 'js/form_sheet_render.js' %}?v=7"></script>
+  <script src="{% static 'js/form_sheet_render.js' %}?v=8"></script>
   <script>
   (function () {
     var frames = [], settings = {}, fillRows = [];
@@ -62,6 +76,7 @@
       var declared = parseInt("{{ sheet_count|default:1 }}", 10);
       if (!isNaN(declared) && declared > sheetCount) sheetCount = declared;
     } catch (e) {}
+    sheetCount = Math.max(1, sheetCount);
 
     var host = document.getElementById("sheets-host");
     var pageW = {{ print_form.page_width_mm|default:210 }};
@@ -69,20 +84,30 @@
 
     for (var s = 1; s <= sheetCount; s++) {
       var pageFrames = frames.filter(function (f) { return sheetOfFrame(f) === s; });
-      // Legacy forms without sheet: all frames are sheet 1
-      if (s === 1 && !frames.some(function (f) { return f.sheet != null && parseInt(f.sheet, 10) > 1; })) {
-        pageFrames = frames.slice();
-      }
       var pageRows = fillRows.filter(function (r) { return sheetOfRow(r) === s; });
-      // If no sheet metadata on rows and single sheet, use all rows
-      if (s === 1 && sheetCount === 1) {
+      // Single-page legacy: no sheet metadata beyond 1 → put all rows on page 1
+      if (sheetCount === 1) {
+        pageFrames = frames.slice();
         pageRows = fillRows.slice();
+      }
+
+      var wrap = document.createElement("div");
+      wrap.style.position = "relative";
+      wrap.setAttribute("data-print-page", String(s));
+      if (sheetCount > 1) {
+        var lab = document.createElement("div");
+        lab.className = "sheet-page-label no-print";
+        lab.textContent = "برگه " + s;
+        wrap.appendChild(lab);
       }
       var canvas = document.createElement("div");
       canvas.className = "form-canvas print-sheet";
+      canvas.setAttribute("data-sheet", String(s));
       canvas.style.setProperty("--page-w", String(pageW));
       canvas.style.setProperty("--page-h", String(pageH));
-      host.appendChild(canvas);
+      wrap.appendChild(canvas);
+      host.appendChild(wrap);
+
       if (window.ERPFormSheetRender) {
         window.ERPFormSheetRender.render({
           canvas: canvas,
@@ -99,7 +124,7 @@
     }
 
     {% if auto_print %}
-    setTimeout(function () { window.print(); }, 200);
+    setTimeout(function () { window.print(); }, 250);
     {% endif %}
   })();
   </script>

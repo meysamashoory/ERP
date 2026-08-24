@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+import json
 
 from reports.models import PrintForm, SavedReport
 
@@ -623,3 +624,99 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(fill, "ردیف برگه۱")
         self.assertContains(fill, "ردیف برگه۲")
         self.assertContains(fill, "sheets-host")
+
+    def test_form_save_preserves_frame_sheet_and_print_pages(self):
+        """Saving via designer must keep sheet on frames so print shows all pages."""
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="گزارش برگه‌دار",
+            number=791,
+            access_mode="editable",
+            data_source="data_entry",
+            columns=[
+                {"key": "data_titles", "source": "data_entry", "level": 1, "label": "عنوان", "uid": "u791"},
+            ],
+            entry_data={
+                "sheet_count": 2,
+                "rows": [
+                    {"sheet": 1, "u791": "داده برگه۱"},
+                    {"sheet": 2, "u791": "داده برگه۲"},
+                ],
+            },
+        )
+        frames_payload = [
+            {
+                "id": "h1", "kind": "header", "label": "سربرگ برگه۱", "sheet": 1,
+                "left": 10, "x": 10, "y": 8, "width": 100, "height": 12,
+                "font_family": "Tahoma", "font_size": 14, "font_bold": True,
+            },
+            {
+                "id": "f1", "kind": "field", "label": "کلید۱", "sheet": 1,
+                "left": 10, "x": 10, "y": 28, "width": 60, "height": 10,
+                "source": "level_1", "source_key": "u791",
+                "bindings": [{"source": "level_1", "source_key": "u791"}],
+            },
+            {
+                "id": "h2", "kind": "header", "label": "سربرگ برگه۲", "sheet": 2,
+                "left": 10, "x": 10, "y": 8, "width": 100, "height": 12,
+            },
+            {
+                "id": "f2", "kind": "field", "label": "کلید۲", "sheet": 2,
+                "left": 10, "x": 10, "y": 28, "width": 60, "height": 10,
+                "source": "level_1", "source_key": "u791",
+                "bindings": [{"source": "level_1", "source_key": "u791"}],
+            },
+        ]
+        save = self.client.post(
+            reverse("print_form_save_ajax_new"),
+            {
+                "title": "فرم دو برگه",
+                "description": "",
+                "number": 92,
+                "purpose": "reports",
+                "linked_report": report.pk,
+                "page_width_mm": 210,
+                "page_height_mm": 297,
+                "frames_json": json.dumps(frames_payload, ensure_ascii=False),
+                "page_settings_json": (
+                    '{"margin_top":10,"margin_bottom":10,"margin_left":10,'
+                    '"margin_right":10,"show_grid":true,"show_ruler":true,"guides":[],"snap_mm":2}'
+                ),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(save.status_code, 200)
+        self.assertTrue(save.json().get("ok"))
+        form_obj = PrintForm.objects.get(number=92, owner=self.expert)
+        sheets = sorted({int(f.get("sheet") or 1) for f in form_obj.frames})
+        self.assertEqual(sheets, [1, 2])
+        header1 = next(f for f in form_obj.frames if f.get("id") == "h1")
+        self.assertEqual(header1.get("sheet"), 1)
+        self.assertEqual(header1.get("font_size"), 14)
+        self.assertTrue(header1.get("font_bold"))
+        header2 = next(f for f in form_obj.frames if f.get("id") == "h2")
+        self.assertEqual(header2.get("sheet"), 2)
+
+        fill = self.client.get(
+            reverse("print_form_print_fill", args=[form_obj.pk]),
+            {"ctx": "report", "id": report.pk},
+        )
+        self.assertEqual(fill.status_code, 200)
+        self.assertEqual(fill.context["sheet_count"], 2)
+        frames_out = json.loads(fill.context["frames_json"])
+        self.assertEqual(
+            sorted({int(f.get("sheet") or 1) for f in frames_out}),
+            [1, 2],
+        )
+        fill_rows = json.loads(fill.context["fill_rows_json"])
+        sheets_in_rows = sorted({int(r.get("_sheet") or 1) for r in fill_rows})
+        self.assertEqual(sheets_in_rows, [1, 2])
+        body = fill.content.decode()
+        self.assertIn("سربرگ برگه۱", body)
+        self.assertIn("سربرگ برگه۲", body)
+        self.assertIn("داده برگه۱", body)
+        self.assertIn("داده برگه۲", body)
+        # Client script builds one canvas per sheet
+        self.assertIn("for (var s = 1; s <= sheetCount; s++)", body)
