@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}فرم‌ها{% endblock %}
+{% block heading %}فرم‌ها{% endblock %}
+{% block nav_forms %}open{% endblock %}
+{% block nav_form_list %}active{% endblock %}
+
+{% block content %}
+<div class="panel panel-compact">
+  {% if rows %}
+  <table class="table table-compact table-list-nav" id="form-list-table">
+    <thead>
+      <tr>
+        <th style="width:72px">
+          <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
+            شماره {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          </a>
+        </th>
+        <th>
+          <button type="button" class="th-sort th-filter-btn" id="title-filter-toggle">عنوان {% if title_q %}· فیلتر{% endif %}</button>
+          <div class="th-filter-panel" id="title-filter-panel" hidden>
+            <form method="get" class="th-filter-form">
+              <input type="hidden" name="sort" value="{{ sort }}">
+              <input type="hidden" name="dir" value="{{ dir }}">
+              <input class="input" type="text" name="title" value="{{ title_q }}" placeholder="فیلتر عنوان…">
+              <button class="btn btn-sm" type="submit">اعمال</button>
+              <a class="btn btn-sm btn-ghost" href="?sort={{ sort }}&dir={{ dir }}">پاک</a>
+            </form>
+          </div>
+        </th>
+        <th class="col-type" style="width:100px">
+          <a class="th-sort" href="?sort=type&dir={% if sort == 'type' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
+            نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          </a>
+        </th>
+        <th style="width:200px">عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="list-row" data-form-id="{{ row.form.pk }}"
+          data-href="{% url 'print_form_detail' row.form.pk %}"
+          data-title="{{ row.form.title }}"
+          data-number="{{ row.form.number }}"
+          data-description="{{ row.form.description }}"
+          tabindex="0">
+        <td class="num cell-nav">{{ row.form.number }}</td>
+        <td class="cell-nav">
+          <span class="list-title">{{ row.form.title }}</span>
+          {% if row.form.description %}<div class="list-desc">({{ row.form.description }})</div>{% endif %}
+        </td>
+        <td class="col-type cell-nav">{% if row.form.is_standard %}<span class="type-label type-standard">استاندارد</span>{% else %}<span class="type-label">شخصی</span>{% endif %}</td>
+        <td class="col-ops">
+          <div class="ops-inline">
+            <select class="ops-select" data-ops>
+              <option value="">…</option>
+              {% if row.can_edit %}<option value="edit">ویرایش</option>{% endif %}
+              {% if row.can_send %}<option value="send">ارسال به کاربر</option>{% endif %}
+              {% if row.can_copy %}<option value="copy">ایجاد کپی</option>{% endif %}
+              {% if row.can_delete %}<option value="delete">حذف فرم</option>{% endif %}
+            </select>
+            <button type="button" class="btn btn-sm ops-apply" data-ops-apply hidden>اعمال</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">هنوز فرمی ایجاد نشده است.</p>
+  {% endif %}
+</div>
+
+<dialog id="form-action-dialog" class="dialog">
+  <div data-dialog-body></div>
+</dialog>
+
+<template id="tpl-send">
+  <div class="dialog-head"><h3>ارسال فرم به کاربر</h3></div>
+  <form method="post" data-action-form>
+    {% csrf_token %}
+    <div class="field"><label>نام فرم</label><input class="input" name="title" required></div>
+    <div class="field"><label>شماره فرم (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>توضیحات</label><input class="input" name="description"></div>
+    <div class="field"><label>کاربر مقصد</label>
+      <select name="recipient" data-combo="1" required>
+        <option value="">انتخاب کاربر…</option>
+        {% for u in users %}<option value="{{ u.pk }}">{{ u.username }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn" type="submit">ارسال</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+
+<template id="tpl-copy">
+  <div class="dialog-head"><h3>ایجاد کپی از فرم</h3></div>
+  <form method="post" data-action-form>
+    {% csrf_token %}
+    <div class="field"><label>نام فرم</label><input class="input" name="title" required></div>
+    <div class="field"><label>شماره فرم (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>توضیحات</label><input class="input" name="description"></div>
+    <div class="field"><label>کاربر</label><input class="input" value="{{ user.username }}" disabled></div>
+    <div class="form-actions">
+      <button class="btn" type="submit">ایجاد کپی</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+
+<template id="tpl-delete">
+  <div class="dialog-head"><h3>حذف فرم</h3></div>
+  <p>آیا از حذف فرم «<strong data-del-title></strong>» اطمینان دارید؟ فقط از لیست شما حذف می‌شود.</p>
+  <form method="post" data-action-form>
+    {% csrf_token %}
+    <div class="form-actions">
+      <button class="btn btn-danger" type="submit">حذف</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var dialog = document.getElementById("form-action-dialog");
+  var body = dialog.querySelector("[data-dialog-body]");
+  var filterBtn = document.getElementById("title-filter-toggle");
+  var filterPanel = document.getElementById("title-filter-panel");
+  if (filterBtn) filterBtn.addEventListener("click", function () { filterPanel.hidden = !filterPanel.hidden; });
+
+  document.querySelectorAll("#form-list-table tbody tr").forEach(function (tr) {
+    tr.addEventListener("click", function (e) {
+      if (e.target.closest(".col-ops") || e.target.closest("select") || e.target.closest("button")) return;
+      var href = tr.getAttribute("data-href");
+      if (href) window.location = href;
+    });
+  });
+
+  document.querySelectorAll("[data-ops]").forEach(function (sel) {
+    var apply = sel.parentElement.querySelector("[data-ops-apply]");
+    sel.addEventListener("change", function () { apply.hidden = !sel.value; });
+    apply.addEventListener("click", function () {
+      var row = sel.closest("tr");
+      var op = sel.value;
+      var id = row.getAttribute("data-form-id");
+      if (op === "edit") {
+        var url = "/forms/" + id + "/edit/";
+        if (window.ERPOpenFormDesigner) window.ERPOpenFormDesigner(url);
+        else window.open(url, "erp-form-designer");
+        return;
+      }
+      var tpl = document.getElementById(op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete");
+      body.innerHTML = "";
+      body.appendChild(tpl.content.cloneNode(true));
+      var form = body.querySelector("[data-action-form]");
+      if (op === "delete") {
+        form.action = "/forms/" + id + "/delete/";
+        body.querySelector("[data-del-title]").textContent = row.getAttribute("data-title");
+      } else if (op === "send") {
+        form.action = "/forms/" + id + "/send/";
+        form.title.value = row.getAttribute("data-title");
+        form.number.value = row.getAttribute("data-number");
+        form.description.value = row.getAttribute("data-description") || "";
+      } else {
+        form.action = "/forms/" + id + "/copy/";
+        form.title.value = row.getAttribute("data-title");
+        form.number.value = row.getAttribute("data-number");
+        form.description.value = row.getAttribute("data-description") || "";
+      }
+      if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+      if (window.enhance) window.enhance(body);
+    });
+  });
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) {
+      e.preventDefault();
+      if (typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
+    }
+  });
+})();
+</script>
+{% endblock %}

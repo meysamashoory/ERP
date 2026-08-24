@@ -31,9 +31,50 @@ def jdate_field(label="تاریخ"):
     )
 
 
+def style_fields(form):
+    """Apply ``input`` class to non-combo widgets only.
+
+    Combo selects must stay class-free: Tom Select copies classes onto the
+    wrapper and a copied ``input`` class creates a double border.
+    """
+    for field in form.fields.values():
+        if field.widget.attrs.get("data-combo"):
+            field.widget.attrs.pop("class", None)
+            continue
+        field.widget.attrs.setdefault("class", "input")
+
+
+class EmptyZeroNumberInput(forms.NumberInput):
+    """Render 0 as blank so typing is not blocked by a leading zero."""
+
+    def format_value(self, value):
+        if value in (0, "0", None, ""):
+            return ""
+        return super().format_value(value)
+
+
+def blank_zero_number_widgets(form, names):
+    """Use EmptyZeroNumberInput for the listed numeric fields."""
+    for name in names:
+        field = form.fields.get(name)
+        if not field:
+            continue
+        attrs = dict(field.widget.attrs)
+        attrs.setdefault("class", "input")
+        field.widget = EmptyZeroNumberInput(attrs=attrs)
+        if not form.is_bound and not (form.instance and form.instance.pk):
+            if field.initial in (0, "0"):
+                field.initial = None
+
+
 def combo(attrs=None):
-    """A <select> widget enhanced into a searchable/typeable combobox."""
-    base = {"class": "input", "data-combo": "1"}
+    """A <select> widget enhanced into a searchable/typeable combobox.
+
+    Note: do NOT add the ``input`` CSS class here — Tom Select copies the
+    original select's classes onto ``.ts-wrapper``, which would create a
+    second outer border around ``.ts-control``.
+    """
+    base = {"data-combo": "1"}
     if attrs:
         base.update(attrs)
     return forms.Select(attrs=base)
@@ -52,7 +93,7 @@ class _ProductionFormBase(forms.ModelForm):
     code = forms.CharField(
         required=False,
         label="کد کالا",
-        widget=forms.Select(attrs={"class": "input", "data-role": "code", "data-combo": "1"}),
+        widget=forms.Select(attrs={"data-role": "code", "data-combo": "1"}),
     )
 
     def __init__(self, *args, **kwargs):
@@ -73,8 +114,13 @@ class _ProductionFormBase(forms.ModelForm):
         # Pre-select subgroup when editing an existing record.
         if self.instance and self.instance.pk and self.instance.product_id:
             self.fields["subgroup"].initial = self.instance.product.subgroup_id
-        for field in self.fields.values():
-            field.widget.attrs.setdefault("class", "input")
+        style_fields(self)
+        blank_zero_number_widgets(self, [
+            "shot_cycle", "active_cavities", "planned_quantity",
+            "produced_quantity", "scrap_quantity",
+            "socket_length", "nominal_pressure", "thickness",
+            "nominal_flow", "dripper_spacing", "length_meters",
+        ])
 
     def clean(self):
         cleaned = super().clean()
@@ -211,24 +257,24 @@ class ProgramStartForm(forms.Form):
         widget=combo({"data-role": "change-reason"}), empty_label="—",
     )
     production_type = forms.ChoiceField(label="نوع تولید", choices=[], widget=combo())
-    mold = forms.ModelChoiceField(
-        queryset=None, required=False, label="انتخاب قالب",
-        widget=combo(), empty_label="—",
-    )
     start_date = jdate_field("تاریخ شروع")
     start_time = time_input("ساعت شروع")
 
     def __init__(self, *args, program=None, **kwargs):
-        from catalog.models import MoldOption, ProgramChangeReason
+        from catalog.models import ProgramChangeReason
         super().__init__(*args, **kwargs)
         self.program = program
         self.fields["change_reason"].queryset = ProgramChangeReason.objects.filter(is_active=True)
-        self.fields["mold"].queryset = MoldOption.objects.filter(is_active=True)
         choices = []
         lines = list(program.item.lines.all()) if program else []
         labels = ["نوع اول", "نوع دوم", "نوع سوم", "نوع چهارم"]
         for i, ln in enumerate(lines):
-            choices.append((str(i + 1), f"{labels[i] if i < len(labels) else i+1}: {ln.production_type} (سیکل {ln.cycle})"))
+            mold_lbl = f" · قالب {ln.mold}" if ln.mold_id else ""
+            choices.append((
+                str(i + 1),
+                f"{labels[i] if i < len(labels) else i+1}: {ln.production_type} "
+                f"(سیکل {ln.cycle}){mold_lbl}",
+            ))
         if not choices:
             choices = [("1", "نوع اول")]
         self.fields["production_type"].choices = choices
@@ -284,8 +330,10 @@ class DayEntryForm(forms.ModelForm):
         if program and not self.instance.pk:
             self.fields["cycle"].initial = program.default_cycle
             self.fields["active_cavities"].initial = program.item.active_cavities
-        for f in self.fields.values():
-            f.widget.attrs.setdefault("class", "input")
+        style_fields(self)
+        blank_zero_number_widgets(self, [
+            "produced_quantity", "scrap_quantity", "cycle", "active_cavities",
+        ])
 
     def clean_date(self):
         d = self.cleaned_data["date"]
@@ -344,22 +392,42 @@ def pipe_field_map() -> dict:
 
 
 # Stoppages: no delete option (per request); one row, more can be added.
+class _StoppageForm(forms.ModelForm):
+    class Meta:
+        model = ProductionStoppage
+        fields = ["reason", "minutes", "note"]
+        widgets = {
+            "reason": combo(),
+            "minutes": EmptyZeroNumberInput(attrs={"class": "input", "min": "0"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        style_fields(self)
+        blank_zero_number_widgets(self, ["minutes"])
+        if not self.is_bound and (not self.instance.pk or self.instance.minutes in (0, None)):
+            self.fields["minutes"].initial = None
+
+    def clean_minutes(self):
+        return self.cleaned_data.get("minutes") or 0
+
+
 StoppageFormSetFitting = inlineformset_factory(
     FittingProduction,
     ProductionStoppage,
+    form=_StoppageForm,
     fk_name="fitting",
     fields=["reason", "minutes", "note"],
     extra=1,
     can_delete=False,
-    widgets={"reason": combo()},
 )
 
 StoppageFormSetPipe = inlineformset_factory(
     PipeProduction,
     ProductionStoppage,
+    form=_StoppageForm,
     fk_name="pipe",
     fields=["reason", "minutes", "note"],
     extra=1,
     can_delete=False,
-    widgets={"reason": combo()},
 )

@@ -2,15 +2,20 @@ from django.contrib import admin
 
 from .models import (
     DeviationReason,
+    ExcelUpload,
     Machine,
     MoldOption,
+    PlanningDisplaySettings,
+    PlanningInsightField,
     Product,
     ProductGroup,
     ProductSubGroup,
     ProductionTypeOption,
     ProductionUnit,
     ProgramChangeReason,
+    ProgramUidScheme,
     StoppageReason,
+    SystemAlarm,
 )
 
 
@@ -112,3 +117,224 @@ class ProgramChangeReasonAdmin(admin.ModelAdmin):
 class MoldOptionAdmin(admin.ModelAdmin):
     list_display = ("label", "order", "is_active")
     list_editable = ("order", "is_active")
+
+
+@admin.register(PlanningInsightField)
+class PlanningInsightFieldAdmin(admin.ModelAdmin):
+    list_display = ("label", "source", "source_key", "order", "is_active")
+    list_editable = ("order", "is_active", "source", "source_key")
+    list_filter = ("source", "is_active")
+    search_fields = ("label", "source_key")
+    ordering = ("order", "id")
+
+
+@admin.register(PlanningDisplaySettings)
+class PlanningDisplaySettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "height_coefficient", "matrix_unit_numbers", "show_group_breakdown")
+    list_display_links = ("id",)
+    list_editable = ("height_coefficient", "matrix_unit_numbers", "show_group_breakdown")
+    fieldsets = (
+        (
+            "کادر آبی و ماتریس تعویض قالب",
+            {
+                "fields": (
+                    "height_coefficient",
+                    "matrix_unit_numbers",
+                    "show_group_breakdown",
+                ),
+                "description": (
+                    "ضریب ارتفاع ۱٫۰ = پایه؛ ۱٫۲ یعنی ۲۰٪ بلندتر. "
+                    "واحدهای ماتریس را با ویرگول مشخص کنید (مثلاً ۱,۲,۴)."
+                ),
+            },
+        ),
+    )
+
+    def has_add_permission(self, request):
+        # Keep a single settings row when possible.
+        if PlanningDisplaySettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+@admin.register(ProgramUidScheme)
+class ProgramUidSchemeAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "is_active",
+        "base_year",
+        "total_digits_display",
+        "updated_at",
+    )
+    list_display_links = ("name",)
+    list_editable = ("is_active", "base_year")
+    readonly_fields = ("updated_at", "example_preview")
+    fieldsets = (
+        (
+            "قانون فعال",
+            {
+                "fields": ("name", "is_active", "notes", "example_preview"),
+                "description": (
+                    "این قانون شناسه ۱۴ رقمی برنامه‌ریزی را تعریف می‌کند. "
+                    "با تغییر ارقام یا سال مبدأ، شناسه‌های جدید بر اساس تنظیمات ساخته می‌شوند. "
+                    "برای اعمال روی برنامه‌های موجود از اکشن «بازسازی شناسه‌ها» استفاده کنید."
+                ),
+            },
+        ),
+        (
+            "سال و ارقام",
+            {
+                "fields": (
+                    "base_year",
+                    "year_digits",
+                    "program_digits",
+                    "unit_digits",
+                    "machine_digits",
+                    "date_sum_digits",
+                    "production_type_digits",
+                    "mold_row_digits",
+                ),
+            },
+        ),
+        (
+            "تعریف قطعات (بازتعریف آینده)",
+            {
+                "fields": ("segments_json",),
+                "classes": ("collapse",),
+            },
+        ),
+        (None, {"fields": ("updated_at",)}),
+    )
+    actions = ("rebuild_all_uids",)
+
+    def total_digits_display(self, obj):
+        return obj.total_digits
+
+    total_digits_display.short_description = "مجموع ارقام"
+
+    def example_preview(self, obj):
+        import jdatetime
+        from planning.uid import build_program_uid
+
+        sample = build_program_uid(
+            plan_date=jdatetime.date(1405, 5, 26),
+            program_number=159,
+            unit_number=4,
+            machine_number=2,
+            mold_change_date=jdatetime.date(1405, 5, 27),
+            production_type_index=2,
+            mold_row=23,
+            scheme=obj,
+        )
+        return f"نمونه (برنامه ۱۵۹ / واحد۴ / دستگاه۲ / نوع۲ / ردیف۲۳): {sample}"
+
+    example_preview.short_description = "پیش‌نمایش نمونه"
+
+    def has_add_permission(self, request):
+        if ProgramUidScheme.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    @admin.action(description="بازسازی شناسه همه کالاهای برنامه‌ها با قانون فعال")
+    def rebuild_all_uids(self, request, queryset):
+        from planning.models import WeeklyPlan
+        from planning.uid import refresh_plan_uids
+
+        scheme = ProgramUidScheme.load()
+        items = 0
+        collisions = 0
+        for plan in WeeklyPlan.objects.all().iterator():
+            n_before = plan.items.count()
+            cols = refresh_plan_uids(plan, scheme=scheme)
+            items += n_before
+            collisions += len(cols)
+        msg = f"شناسه {items} کالا بازسازی شد."
+        if collisions:
+            msg += f" {collisions} مورد تکرار شناسه در آلارم‌های سیستم ثبت شد."
+        self.message_user(request, msg)
+
+
+@admin.register(SystemAlarm)
+class SystemAlarmAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "severity",
+        "kind",
+        "status",
+        "title",
+        "short_suggestion",
+    )
+    list_filter = ("severity", "kind", "status", "created_at")
+    search_fields = ("title", "message", "suggestion")
+    readonly_fields = ("created_at", "reviewed_at", "reviewed_by", "details")
+    list_display_links = ("title",)
+    actions = ("mark_reviewed", "mark_cleared", "hard_delete")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "severity",
+                    "kind",
+                    "status",
+                    "title",
+                    "message",
+                    "suggestion",
+                    "details",
+                    "created_at",
+                    "reviewed_at",
+                    "reviewed_by",
+                ),
+                "description": (
+                    "آلارم‌های جدی (مثل تکرار شناسه) اینجا ثبت می‌شوند. "
+                    "پس از بررسی می‌توانید وضعیت را به بررسی‌شده یا پاک‌شده تغییر دهید."
+                ),
+            },
+        ),
+    )
+
+    def short_suggestion(self, obj):
+        text = (obj.suggestion or "")[:80]
+        return text + ("…" if obj.suggestion and len(obj.suggestion) > 80 else "")
+
+    short_suggestion.short_description = "پیشنهاد اصلاح"
+
+    @admin.action(description="علامت‌گذاری به‌عنوان بررسی‌شده")
+    def mark_reviewed(self, request, queryset):
+        for alarm in queryset:
+            alarm.mark_reviewed(user=request.user)
+        self.message_user(request, f"{queryset.count()} آلارم بررسی‌شده شد.")
+
+    @admin.action(description="علامت‌گذاری به‌عنوان پاک‌شده")
+    def mark_cleared(self, request, queryset):
+        for alarm in queryset:
+            alarm.mark_cleared(user=request.user)
+        self.message_user(request, f"{queryset.count()} آلارم پاک‌شده شد.")
+
+    @admin.action(description="حذف دائمی از فهرست")
+    def hard_delete(self, request, queryset):
+        n = queryset.count()
+        queryset.delete()
+        self.message_user(request, f"{n} آلارم برای همیشه حذف شد.")
+
+
+@admin.register(ExcelUpload)
+class ExcelUploadAdmin(admin.ModelAdmin):
+    list_display = ("title", "original_name", "uploaded_by", "created_at", "download_link")
+    list_display_links = ("title",)
+    search_fields = ("title", "original_name", "notes")
+    list_filter = ("created_at",)
+    readonly_fields = ("original_name", "uploaded_by", "created_at", "download_link")
+    fields = ("title", "file", "notes", "original_name", "uploaded_by", "created_at", "download_link")
+
+    def save_model(self, request, obj, form, change):
+        if not obj.uploaded_by_id:
+            obj.uploaded_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def download_link(self, obj):
+        if not obj.pk or not obj.file:
+            return "—"
+        from django.utils.html import format_html
+        return format_html('<a href="{}" download>دانلود فایل</a>', obj.file.url)
+
+    download_link.short_description = "سوابق / دانلود"

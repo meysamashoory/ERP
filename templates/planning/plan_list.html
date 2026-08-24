@@ -1,44 +1,76 @@
 {% extends "base.html" %}
+{% load planning_extras %}
 {% block title %}برنامه‌ریزی هفتگی{% endblock %}
 {% block heading %}برنامه‌ریزی هفتگی تولید{% endblock %}
 {% block nav_planning %}active{% endblock %}
 
-{% block content %}
-<div class="page-head">
-  <h1>برنامه‌های هفتگی</h1>
+{% block topbar_actions %}
+<div class="topbar-actions">
   {% if profile.can_create_plans %}
-  <a class="btn" href="{% url 'plan_create' %}">+ برنامه جدید</a>
+  <a class="btn btn-sm" href="{% url 'plan_create' %}">+ برنامه جدید</a>
   {% endif %}
 </div>
+{% endblock %}
 
-<div class="panel">
+{% block content %}
+<div class="panel plan-list-panel">
   {% if plans %}
-  <table class="table">
-    <thead><tr><th>شماره برنامه</th><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ایجادکننده</th><th>عملیات</th><th>تغییر وضعیت</th></tr></thead>
+  <table class="table table-plan-list">
+    <thead>
+      <tr>
+        <th>ردیف</th>
+        <th>
+          <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+            شماره برنامه {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          </a>
+        </th>
+        <th>
+          <a class="th-sort" href="?sort=date&dir={% if sort == 'date' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+            تاریخ برنامه {% if sort == 'date' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          </a>
+        </th>
+        <th>روز برنامه</th>
+        <th>ایجاد کننده</th>
+        <th>تعداد فرم</th>
+        <th>تقویم برنامه</th>
+        <th>تعداد قالب برنامه</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
     <tbody>
       {% for plan in plans %}
       <tr>
-        <td>{{ plan.program_number }}</td>
-        <td class="num">{{ plan.date }}</td>
+        <td>{{ forloop.counter }}</td>
+        <td>{{ plan.program_number|program_no }}</td>
+        <td>{{ plan.date|jdate }}</td>
         <td>{{ plan.weekday_name }}</td>
-        <td><span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
         <td>{{ plan.created_by.username|default:'—' }}</td>
-        <td>
-          <a class="link-edit" href="{% url 'plan_detail' plan.pk %}">
-            {% if plan.status == 'draft' and profile.can_create_plans %}ویرایش{% else %}مشاهده{% endif %}
-          </a>
+        <td class="forms-cell">
+          <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
+            data-forms-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}"
+            data-forms-ctx="weekly_plan"
+            data-forms-id="{{ plan.pk }}"
+            data-forms-json="{{ forms_weekly_json|escape }}">{{ forms_weekly|length }} فرم</button>
         </td>
         <td>
-          {% if profile.can_create_plans %}
-          <form method="post" action="{% url 'plan_set_status' plan.pk %}" class="inline-form">
+          <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
+            data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}">تقویم برنامه</button>
+        </td>
+        <td>{{ plan.mold_count }}</td>
+        <td>
+          <form method="post" action="{% url 'plan_operate' plan.pk %}" class="ops-apply-form">
             {% csrf_token %}
-            {% if plan.status == 'approved' %}
-              <button class="btn btn-sm btn-ghost" name="status" value="draft" type="submit">تغییر به موقت</button>
-            {% else %}
-              <button class="btn btn-sm btn-ok" name="status" value="approved" type="submit">تأیید (تأییدشده)</button>
-            {% endif %}
+            <select name="action" class="ops-select input">
+              <option value="view" selected>مشاهده</option>
+              {% if plan.can_edit_by_user %}
+              <option value="edit">ویرایش</option>
+              {% endif %}
+              {% if plan.can_delete_by_user %}
+              <option value="delete">حذف برنامه</option>
+              {% endif %}
+            </select>
+            <button class="btn btn-sm" type="submit">اعمال</button>
           </form>
-          {% else %}—{% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -46,4 +78,75 @@
   </table>
   {% else %}<p class="empty">هنوز برنامه‌ای ثبت نشده است.</p>{% endif %}
 </div>
+
+<dialog id="plan-calendar-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>تقویم برنامه — <span id="calendar-dialog-title"></span></h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div id="calendar-dialog-body" class="calendar-dialog-body muted">در حال بارگذاری…</div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+{% include "print_forms/_forms_dialog.html" %}
+<script>
+(function () {
+  var dialog = document.getElementById("plan-calendar-dialog");
+  var titleEl = document.getElementById("calendar-dialog-title");
+  var body = document.getElementById("calendar-dialog-body");
+  if (!dialog) return;
+
+  function close() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); close(); }
+  });
+
+  document.querySelectorAll("[data-calendar-plan]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-calendar-plan");
+      titleEl.textContent = btn.getAttribute("data-calendar-title") || "";
+      body.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+      fetch("{% url 'plan_calendar_json' %}?plan=" + encodeURIComponent(id))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var units = data.matrix_units || [];
+          var rows = data.matrix_rows || [];
+          var html = '<table class="table plan-matrix-table"><thead><tr><th>روز تعویض</th><th>تاریخ تعویض</th>';
+          units.forEach(function (n) { html += "<th>واحد " + n + "</th>"; });
+          html += "</tr></thead><tbody>";
+          if (!rows.length) {
+            html += '<tr><td colspan="' + (units.length + 2) + '" class="muted">داده‌ای نیست</td></tr>';
+          } else {
+            rows.forEach(function (row) {
+              html += "<tr><td>" + row.weekday + "</td><td>" + row.date + "</td>";
+              (row.counts_list || []).forEach(function (c) { html += "<td>" + c + "</td>"; });
+              html += "</tr>";
+            });
+          }
+          html += "</tbody></table>";
+          body.innerHTML = html;
+        })
+        .catch(function () { body.innerHTML = '<p class="muted">خطا در دریافت تقویم.</p>'; });
+    });
+  });
+})();
+(function () {
+  document.querySelectorAll(".ops-apply-form").forEach(function (form) {
+    form.addEventListener("submit", function (e) {
+      var sel = form.querySelector('select[name="action"]');
+      if (sel && sel.value === "delete") {
+        if (!window.confirm("این برنامه حذف شود؟")) e.preventDefault();
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}
