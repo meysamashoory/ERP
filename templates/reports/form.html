@@ -1,6 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{{ page_title }}{% endblock %}
-{% block heading %}{{ page_title }}{% endblock %}
+{% block title %}{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}{% endblock %}
+{% block heading %}
+<div class="entity-heading" id="entity-heading">
+  <div class="entity-heading-view" id="heading-view" {% if mode != 'edit' and not form.title.value %}hidden{% endif %}>
+    <span class="entity-heading-text" id="heading-text">{% if report %}{{ report.heading_label }}{% elif form.title.value %}{{ form.number.value }}- {{ form.title.value }}{% if form.description.value %} ({{ form.description.value }}){% endif %}{% endif %}</span>
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش عنوان</button>
+  </div>
+  <div class="entity-heading-edit" id="heading-edit" {% if mode == 'edit' or form.title.value %}hidden{% endif %}>
+    <span class="muted">پس از تایید اطلاعات، عنوان اینجا نمایش داده می‌شود.</span>
+  </div>
+</div>
+{% endblock %}
 {% block nav_reports %}open{% endblock %}
 {% block nav_report_create %}{% if mode == 'create' %}active{% endif %}{% endblock %}
 {% block nav_report_list %}{% if mode == 'edit' %}active{% endif %}{% endblock %}
@@ -19,20 +29,7 @@
   <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
   {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
 
-  <div class="meta-strip" id="meta-summary" hidden>
-    <div class="meta-text">
-      <div class="meta-title" id="sum-title">{{ form.title.value|default:"" }}</div>
-      <div class="meta-sub">
-        شماره <span id="sum-number">{{ form.number.value|default:"" }}</span>
-        <span id="sum-access"> · {% if form.access_mode.value == 'editable' %}قابل ویرایش{% else %}فقط خواندنی{% endif %}</span>
-        {% if form.is_manager %}<span id="sum-standard-wrap">{% if form.is_standard.value %} · استاندارد{% endif %}</span>{% endif %}
-      </div>
-      <div class="meta-desc" id="sum-desc">{% if form.description.value %}({{ form.description.value }}){% endif %}</div>
-    </div>
-    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
-  </div>
-
-  <div class="panel panel-compact" id="meta-editor">
+  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
     <div class="panel-body panel-body-compact">
       <div class="form-grid form-grid-compact form-grid-2">
         <div class="field">
@@ -70,7 +67,7 @@
     </div>
   </div>
 
-  <div class="panel panel-compact" id="builder-panel" hidden>
+  <div class="panel panel-compact" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
     <div class="panel-body panel-body-compact">
       <div class="col-builder col-builder-compact">
         <div class="col-builder-right">
@@ -90,7 +87,6 @@
         <div class="col-builder-left">
           <div class="selected-head">
             <strong>نحوه نمایش</strong>
-            <span class="muted">بالا = راست · پایین = چپ</span>
             <div class="move-controls">
               <button type="button" class="btn btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا">▲</button>
               <button type="button" class="btn btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین">▼</button>
@@ -130,9 +126,17 @@
   var sourceLinks = [];
   try { selected = JSON.parse(document.getElementById("columns-initial").textContent || "[]"); } catch (e) { selected = []; }
   try { sourceLinks = JSON.parse(document.getElementById("links-initial").textContent || "[]"); } catch (e) { sourceLinks = []; }
+
+  function newUid() {
+    return "c" + Math.random().toString(16).slice(2, 10);
+  }
+
   selected = (selected || []).map(function (item) {
-    if (typeof item === "string") return { key: item, source: "fitting", level: 1, label: item, origLabel: item };
+    if (typeof item === "string") {
+      return { key: item, source: "fitting", level: 1, label: item, origLabel: item, uid: newUid() };
+    }
     item.origLabel = item.origLabel || item.label || item.key;
+    if (!item.uid) item.uid = newUid();
     return item;
   });
 
@@ -143,7 +147,6 @@
   var activeIdx = -1;
 
   var metaEditor = document.getElementById("meta-editor");
-  var metaSummary = document.getElementById("meta-summary");
   var builderPanel = document.getElementById("builder-panel");
   var topSubmit = document.getElementById("top-submit");
   var cancelBtn = document.getElementById("cancel-meta-btn");
@@ -152,41 +155,49 @@
   var descInput = document.getElementById("id_description");
   var stdInput = document.getElementById("id_is_standard");
   var accessInput = document.getElementById("id_access_mode");
+  var headingView = document.getElementById("heading-view");
+  var headingEdit = document.getElementById("heading-edit");
+  var headingText = document.getElementById("heading-text");
   var confirmedOnce = (mode === "edit");
 
-  function accessLabel() {
-    if (!accessInput) return "فقط خواندنی";
-    return accessInput.value === "editable" ? "قابل ویرایش" : "فقط خواندنی";
+  function formatHeading() {
+    var num = (numberInput.value || "").trim();
+    var title = (titleInput.value || "").trim();
+    var desc = (descInput.value || "").trim();
+    if (!title) return "";
+    var text = (num || "—") + "- " + title;
+    if (desc) text += " (" + desc + ")";
+    return text;
   }
 
-  function syncSummary() {
-    document.getElementById("sum-title").textContent = titleInput.value || "—";
-    document.getElementById("sum-number").textContent = numberInput.value || "—";
-    var desc = (descInput.value || "").trim();
-    document.getElementById("sum-desc").textContent = desc ? "(" + desc + ")" : "";
-    var accessEl = document.getElementById("sum-access");
-    if (accessEl) accessEl.textContent = " · " + accessLabel();
-    var wrap = document.getElementById("sum-standard-wrap");
-    if (wrap && stdInput) wrap.textContent = stdInput.checked ? " · استاندارد" : "";
+  function syncHeading() {
+    var text = formatHeading();
+    if (headingText) headingText.textContent = text || "—";
   }
 
   function showBuilder() {
     confirmedOnce = true;
     metaEditor.hidden = true;
-    metaSummary.hidden = false;
     builderPanel.hidden = false;
     topSubmit.hidden = false;
     cancelBtn.hidden = false;
-    syncSummary();
+    if (headingView) headingView.hidden = false;
+    if (headingEdit) headingEdit.hidden = true;
+    syncHeading();
     renderAll();
   }
   function showMetaEditor() {
     metaEditor.hidden = false;
-    metaSummary.hidden = true;
     builderPanel.hidden = true;
     topSubmit.hidden = true;
-    // Cancel only after at least one successful confirm (or edit mode)
     cancelBtn.hidden = !confirmedOnce;
+    if (confirmedOnce) {
+      if (headingView) headingView.hidden = false;
+      if (headingEdit) headingEdit.hidden = true;
+    } else {
+      if (headingView) headingView.hidden = true;
+      if (headingEdit) headingEdit.hidden = false;
+    }
   }
 
   document.getElementById("confirm-meta-btn").addEventListener("click", function () {
@@ -250,7 +261,6 @@
     addedSources.push(sid);
     renderAll();
     if (addedSources.filter(function (s) { return s !== "file"; }).length >= 2) {
-      // Prompt to define join keys when multiple data sources
       linkBtn.hidden = false;
     }
   }
@@ -302,7 +312,7 @@
         cb.checked = selected.some(function (c) { return c.key === key && c.source === sid; });
         cb.addEventListener("change", function () {
           if (cb.checked) {
-            selected.push({ key: key, source: sid, level: 1, label: lab, origLabel: lab });
+            selected.push({ key: key, source: sid, level: 1, label: lab, origLabel: lab, uid: newUid() });
           } else {
             selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
           }
@@ -341,7 +351,8 @@
       source: src.source,
       level: src.level,
       label: (src.label || src.origLabel || src.key) + " (کپی)",
-      origLabel: src.origLabel || src.label || src.key
+      origLabel: src.origLabel || src.label || src.key,
+      uid: newUid()
     };
     selected.splice(activeIdx + 1, 0, copy);
     activeIdx = activeIdx + 1;

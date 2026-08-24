@@ -29,7 +29,7 @@
             <td><span class="badge status-{{ row.program.status }}">{{ row.program.get_status_display }}</span></td>
             <td class="num">{{ row.totals.produced }} / {{ row.totals.planned }}</td>
             <td class="forms-cell">
-              <button type="button" class="forms-count-btn" data-open-forms
+              <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
                 data-forms-title="{{ row.program.resolved_uid }}"
                 data-forms-ctx="prod_fitting"
                 data-forms-id="{{ row.program.pk }}"
@@ -87,7 +87,7 @@
             <td class="num">{{ r.planned_quantity }}</td>
             <td class="num">{{ r.deviation }}</td>
             <td class="forms-cell">
-              <button type="button" class="forms-count-btn" data-open-forms
+              <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
                 data-forms-title="لوله {{ r.date }}"
                 data-forms-ctx="prod_pipe"
                 data-forms-id="{{ r.pk }}"

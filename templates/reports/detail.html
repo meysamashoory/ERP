@@ -1,21 +1,40 @@
 {% extends "base.html" %}
-{% block title %}{{ report.title }}{% endblock %}
-{% block heading %}{{ report.title }}{% endblock %}
+{% block title %}{{ report.heading_label }}{% endblock %}
+{% block heading %}
+<div class="entity-heading" id="entity-heading">
+  <div class="entity-heading-view" id="heading-view">
+    <span class="entity-heading-text" id="heading-text">{{ report.heading_label }}</span>
+    {% if can_edit_meta %}
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-title-btn">ویرایش عنوان</button>
+    {% endif %}
+  </div>
+  {% if can_edit_meta %}
+  <form method="post" class="entity-heading-form" id="heading-form" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_meta">
+    <input class="input input-sm" type="number" name="number" min="1" max="999" value="{{ report.number }}" title="شماره" required>
+    <input class="input input-sm" type="text" name="title" value="{{ report.title }}" title="عنوان" required>
+    <input class="input input-sm" type="text" name="description" value="{{ report.description }}" title="توضیحات" placeholder="توضیحات">
+    <button class="btn btn-sm" type="submit">ذخیره</button>
+    <button class="btn btn-sm btn-ghost" type="button" id="cancel-title-btn">انصراف</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
 {% block nav_reports %}open{% endblock %}
 {% block nav_report_list %}active{% endblock %}
 
 {% block topbar_actions %}
 <div class="topbar-actions topbar-actions-pair">
-  <span class="topbar-meta-num">شماره {{ report.number }}</span>
   {% if report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
-  {% if is_editable_report %}<span class="type-label">قابل ویرایش</span>{% else %}<span class="type-label">فقط خواندنی</span>{% endif %}
+  {% if is_editable_report %}<span class="type-label">قابل اصلاح</span>{% else %}<span class="type-label">فقط خواندنی</span>{% endif %}
   <span class="level-chip" title="سطح فعلی">{{ path_label }}</span>
   {% if can_go_back %}
   <a class="btn btn-sm btn-ghost" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
   {% endif %}
   <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
   {% if can_edit_entry %}
-  <button type="button" class="btn btn-sm" id="report-edit-toggle">ویرایش</button>
+  <button type="button" class="btn btn-sm" id="report-edit-toggle">اصلاح گزارش</button>
   {% endif %}
   <div class="menu-drop">
     <button type="button" class="btn btn-sm btn-primary-soft" data-menu-toggle>خروجی گزارش ▾</button>
@@ -75,6 +94,23 @@
 {{ entry_meta_json|json_script:"entry-meta" }}
 <script>
 (function () {
+  var editTitleBtn = document.getElementById("edit-title-btn");
+  var headingView = document.getElementById("heading-view");
+  var headingForm = document.getElementById("heading-form");
+  var cancelTitleBtn = document.getElementById("cancel-title-btn");
+  if (editTitleBtn && headingForm && headingView) {
+    editTitleBtn.addEventListener("click", function () {
+      headingView.hidden = true;
+      headingForm.hidden = false;
+    });
+  }
+  if (cancelTitleBtn && headingForm && headingView) {
+    cancelTitleBtn.addEventListener("click", function () {
+      headingForm.hidden = true;
+      headingView.hidden = false;
+    });
+  }
+
   document.querySelectorAll("[data-menu-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function (e) {
       e.stopPropagation();

@@ -43,13 +43,18 @@ class ReportFlowTests(TestCase):
 
         list_resp = self.client.get(reverse("report_list"))
         self.assertContains(list_resp, "گزارش تست")
-        self.assertContains(list_resp, "(توضیح نمونه)")
+        self.assertContains(list_resp, "عنوان گزارش")
+        self.assertContains(list_resp, "مدل گزارش")
+        self.assertContains(list_resp, "نوع گزارش")
+        self.assertContains(list_resp, "تعداد فرم")
         self.assertNotContains(list_resp, "+ ایجاد گزارش")
-        self.assertContains(list_resp, "list-desc")
+        self.assertNotContains(list_resp, "th-filter-btn")
 
         detail = self.client.get(reverse("report_detail", args=[report.pk]))
         self.assertEqual(detail.status_code, 200)
-        self.assertContains(detail, "گزارش تست")
+        self.assertContains(detail, "100- گزارش تست")
+        self.assertContains(detail, "(توضیح نمونه)")
+        self.assertContains(detail, "ویرایش عنوان")
         self.assertContains(detail, "خروجی")
         self.assertNotContains(detail, "ارسال گزارش برای کاربر دیگر")
 
@@ -82,9 +87,12 @@ class ReportFlowTests(TestCase):
         detail = self.client.get(reverse("report_detail", args=[report.pk]))
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "report-edit-toggle")
-        self.assertContains(detail, "قابل ویرایش")
+        self.assertContains(detail, "اصلاح گزارش")
+        self.assertContains(detail, "قابل اصلاح")
         self.assertContains(detail, "افزودن ردیف")
 
+        # Persist column uids used by the report for entry storage
+        report.refresh_from_db()
         save = self.client.post(
             reverse("report_detail", args=[report.pk]),
             {
@@ -99,7 +107,13 @@ class ReportFlowTests(TestCase):
         )
         self.assertEqual(save.status_code, 302)
         report.refresh_from_db()
-        self.assertEqual(report.entry_data["rows"][0]["data_titles"], "زانو ۱۱۰")
+        self.assertIn("rows", report.entry_data)
+        # Values may be under uid or legacy semantic key
+        stored = report.entry_data["rows"][0]
+        self.assertTrue(
+            stored.get("data_titles") == "زانو ۱۱۰"
+            or any(v == "زانو ۱۱۰" for v in stored.values())
+        )
         after = self.client.get(reverse("report_detail", args=[report.pk]))
         self.assertContains(after, "زانو ۱۱۰")
         self.assertContains(after, "سرپیچ ۹۰")
@@ -162,15 +176,111 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "report-edit-toggle")
         meta = detail.context["entry_meta"]
-        awaiting = next(m for m in meta if m["key"] == "awaiting_production")
-        running = next(m for m in meta if m["key"] == "running_production")
+        awaiting = next(m for m in meta if m.get("data_key") == "awaiting_production" or m["key"] == "awaiting_production")
+        running = next(m for m in meta if m.get("data_key") == "running_production" or m["key"] == "running_production")
         self.assertEqual(awaiting["type"], "product_select")
         self.assertEqual(running["type"], "product_select")
+        self.assertNotEqual(awaiting["key"], running["key"])
         self.assertTrue(any(product_name == (o.get("value") or "") for o in awaiting["options"]))
         # Options are product names only (no machine/mold details)
         for opt in awaiting["options"]:
             self.assertEqual(opt["label"], opt["value"])
             self.assertNotIn("(", opt["label"])
+
+    def test_copied_entry_columns_are_independent(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="کپی ستون",
+            number=779,
+            access_mode="editable",
+            data_source="data_entry",
+            columns=[
+                {"key": "awaiting_production", "source": "data_entry", "level": 1, "label": "انتظار ۱", "uid": "u1"},
+                {"key": "awaiting_production", "source": "data_entry", "level": 1, "label": "انتظار ۲", "uid": "u2"},
+            ],
+        )
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        meta = detail.context["entry_meta"]
+        self.assertEqual(len(meta), 2)
+        self.assertEqual(meta[0]["col_index"], 0)
+        self.assertEqual(meta[1]["col_index"], 1)
+        self.assertEqual(meta[0]["key"], "u1")
+        self.assertEqual(meta[1]["key"], "u2")
+        self.assertEqual(meta[0]["data_key"], "awaiting_production")
+        save = self.client.post(
+            reverse("report_detail", args=[report.pk]),
+            {
+                "action": "save_entry",
+                "entry_payload": '{"rows":[{"u1":"کالای الف","u2":"کالای ب"}]}',
+            },
+        )
+        self.assertEqual(save.status_code, 302)
+        after = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertContains(after, "کالای الف")
+        self.assertContains(after, "کالای ب")
+        rows = after.context["rows"]
+        self.assertEqual(rows[0][0], "کالای الف")
+        self.assertEqual(rows[0][1], "کالای ب")
+
+    def test_form_print_fill_includes_report_entry_data(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="گزارش فرم",
+            number=780,
+            access_mode="editable",
+            data_source="data_entry",
+            columns=[
+                {"key": "data_titles", "source": "data_entry", "level": 1, "label": "عنوان", "uid": "t1"},
+            ],
+            entry_data={"rows": [{"t1": "مقدار ثبت‌شده"}]},
+        )
+        form_obj = PrintForm.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="فرم گزارش",
+            number=81,
+            purpose="reports",
+            linked_report=report,
+            frames=[{
+                "id": "f1", "kind": "field", "label": "عنوان",
+                "left": 10, "x": 10, "y": 10, "width": 60, "height": 10,
+                "source": "level_1", "source_key": "t1",
+            }],
+        )
+        resp = self.client.get(
+            reverse("print_form_print_fill", args=[form_obj.pk]),
+            {"ctx": "report", "id": report.pk},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "مقدار ثبت‌شده")
+
+    def test_update_report_meta_inline(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="قدیم",
+            description="قبل",
+            number=781,
+            data_source="data_entry",
+            columns=[{"key": "data_titles", "source": "data_entry", "level": 1, "label": "عنوان"}],
+        )
+        resp = self.client.post(
+            reverse("report_detail", args=[report.pk]),
+            {"action": "update_meta", "title": "تعویض قالب", "number": 10, "description": "به صورت دستی"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(report.title, "تعویض قالب")
+        self.assertEqual(report.number, 10)
+        self.assertEqual(report.description, "به صورت دستی")
+        self.assertEqual(report.heading_label, "10- تعویض قالب (به صورت دستی)")
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertContains(detail, "10- تعویض قالب (به صورت دستی)")
 
     def test_send_duplicate_number_alerts(self):
         self.client.login(username="expert", password="erp12345")
@@ -422,9 +532,10 @@ class PrintFormFlowTests(TestCase):
             )
         resp = self.client.get(reverse("report_edit", args=[report.pk]))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "ویرایش گزارش")
         self.assertContains(resp, report.title)
         self.assertContains(resp, "نحوه نمایش")
+        self.assertContains(resp, "ویرایش عنوان")
+        self.assertNotContains(resp, "بالا = راست")
 
     def test_sidebar_labels(self):
         self.client.login(username="admin", password="erp12345")

@@ -94,6 +94,14 @@ class SavedReport(models.Model):
     def __str__(self) -> str:
         return f"{self.number} — {self.title}"
 
+    @property
+    def heading_label(self) -> str:
+        """Topbar title: «شماره- نام (توضیحات)»."""
+        desc = (self.description or "").strip()
+        if desc:
+            return f"{self.number}- {self.title} ({desc})"
+        return f"{self.number}- {self.title}"
+
 
 class PrintForm(models.Model):
     """Printable form definition with framing/layout for hard-copy use."""
@@ -184,6 +192,14 @@ class PrintForm(models.Model):
 
     def __str__(self) -> str:
         return f"{self.number} — {self.title}"
+
+    @property
+    def heading_label(self) -> str:
+        """Topbar title: «شماره- نام (توضیحات)»."""
+        desc = (self.description or "").strip()
+        if desc:
+            return f"{self.number}- {self.title} ({desc})"
+        return f"{self.number}- {self.title}"
 
     @property
     def purpose_label(self) -> str:

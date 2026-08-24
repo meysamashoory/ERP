@@ -27,7 +27,7 @@ from .access import (
     visible_forms,
     visible_reports,
 )
-from .columns import COLUMN_GROUPS, level_entry_meta, normalize_columns, run_report
+from .columns import COLUMN_GROUPS, level_entry_meta, normalize_columns, persist_column_uids, run_report
 from .form_purposes import (
     PURPOSE_PRODUCTION,
     PURPOSE_REPORTS,
@@ -127,14 +127,10 @@ def report_list(request: HttpRequest) -> HttpResponse:
     reports = visible_reports(request.user)
     sort = request.GET.get("sort", "number")
     direction = request.GET.get("dir", "asc")
-    title_q = request.GET.get("title", "").strip()
-    if title_q:
-        reports = reports.filter(title__icontains=title_q)
 
     sort_map = {
         "number": "number",
         "title": "title",
-        "type": "is_standard",
     }
     order = sort_map.get(sort, "number")
     if direction == "desc":
@@ -165,7 +161,6 @@ def report_list(request: HttpRequest) -> HttpResponse:
             "rows": rows,
             "sort": sort,
             "dir": direction,
-            "title_q": title_q,
             "users": User.objects.filter(is_active=True).exclude(pk=request.user.pk).order_by("username"),
         },
     )
@@ -228,16 +223,17 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
             return redirect("report_detail", pk=report.pk)
     else:
         form = SavedReportForm(instance=report, user=request.user)
+    columns_data = persist_column_uids(report)
     return render(
         request,
         "reports/form.html",
         {
             "form": form,
             "column_groups": COLUMN_GROUPS,
-            "columns_data": normalize_columns(report.columns or []),
+            "columns_data": columns_data,
             "source_links_data": list(report.source_links or []),
             "mode": "edit",
-            "page_title": f"ویرایش گزارش — {report.title}",
+            "page_title": report.heading_label,
             "report": report,
         },
     )
@@ -248,6 +244,36 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     report = get_object_or_404(SavedReport, pk=pk)
     if not can_view_report(request.user, report):
         return HttpResponseForbidden("مجاز به مشاهده این گزارش نیستید.")
+
+    if request.method == "POST" and request.POST.get("action") == "update_meta":
+        if not can_edit_report(request.user, report):
+            return HttpResponseForbidden("مجاز به ویرایش این گزارش نیستید.")
+        title = (request.POST.get("title") or "").strip()[:200]
+        description = (request.POST.get("description") or "").strip()[:300]
+        try:
+            number = int(request.POST.get("number") or 0)
+        except (TypeError, ValueError):
+            number = 0
+        if not title:
+            messages.error(request, "عنوان گزارش را وارد کنید.")
+            return redirect("report_detail", pk=report.pk)
+        if number < 1 or number > 999:
+            messages.error(request, "شماره گزارش باید بین ۱ تا ۹۹۹ باشد.")
+            return redirect("report_detail", pk=report.pk)
+        conflict = (
+            SavedReport.objects.filter(owner=report.owner, number=number)
+            .exclude(pk=report.pk)
+            .exists()
+        )
+        if conflict:
+            messages.error(request, "شماره گزارش وجود دارد")
+            return redirect("report_detail", pk=report.pk)
+        report.title = title
+        report.description = description
+        report.number = number
+        report.save(update_fields=["title", "description", "number", "updated_at"])
+        messages.success(request, "عنوان گزارش به‌روزرسانی شد.")
+        return redirect("report_detail", pk=report.pk)
 
     if request.method == "POST" and request.POST.get("action") == "save_entry":
         if report.access_mode != ReportAccessMode.EDITABLE:
@@ -317,6 +343,8 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         level = 1
     filters = _parse_filters(request)
 
+    persist_column_uids(report)
+
     headers, rows, payloads, deeper = run_report(
         report.data_source,
         report.columns or [],
@@ -356,6 +384,7 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     entry_meta = level_entry_meta(report.columns or [], level=level)
     is_editable_report = report.access_mode == ReportAccessMode.EDITABLE
     can_edit_entry = is_editable_report and can_edit_report(request.user, report) and bool(entry_meta)
+    can_edit_meta = can_edit_report(request.user, report)
 
     return render(
         request,
@@ -374,6 +403,7 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "can_go_back": level > 1 or bool(filters),
             "is_editable_report": is_editable_report,
             "can_edit_entry": can_edit_entry,
+            "can_edit_meta": can_edit_meta,
             "entry_meta": entry_meta,
             "entry_meta_json": entry_meta,
         },
@@ -734,27 +764,44 @@ def _context_fill_rows(ctx: str, obj_id: int, item_id: int | None = None) -> lis
             level = int(item_id or 1)
         except (TypeError, ValueError):
             level = 1
-        headers, data_rows, _payloads, _deeper = run_report(
-            report.data_source, report.columns or [], level=level, filters={}
-        )
+        from .columns import data_key, normalize_columns, persist_column_uids, storage_key
+
+        persist_column_uids(report)
         level_cols = [
-            c for c in (report.columns or [])
-            if isinstance(c, dict) and int(c.get("level") or 1) == level
+            c
+            for c in normalize_columns(report.columns or [])
+            if int(c.get("level") or 1) == level
         ]
+        headers, data_rows, _payloads, _deeper = run_report(
+            report.data_source,
+            report.columns or [],
+            level=level,
+            filters={},
+            entry_data=report.entry_data or {},
+        )
+        key_counts: dict[str, int] = {}
+        for c in level_cols:
+            dk = data_key(c)
+            key_counts[dk] = key_counts.get(dk, 0) + 1
         for data_row in data_rows:
             row = {
                 "report_title": report.title,
                 "report_number": str(report.number),
             }
             for i, h in enumerate(headers):
-                key = ""
+                sk = ""
+                dk = ""
                 if i < len(level_cols):
-                    key = str(level_cols[i].get("key") or "")
-                if not key:
-                    key = f"col_{i}"
+                    sk = storage_key(level_cols[i])
+                    dk = data_key(level_cols[i])
+                if not sk:
+                    sk = f"col_{i}"
                 val = data_row[i] if i < len(data_row) else ""
-                row[key] = str(val)
+                row[sk] = str(val)
                 row[h] = str(val)
+                # Backward-compatible bind by semantic key when unique.
+                if dk and key_counts.get(dk, 0) == 1:
+                    row[dk] = str(val)
             rows.append(row)
         return rows
     return rows

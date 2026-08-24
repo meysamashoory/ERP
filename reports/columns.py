@@ -2,8 +2,28 @@
 
 from __future__ import annotations
 
+import secrets
+
 from catalog.models import Product
 from production.models import PipeProduction, ProductionDayEntry
+
+
+def new_column_uid() -> str:
+    """Unique id so copied columns stay independent while sharing data_key."""
+    return "c" + secrets.token_hex(4)
+
+
+def storage_key(spec: dict) -> str:
+    """Key used to store/read cell values (uid preferred, else data key)."""
+    uid = str(spec.get("uid") or "").strip()
+    if uid:
+        return uid
+    return str(spec.get("key") or "").strip()
+
+
+def data_key(spec: dict) -> str:
+    """Semantic column type key (shared by copies)."""
+    return str(spec.get("key") or "").strip()
 
 
 def _fit_material_used(r):
@@ -217,13 +237,31 @@ def available_keys(source: str) -> set[str]:
 
 
 def normalize_columns(raw) -> list[dict]:
-    """Accept legacy string keys or structured dicts → list of dicts."""
+    """Accept legacy string keys or structured dicts → list of dicts.
+
+    Each column gets a stable ``uid`` so copies of the same ``key`` stay
+    independent for editing/storage while sharing field type/options.
+    Missing uids are assigned deterministically from position+key so values
+    survive reloads before the report is re-saved.
+    """
     out = []
     if not raw:
         return out
-    for item in raw:
+    seen_uids: set[str] = set()
+    for index, item in enumerate(raw):
         if isinstance(item, str):
-            out.append({"key": item, "source": "", "level": 1, "label": item})
+            key = item
+            uid = f"col{index}_{key}"
+            if uid in seen_uids:
+                uid = new_column_uid()
+            seen_uids.add(uid)
+            out.append({
+                "key": key,
+                "source": "",
+                "level": 1,
+                "label": key,
+                "uid": uid,
+            })
             continue
         if not isinstance(item, dict):
             continue
@@ -239,8 +277,42 @@ def normalize_columns(raw) -> list[dict]:
         label = str(item.get("label") or key)[:120]
         if not label:
             label = column_label_map(source).get(key, key) if source else key
-        out.append({"key": key, "source": source, "level": level, "label": label})
+        uid = str(item.get("uid") or "").strip()
+        if not uid:
+            uid = f"col{index}_{key}"
+        if uid in seen_uids:
+            uid = new_column_uid()
+        seen_uids.add(uid)
+        out.append({
+            "key": key,
+            "source": source,
+            "level": level,
+            "label": label,
+            "uid": uid,
+        })
     return out
+
+
+def columns_need_uid_persist(raw) -> bool:
+    """True when stored columns are missing uid and should be rewritten."""
+    if not raw:
+        return False
+    for item in raw:
+        if isinstance(item, str):
+            return True
+        if isinstance(item, dict) and not str(item.get("uid") or "").strip():
+            return True
+    return False
+
+
+def persist_column_uids(report) -> list[dict]:
+    """Normalize columns and save uids back onto the report when missing."""
+    cols = report.columns or []
+    normalized = normalize_columns(cols)
+    if columns_need_uid_persist(cols):
+        report.columns = normalized
+        report.save(update_fields=["columns", "updated_at"])
+    return normalized
 
 
 def _getter_map(source: str) -> dict:
@@ -325,23 +397,37 @@ def _entry_rows_from_data(entry_data: dict | None) -> list[dict]:
     return [stored] if stored else [{}]
 
 
-def _build_records(data_source: str, specs: list[dict], entry_data: dict | None = None) -> list[dict]:
-    entry_keys = [s["key"] for s in specs if is_data_entry_key(s["key"], s.get("source") or "")]
-    non_entry_keys = [s["key"] for s in specs if s["key"] not in entry_keys]
+def _read_stored_value(stored: dict, spec: dict, *, legacy_used: set[str]) -> str:
+    """Read value for a column instance; fall back to legacy data_key once."""
+    sk = storage_key(spec)
+    dk = data_key(spec)
+    if sk in stored and stored.get(sk) not in (None,):
+        return str(stored.get(sk) or "")
+    # Legacy rows stored by semantic key only (before per-column uid).
+    if dk and dk in stored and dk not in legacy_used:
+        legacy_used.add(dk)
+        return str(stored.get(dk) or "")
+    return ""
 
-    def fill_entry_cell(cell: dict, key: str, stored: dict) -> None:
-        cell[key] = stored.get(key, "")
+
+def _build_records(data_source: str, specs: list[dict], entry_data: dict | None = None) -> list[dict]:
+    entry_specs = [s for s in specs if is_data_entry_key(data_key(s), s.get("source") or "")]
+    entry_sk = {storage_key(s) for s in entry_specs}
+    non_entry_specs = [s for s in specs if storage_key(s) not in entry_sk]
+    non_entry_keys = [storage_key(s) for s in non_entry_specs]
 
     if data_source == "data_entry":
         rows_out = []
         for stored in _entry_rows_from_data(entry_data):
             cell = {}
+            legacy_used: set[str] = set()
             for spec in specs:
-                key = spec["key"]
-                if key in entry_keys or is_data_entry_key(key, spec.get("source") or ""):
-                    fill_entry_cell(cell, key, stored)
+                sk = storage_key(spec)
+                dk = data_key(spec)
+                if is_data_entry_key(dk, spec.get("source") or ""):
+                    cell[sk] = _read_stored_value(stored, spec, legacy_used=legacy_used)
                 else:
-                    cell[key] = ""
+                    cell[sk] = ""
             rows_out.append(cell)
         return rows_out or [{}]
 
@@ -349,19 +435,23 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
     for record in _queryset(data_source):
         cell = {}
         for spec in specs:
-            key = spec["key"]
-            if is_data_entry_key(key, spec.get("source") or ""):
-                cell[key] = ""
+            sk = storage_key(spec)
+            dk = data_key(spec)
+            if is_data_entry_key(dk, spec.get("source") or ""):
+                cell[sk] = ""
                 continue
             try:
-                cell[key] = spec["getter"](record) if spec.get("getter") else ""
+                cell[sk] = spec["getter"](record) if spec.get("getter") else ""
             except Exception:
-                cell[key] = ""
-        if entry_keys:
+                cell[sk] = ""
+        if entry_specs:
             sig = row_signature(cell, non_entry_keys)
             stored = _lookup_entry_values(entry_data, sig)
-            for key in entry_keys:
-                fill_entry_cell(cell, key, stored)
+            legacy_used = set()
+            for spec in entry_specs:
+                cell[storage_key(spec)] = _read_stored_value(
+                    stored, spec, legacy_used=legacy_used
+                )
         rows.append(cell)
     return rows
 
@@ -434,8 +524,12 @@ def run_report(
 
     deeper = any(s["level"] > level for s in resolved)
     headers = [s["label"] for s in level_cols]
-    keys = [s["key"] for s in level_cols]
-    entry_keys_level = [s["key"] for s in level_cols if is_data_entry_key(s["key"], s.get("source") or "")]
+    keys = [storage_key(s) for s in level_cols]
+    entry_keys_level = {
+        storage_key(s)
+        for s in level_cols
+        if is_data_entry_key(data_key(s), s.get("source") or "")
+    }
     non_entry_level = [k for k in keys if k not in entry_keys_level]
 
     display_rows: list[list] = []
@@ -449,6 +543,16 @@ def run_report(
             seen.add(values)
         display_rows.append([row.get(k, "") for k in keys])
         payload = {k: row.get(k, "") for k in keys}
+        # Also expose semantic keys when unique (forms bound before uid).
+        key_counts: dict[str, int] = {}
+        for spec in level_cols:
+            dk = data_key(spec)
+            key_counts[dk] = key_counts.get(dk, 0) + 1
+        for spec in level_cols:
+            dk = data_key(spec)
+            sk = storage_key(spec)
+            if dk and key_counts.get(dk, 0) == 1 and dk not in payload:
+                payload[dk] = row.get(sk, "")
         if data_source == "data_entry" and not non_entry_level:
             payload["_entry_sig"] = f"__row_{row_i}__"
             payload["_row_index"] = row_i
@@ -469,33 +573,31 @@ def run_report_flat(data_source: str, column_keys: list) -> tuple[list[str], lis
 
 
 def level_entry_meta(columns, level: int = 1) -> list[dict]:
-    """Return editable meta for data-entry columns at a report level."""
+    """Return editable meta for data-entry columns at a report level.
+
+    ``key`` is the per-instance storage id (uid). ``data_key`` is the shared
+    semantic type used for field widgets/options.
+    """
     specs = normalize_columns(columns)
     level = max(1, min(10, int(level or 1)))
     options_cache: dict[str, list[dict]] = {}
+    level_specs = [s for s in specs if int(s.get("level") or 1) == level]
     out = []
-    for spec in specs:
-        if int(spec.get("level") or 1) != level:
+    for idx, spec in enumerate(level_specs):
+        dk = data_key(spec)
+        if not is_data_entry_key(dk, spec.get("source") or ""):
             continue
-        if not is_data_entry_key(spec["key"], spec.get("source") or ""):
-            continue
-        field_type = entry_field_type(spec["key"])
+        field_type = entry_field_type(dk)
         item = {
-            "key": spec["key"],
-            "label": spec.get("label") or column_label_map("data_entry").get(spec["key"], spec["key"]),
+            "key": storage_key(spec),
+            "data_key": dk,
+            "label": spec.get("label") or column_label_map("data_entry").get(dk, dk),
             "type": field_type,
-            "col_index": None,
+            "col_index": idx,
         }
         if field_type == "product_select":
-            if spec["key"] not in options_cache:
-                options_cache[spec["key"]] = product_options_for_key(spec["key"])
-            item["options"] = options_cache[spec["key"]]
+            if dk not in options_cache:
+                options_cache[dk] = product_options_for_key(dk)
+            item["options"] = options_cache[dk]
         out.append(item)
-    # Fill col_index against level columns order
-    level_keys = [s["key"] for s in specs if int(s.get("level") or 1) == level]
-    for item in out:
-        try:
-            item["col_index"] = level_keys.index(item["key"])
-        except ValueError:
-            item["col_index"] = -1
     return out

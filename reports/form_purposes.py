@@ -121,17 +121,23 @@ def purpose_source_groups(purpose: str) -> list[dict]:
 
 
 def report_level_groups(report) -> list[dict]:
-    """Build source groups as report levels; columns are headers at that level."""
-    cols = list(report.columns or [])
-    levels = sorted({int(c.get("level") or 1) for c in cols if isinstance(c, dict)})
+    """Build source groups as report levels; columns are headers at that level.
+
+    Column ids prefer per-instance ``uid`` so form bindings stay independent
+    when the same data key is copied.
+    """
+    from reports.columns import normalize_columns, storage_key
+
+    cols = normalize_columns(report.columns or [])
+    levels = sorted({int(c.get("level") or 1) for c in cols})
     if not levels:
         levels = [1]
     groups = []
     for lv in levels:
         level_cols = [
-            (str(c.get("key") or ""), str(c.get("label") or c.get("key") or ""))
+            (storage_key(c), str(c.get("label") or c.get("key") or ""))
             for c in cols
-            if isinstance(c, dict) and int(c.get("level") or 1) == lv
+            if int(c.get("level") or 1) == lv
         ]
         groups.append({
             "id": f"level_{lv}",

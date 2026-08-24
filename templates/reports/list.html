@@ -7,34 +7,22 @@
 {% block content %}
 <div class="panel panel-compact">
   {% if rows %}
-  <table class="table table-compact table-list-nav" id="report-list-table">
+  <table class="table table-compact table-list-nav table-plan-list" id="report-list-table">
     <thead>
       <tr>
-        <th style="width:72px">
-          <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
-            شماره {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+        <th style="width:90px">
+          <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+            شماره{% if sort == 'number' %} {% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
         <th>
-          <button type="button" class="th-sort th-filter-btn" id="title-filter-toggle">
-            عنوان {% if title_q %}· فیلتر{% endif %}
-          </button>
-          <div class="th-filter-panel" id="title-filter-panel" hidden>
-            <form method="get" class="th-filter-form">
-              <input type="hidden" name="sort" value="{{ sort }}">
-              <input type="hidden" name="dir" value="{{ dir }}">
-              <input class="input" type="text" name="title" value="{{ title_q }}" placeholder="فیلتر عنوان…">
-              <button class="btn btn-sm" type="submit">اعمال</button>
-              <a class="btn btn-sm btn-ghost" href="?sort={{ sort }}&dir={{ dir }}">پاک</a>
-            </form>
-          </div>
-        </th>
-        <th class="col-type" style="width:100px">
-          <a class="th-sort" href="?sort=type&dir={% if sort == 'type' and dir == 'asc' %}desc{% else %}asc{% endif %}{% if title_q %}&title={{ title_q|urlencode }}{% endif %}">
-            نوع {% if sort == 'type' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          <a class="th-sort" href="?sort=title&dir={% if sort == 'title' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+            عنوان گزارش{% if sort == 'title' %} {% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
           </a>
         </th>
-        <th style="width:110px">تعداد فرم‌ها</th>
+        <th style="width:120px">مدل گزارش</th>
+        <th style="width:110px">نوع گزارش</th>
+        <th style="width:110px">تعداد فرم</th>
         <th style="width:200px">عملیات</th>
       </tr>
     </thead>
@@ -49,14 +37,24 @@
         <td class="num cell-nav">{{ row.report.number }}</td>
         <td class="cell-nav">
           <span class="list-title">{{ row.report.title }}</span>
-          {% if row.report.description %}
-          <div class="list-desc">({{ row.report.description }})</div>
+        </td>
+        <td class="cell-nav">
+          {% if row.report.access_mode == 'editable' %}
+          <span class="type-label">قابل اصلاح</span>
+          {% else %}
+          <span class="type-label">فقط خواندنی</span>
           {% endif %}
         </td>
-        <td class="col-type cell-nav">{% if row.report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% else %}<span class="type-label">شخصی</span>{% endif %}</td>
+        <td class="col-type cell-nav">
+          {% if row.report.is_standard %}
+          <span class="type-label type-standard">استاندارد</span>
+          {% else %}
+          <span class="type-label">شخصی</span>
+          {% endif %}
+        </td>
         <td class="forms-cell">
-          <button type="button" class="forms-count-btn" data-open-forms
-            data-forms-title="{{ row.report.title }}"
+          <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
+            data-forms-title="{{ row.report.heading_label }}"
             data-forms-ctx="report"
             data-forms-id="{{ row.report.pk }}"
             data-forms-json="{{ row.forms_json|escape }}">{{ row.forms_count }} فرم</button>
@@ -139,9 +137,6 @@
 (function () {
   var dialog = document.getElementById("report-action-dialog");
   var body = dialog.querySelector("[data-dialog-body]");
-  var filterBtn = document.getElementById("title-filter-toggle");
-  var filterPanel = document.getElementById("title-filter-panel");
-  if (filterBtn) filterBtn.addEventListener("click", function () { filterPanel.hidden = !filterPanel.hidden; });
 
   document.querySelectorAll("#report-list-table tbody tr").forEach(function (tr) {
     tr.addEventListener("click", function (e) {

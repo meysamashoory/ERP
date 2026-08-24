@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}{{ print_form.title }}{% endblock %}
-{% block heading %}{{ print_form.title }}{% endblock %}
+{% block title %}{{ print_form.heading_label }}{% endblock %}
+{% block heading %}
+<span class="entity-heading-text">{{ print_form.heading_label }}</span>
+{% endblock %}
 {% block nav_forms %}open{% endblock %}
 {% block nav_form_list %}active{% endblock %}
 
 {% block topbar_actions %}
 <div class="topbar-actions topbar-actions-pair">
-  <span class="topbar-meta-num">شماره {{ print_form.number }}</span>
   {% if print_form.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
   <a class="btn btn-sm btn-ghost" href="{% url 'print_form_list' %}">لیست فرم‌ها</a>
   <button type="button" class="btn btn-sm btn-primary-soft" data-print-form>پرینت</button>

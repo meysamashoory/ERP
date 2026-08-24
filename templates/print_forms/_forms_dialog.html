@@ -59,9 +59,20 @@
 <style>
 .forms-cell { white-space: nowrap; }
 .forms-cell .forms-label { display: none; }
-.forms-count-btn {
-  border: none; background: transparent; color: #2563eb; cursor: pointer;
-  font: inherit; padding: 0; text-decoration: underline;
+.forms-count-btn,
+.plan-forms-btn {
+  border: none;
+  background: rgba(148,163,184,.18);
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+.forms-count-btn:hover,
+.plan-forms-btn:hover {
+  background: rgba(148,163,184,.3);
 }
 .linked-forms-list { list-style: none; margin: 0; padding: 0; }
 .linked-forms-list li {

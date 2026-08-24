@@ -106,8 +106,26 @@ a { color: var(--brand); }
   .sidebar { width: 200px; }
   .main { margin-right: 200px; }
 }
-.topbar-title { font-size: 18px; font-weight: 700; }
-.topbar-user { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.topbar-title { font-size: 18px; font-weight: 700; min-width: 0; flex: 1; }
+.entity-heading {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+}
+.entity-heading-view {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+}
+.entity-heading-text {
+  font-size: 17px; font-weight: 700; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(70vw, 720px);
+}
+.entity-heading-form {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.entity-heading-form .input-sm {
+  padding: 5px 8px; font-size: 13px; width: auto; min-width: 72px;
+}
+.entity-heading-form input[name="title"] { min-width: 160px; }
+.entity-heading-form input[name="description"] { min-width: 140px; }
+.topbar-user { display: flex; align-items: center; gap: 12px; font-size: 14px; flex-shrink: 0; }
 .user-name { font-weight: 600; }
 .inline-form { display: inline; margin: 0; }
 
