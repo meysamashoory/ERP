@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}وارد کردن فایل اکسل{% endblock %}
-{% block heading %}وارد کردن فایل اکسل{% endblock %}
+{% block title %}وارد کردن Table اکسل{% endblock %}
+{% block heading %}وارد کردن Table اکسل{% endblock %}
 {% block nav_data %}open{% endblock %}
 {% block nav_excel %}active{% endblock %}
 
@@ -16,13 +16,16 @@
   <div class="panel-head panel-head-compact">
     <h2>انتخاب فایل</h2>
   </div>
-  <p class="muted" style="margin:0 0 14px">هر شیت به‌عنوان یک جدول با همان نام وارد می‌شود؛ می‌توانید نام جدول را قبل از ورود ویرایش کنید.</p>
+  <p class="muted" style="margin:0 0 14px">
+    فقط <strong>Table</strong>های اکسل (Insert → Table) خوانده می‌شوند، نه کل شیت.
+    نام هر جدول را می‌توانید قبل از ورود ویرایش کنید.
+  </p>
   <div class="excel-import-form">
     <div class="field">
       <label for="excel-file-input">فایل (.xlsx / .xlsm / .csv)</label>
       <input type="file" id="excel-file-input" accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
     </div>
-    <button type="button" class="btn btn-primary-soft" id="excel-preview-btn" disabled>بررسی شیت‌ها</button>
+    <button type="button" class="btn btn-primary-soft" id="excel-preview-btn" disabled>بررسی Tableها</button>
   </div>
   <p class="muted" id="excel-import-hint" style="margin-top:10px;font-size:13px"></p>
 </div>
@@ -30,7 +33,7 @@
 <dialog id="excel-import-dialog" class="dialog excel-import-dialog">
   <div data-dialog-body>
     <div class="dialog-head">
-      <h3>انتخاب جداول برای ورود</h3>
+      <h3>انتخاب Table برای ورود</h3>
       <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
     </div>
     <div class="excel-import-fields">
@@ -40,7 +43,7 @@
       </label>
       <label class="excel-select-all">
         <input type="checkbox" id="excel-select-all" checked>
-        <span>انتخاب همه جداول</span>
+        <span>انتخاب همه Tableها</span>
       </label>
       <div id="excel-sheet-list" class="excel-sheet-list"></div>
     </div>
@@ -71,7 +74,6 @@
     hint.textContent = msg || "";
     hint.style.color = isError ? "#b91c1c" : "";
   }
-
   function openDialog() {
     if (typeof dialog.showModal === "function") dialog.showModal();
     else dialog.setAttribute("open", "");
@@ -79,6 +81,13 @@
   function closeDialog() {
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   dialog.addEventListener("click", function (e) {
@@ -92,7 +101,7 @@
   });
 
   function syncSelectAllState() {
-    var boxes = sheetList.querySelectorAll("input[data-sheet]");
+    var boxes = sheetList.querySelectorAll("input[data-table]");
     var checked = 0;
     boxes.forEach(function (b) { if (b.checked) checked++; });
     selectAll.checked = boxes.length > 0 && checked === boxes.length;
@@ -100,22 +109,14 @@
   }
 
   selectAll.addEventListener("change", function () {
-    sheetList.querySelectorAll("input[data-sheet]").forEach(function (b) {
+    sheetList.querySelectorAll("input[data-table]").forEach(function (b) {
       b.checked = selectAll.checked;
     });
   });
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
   previewBtn.addEventListener("click", function () {
     if (!currentFile) return;
-    setHint("در حال خواندن شیت‌ها…");
+    setHint("در حال خواندن Tableها…");
     previewBtn.disabled = true;
     var fd = new FormData();
     fd.append("file", currentFile);
@@ -132,24 +133,31 @@
       }
       titleInput.value = data.filename || currentFile.name;
       sheetList.innerHTML = "";
-      (data.sheets || []).forEach(function (s, idx) {
-        var sheetName = s.name || ("شیت " + (idx + 1));
+      var items = data.tables || data.sheets || [];
+      items.forEach(function (t, idx) {
+        var tableName = t.name || ("Table" + (idx + 1));
+        var sheetName = t.sheet_name || "";
         var row = document.createElement("div");
         row.className = "excel-sheet-row";
         row.innerHTML =
           '<label class="excel-sheet-check">' +
-            '<input type="checkbox" data-sheet checked value="' + escapeHtml(sheetName) + '">' +
+            '<input type="checkbox" data-table checked ' +
+              'data-sheet="' + escapeHtml(sheetName) + '" ' +
+              'data-excel-table="' + escapeHtml(tableName) + '" ' +
+              'value="' + escapeHtml(tableName) + '">' +
           '</label>' +
           '<div class="excel-sheet-meta">' +
             '<label class="field excel-table-name-field">' +
               '<span>نام جدول</span>' +
-              '<input type="text" class="input excel-table-name-input" maxlength="200" value="' + escapeHtml(sheetName) + '" data-sheet-name="' + escapeHtml(sheetName) + '">' +
+              '<input type="text" class="input excel-table-name-input" maxlength="200" value="' + escapeHtml(tableName) + '">' +
             '</label>' +
-            '<span class="muted">شیت منبع: <strong>' + escapeHtml(sheetName) + '</strong> · ' +
-              (s.column_count || 0) + ' ستون · ' + (s.row_count || 0) + ' ردیف</span>' +
+            '<span class="muted">Table اکسل: <strong>' + escapeHtml(tableName) + '</strong>' +
+              (sheetName ? (' · شیت: ' + escapeHtml(sheetName)) : '') +
+              (t.ref ? (' · ' + escapeHtml(t.ref)) : '') +
+              ' · ' + (t.column_count || 0) + ' ستون · ' + (t.row_count || 0) + ' ردیف</span>' +
           '</div>';
         sheetList.appendChild(row);
-        row.querySelector("input[data-sheet]").addEventListener("change", syncSelectAllState);
+        row.querySelector("input[data-table]").addEventListener("change", syncSelectAllState);
       });
       selectAll.checked = true;
       selectAll.indeterminate = false;
@@ -165,15 +173,16 @@
     if (!currentFile) return;
     var selected = [];
     sheetList.querySelectorAll(".excel-sheet-row").forEach(function (row) {
-      var box = row.querySelector("input[data-sheet]");
+      var box = row.querySelector("input[data-table]");
       if (!box || !box.checked) return;
       var nameInput = row.querySelector(".excel-table-name-input");
-      var sheet = box.value;
-      var name = (nameInput && nameInput.value.trim()) || sheet;
-      selected.push({ sheet: sheet, name: name });
+      var excelTable = box.getAttribute("data-excel-table") || box.value;
+      var sheet = box.getAttribute("data-sheet") || "";
+      var name = (nameInput && nameInput.value.trim()) || excelTable;
+      selected.push({ sheet: sheet, table: excelTable, name: name });
     });
     if (!selected.length) {
-      setHint("حداقل یک جدول را انتخاب کنید.", true);
+      setHint("حداقل یک Table را انتخاب کنید.", true);
       return;
     }
     confirmBtn.disabled = true;

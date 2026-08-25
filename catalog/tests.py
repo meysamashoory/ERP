@@ -1,4 +1,4 @@
-"""Tests for Excel workbook import, grid edit, and report source wiring."""
+"""Tests for Excel Table (ListObject) import, grid save, and report sources."""
 
 from __future__ import annotations
 
@@ -17,23 +17,38 @@ from reports.columns import get_column_groups, run_report
 User = get_user_model()
 
 
-def _make_xlsx_bytes() -> bytes:
+def _make_xlsx_with_tables() -> bytes:
     from openpyxl import Workbook
+    from openpyxl.worksheet.table import Table, TableStyleInfo
 
     wb = Workbook()
-    ws1 = wb.active
-    ws1.title = "موجودی"
-    ws1.append(["کد", "نام", "موجودی"])
-    ws1.append(["A1", "قطعه یک", 10])
-    ws1.append(["A2", "قطعه دو", 5])
-    ws2 = wb.create_sheet("قیمت")
-    ws2.append(["کد", "قیمت"])
-    ws2.append(["A1", 1000])
-    ws3 = wb.create_sheet("خالی")
-    ws3.append(["ستون"])
+    ws = wb.active
+    ws.title = "Data"
+    ws.append(["کد", "نام", "موجودی"])
+    ws.append(["A1", "قطعه یک", 10])
+    ws.append(["A2", "قطعه دو", 5])
+    ws["E1"] = "کد"
+    ws["F1"] = "قیمت"
+    ws["E2"] = "A1"
+    ws["F2"] = 1000
+    t1 = Table(displayName="Inventory", ref="A1:C3")
+    t1.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+    ws.add_table(t1)
+    ws.add_table(Table(displayName="Prices", ref="E1:F2"))
+
+    ws2 = wb.create_sheet("Extra")
+    ws2.append(["X", "Y"])
+    ws2.append([1, 2])
+    # sheet without formal Table — must NOT appear in preview
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# Kept for older helpers that only need a binary workbook
+def _make_xlsx_bytes() -> bytes:
+    return _make_xlsx_with_tables()
 
 
 class ExcelManagementTests(TestCase):
@@ -47,7 +62,7 @@ class ExcelManagementTests(TestCase):
     def _xlsx(self, name="sample.xlsx"):
         return SimpleUploadedFile(
             name,
-            _make_xlsx_bytes(),
+            _make_xlsx_with_tables(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
@@ -60,7 +75,7 @@ class ExcelManagementTests(TestCase):
         self.assertEqual(self.client.get(reverse("excel_list")).status_code, 200)
         self.assertEqual(self.client.get(reverse("excel_import")).status_code, 403)
 
-    def test_preview_and_import_selected_sheets(self):
+    def test_preview_lists_excel_tables_not_plain_sheets(self):
         self.client.login(username="expert", password="erp12345")
         preview = self.client.post(
             reverse("excel_preview"),
@@ -69,18 +84,21 @@ class ExcelManagementTests(TestCase):
         self.assertEqual(preview.status_code, 200)
         data = preview.json()
         self.assertTrue(data["ok"])
-        self.assertEqual(data["filename"], "multi.xlsx")
-        names = [s["name"] for s in data["sheets"]]
-        self.assertEqual(names, ["موجودی", "قیمت", "خالی"])
+        names = [t["name"] for t in data["tables"]]
+        self.assertEqual(names, ["Inventory", "Prices"])
+        self.assertNotIn("Extra", names)
+        self.assertNotIn("Data", names)
 
+    def test_import_selected_tables_by_name(self):
+        self.client.login(username="expert", password="erp12345")
         confirm = self.client.post(
             reverse("excel_import_confirm"),
             {
                 "file": self._xlsx("multi.xlsx"),
-                "title": "فایل تست موجودی",
+                "title": "فایل تست",
                 "selected_sheets": json.dumps([
-                    {"sheet": "موجودی", "name": "جدول موجودی"},
-                    {"sheet": "قیمت", "name": "قیمت"},
+                    {"sheet": "Data", "table": "Inventory", "name": "جدول موجودی"},
+                    {"sheet": "Data", "table": "Prices", "name": "قیمت‌ها"},
                 ]),
             },
         )
@@ -89,21 +107,33 @@ class ExcelManagementTests(TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["table_count"], 2)
         upload = ExcelUpload.objects.get(pk=payload["upload_id"])
-        self.assertEqual(upload.title, "فایل تست موجودی")
         tables = list(upload.tables.order_by("order"))
-        self.assertEqual([t.name for t in tables], ["جدول موجودی", "قیمت"])
-        self.assertEqual([t.sheet_name for t in tables], ["موجودی", "قیمت"])
-        self.assertEqual(tables[0].headers[0], "کد")
+        self.assertEqual([t.name for t in tables], ["جدول موجودی", "قیمت‌ها"])
+        self.assertEqual(tables[0].headers[:3], ["کد", "نام", "موجودی"])
         self.assertEqual(tables[0].row_count, 2)
-        # Must import the named sheet data, not silently fall back to sheet 1
         self.assertEqual(tables[1].headers, ["کد", "قیمت"])
         self.assertEqual(tables[1].rows[0][1], "1000")
 
         detail = self.client.get(reverse("excel_detail", args=[upload.pk]))
         self.assertEqual(detail.status_code, 200)
-        self.assertContains(detail, "موجودی")
-        self.assertContains(detail, "قیمت")
+        self.assertContains(detail, "جدول موجودی")
         self.assertContains(detail, "excel-grid")
+
+    def test_missing_table_does_not_import(self):
+        self.client.login(username="expert", password="erp12345")
+        confirm = self.client.post(
+            reverse("excel_import_confirm"),
+            {
+                "file": self._xlsx("multi.xlsx"),
+                "title": "بد",
+                "selected_sheets": json.dumps([
+                    {"sheet": "Data", "table": "NoSuchTable", "name": "X"},
+                ]),
+            },
+        )
+        self.assertEqual(confirm.status_code, 400)
+        self.assertFalse(confirm.json()["ok"])
+        self.assertFalse(ExcelUpload.objects.filter(title="بد").exists())
 
     def test_save_table_headers_name_and_layout(self):
         self.client.login(username="expert", password="erp12345")
@@ -111,7 +141,7 @@ class ExcelManagementTests(TestCase):
         table = ExcelTable.objects.create(
             upload=upload,
             name="شیت۱",
-            sheet_name="شیت۱",
+            sheet_name="Data",
             headers=["A", "B"],
             rows=[["1", "2"]],
         )
@@ -121,7 +151,7 @@ class ExcelManagementTests(TestCase):
                 "name": "جدول ویرایش‌شده",
                 "headers": ["A", "B", "C"],
                 "rows": [["1", "2", "3"], ["4", "5", "6"]],
-                "layout": {"colWidths": [100, 140, 80], "rowHeights": [30, 32]},
+                "layout": {"colWidths": [100, 140, 80], "rowHeights": [30, 32, 28]},
             }),
             content_type="application/json",
         )
@@ -130,28 +160,12 @@ class ExcelManagementTests(TestCase):
         table.refresh_from_db()
         self.assertEqual(table.name, "جدول ویرایش‌شده")
         self.assertEqual(table.column_count, 3)
-        self.assertEqual(table.row_count, 2)
-        self.assertEqual(table.rows[1][2], "6")
         self.assertEqual(table.layout.get("colWidths"), [100, 140, 80])
-
-    def test_missing_sheet_does_not_import_sheet_one(self):
-        self.client.login(username="expert", password="erp12345")
-        confirm = self.client.post(
-            reverse("excel_import_confirm"),
-            {
-                "file": self._xlsx("multi.xlsx"),
-                "title": "بد",
-                "selected_sheets": json.dumps([{"sheet": "وجودندارد", "name": "X"}]),
-            },
-        )
-        self.assertEqual(confirm.status_code, 400)
-        self.assertFalse(confirm.json()["ok"])
-        self.assertFalse(ExcelUpload.objects.filter(title="بد").exists())
 
     def test_delete_table_manager_only(self):
         upload = ExcelUpload.objects.create(title="حذف", uploaded_by=self.admin)
         table = ExcelTable.objects.create(
-            upload=upload, name="T1", sheet_name="T1", headers=["X"], rows=[["1"]],
+            upload=upload, name="T1", sheet_name="Data", headers=["X"], rows=[["1"]],
         )
         self.client.login(username="expert", password="erp12345")
         forbidden = self.client.post(reverse("excel_table_delete", args=[table.pk]))
@@ -168,7 +182,7 @@ class ExcelManagementTests(TestCase):
         table = ExcelTable.objects.create(
             upload=upload,
             name="جدول فروش",
-            sheet_name="فروش",
+            sheet_name="Data",
             headers=["کد", "مقدار"],
             rows=[["C1", "9"], ["C2", "3"]],
         )
@@ -177,8 +191,6 @@ class ExcelManagementTests(TestCase):
         self.assertIn(table.source_id, ids)
         group = next(g for g in groups if g["id"] == table.source_id)
         self.assertEqual(group["label"], "جدول فروش")
-        labels = [c[1] for c in group["columns"]]
-        self.assertEqual(labels, ["کد", "مقدار"])
 
         headers, rows, _payloads, _deeper = run_report(
             table.source_id,

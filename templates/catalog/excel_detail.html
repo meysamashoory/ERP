@@ -78,7 +78,7 @@
           {% endif %}
         </div>
       </div>
-      <p class="excel-hint muted">دادهٔ سلول‌ها فقط خواندنی است. برای ویرایش نام ستون دوبار کلیک کنید. با کلیک روی شماره ردیف/سرستون انتخاب کنید؛ برای جابه‌جایی بکشید؛ لبهٔ سرستون/ردیف را برای تغییر اندازه بکشید.</p>
+      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است (یک‌بار انتخاب، بار دوم کلیک برای نوشتن یا F2). داده فقط‌خواندنی است. لبهٔ ستون/ردیف را بکشید؛ دوبار کلیک روی لبه = اندازه متن. بین سلول‌ها با کلیک و کلیدهای جهت حرکت کنید.</p>
       <div class="excel-grid-wrap" tabindex="0">
         <table class="excel-grid" aria-label="جدول {{ t.name }}">
           <colgroup></colgroup>
@@ -95,5 +95,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/excel_grid.js' %}?v=2"></script>
+<script src="{% static 'js/excel_grid.js' %}?v=3"></script>
 {% endblock %}

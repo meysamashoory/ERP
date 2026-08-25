@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.permissions import get_profile
 
-from .excel_io import preview_workbook, read_sheet_data
+from .excel_io import preview_workbook, read_table_data
 from .models import ExcelTable, ExcelUpload
 
 
@@ -88,19 +88,30 @@ def excel_preview(request: HttpRequest) -> JsonResponse:
             status=400,
         )
     try:
-        sheets = preview_workbook(uploaded)
+        tables = preview_workbook(uploaded)
     except Exception as exc:  # noqa: BLE001 — surface parse errors to UI
         return JsonResponse(
             {"ok": False, "error": f"خواندن فایل ممکن نشد: {exc}"},
             status=400,
         )
-    if not sheets:
-        return JsonResponse({"ok": False, "error": "شیتی در فایل یافت نشد."}, status=400)
+    if not tables:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "هیچ Table در فایل یافت نشد. "
+                    "در اکسل از Insert → Table جدول بسازید و دوباره تلاش کنید."
+                ),
+            },
+            status=400,
+        )
     display_name = (uploaded.name or "workbook").replace("\\", "/").split("/")[-1]
     return JsonResponse({
         "ok": True,
         "filename": display_name,
-        "sheets": sheets,
+        "tables": tables,
+        # keep "sheets" alias for older frontend temporarily
+        "sheets": tables,
     })
 
 
@@ -118,22 +129,28 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
     try:
         selected = json.loads(request.POST.get("selected_sheets") or "[]")
     except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "انتخاب شیت نامعتبر است."}, status=400)
+        return JsonResponse({"ok": False, "error": "انتخاب جدول نامعتبر است."}, status=400)
     if not isinstance(selected, list) or not selected:
         return JsonResponse({"ok": False, "error": "حداقل یک جدول را انتخاب کنید."}, status=400)
 
-    # Accept ["Sheet1", ...] or [{"sheet":"Sheet1","name":"جدول ۱"}, ...]
-    selections: list[tuple[str, str]] = []
+    # Prefer [{"sheet":"...","table":"Inventory","name":"..."}, ...]
+    selections: list[tuple[str, str, str]] = []
     for item in selected:
         if isinstance(item, dict):
             sheet = str(item.get("sheet") or item.get("sheet_name") or "").strip()
-            name = str(item.get("name") or sheet).strip()
+            table = str(item.get("table") or item.get("table_name") or "").strip()
+            name = str(item.get("name") or table or sheet).strip()
+            if not table:
+                table = name or sheet
+            if not sheet:
+                sheet = "CSV"
         else:
-            sheet = str(item).strip()
-            name = sheet
-        if not sheet:
+            sheet = "CSV"
+            table = str(item).strip()
+            name = table
+        if not table:
             continue
-        selections.append((sheet[:200], (name or sheet)[:200]))
+        selections.append((sheet[:200], table[:200], (name or table)[:200]))
     if not selections:
         return JsonResponse({"ok": False, "error": "حداقل یک جدول را انتخاب کنید."}, status=400)
 
@@ -147,17 +164,21 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
 
     created = 0
     errors: list[str] = []
-    for order, (sheet_name, table_name) in enumerate(selections):
+    for order, (sheet_name, excel_table_name, display_name) in enumerate(selections):
         if hasattr(uploaded, "seek"):
             uploaded.seek(0)
         try:
-            headers, rows = read_sheet_data(uploaded, sheet_name)
+            headers, rows = read_table_data(
+                uploaded,
+                sheet_name=sheet_name,
+                table_name=excel_table_name,
+            )
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"{sheet_name}: {exc}")
+            errors.append(f"{excel_table_name}: {exc}")
             continue
         ExcelTable.objects.create(
             upload=upload,
-            name=table_name,
+            name=display_name,
             sheet_name=sheet_name,
             headers=headers,
             rows=rows,
