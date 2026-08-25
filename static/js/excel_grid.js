@@ -594,7 +594,7 @@
     renderGrid(pane);
 
     const wrap = pane.querySelector(".excel-grid-wrap");
-    wrap.addEventListener("keydown", function (e) {
+    function onGridKey(e) {
       if (st.editing) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -602,13 +602,13 @@
         else setSelection(pane, { type: "cell", row: 0, col: 0 });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        navigate(pane, -1, 0);
+        if (st.selection && st.selection.type === "cell") navigate(pane, -1, 0);
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        navigate(pane, 0, -1);
+        if (st.selection && st.selection.type === "cell") navigate(pane, 0, -1);
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        navigate(pane, 0, 1);
+        if (st.selection && st.selection.type === "cell") navigate(pane, 0, 1);
       } else if (e.key === "F2" || (e.key === "Enter" && st.selection && st.selection.type === "cell" && st.selection.row === 0)) {
         if (!canEdit) return;
         e.preventDefault();
@@ -625,6 +625,14 @@
       } else if (e.key === "Escape") {
         st.selection = null;
         applySelectionClasses(pane);
+      }
+    }
+    wrap.addEventListener("keydown", onGridKey);
+    // Also catch arrows when focus is inside the grid table
+    pane.querySelector(".excel-grid").addEventListener("keydown", onGridKey);
+    pane.addEventListener("mousedown", function (e) {
+      if (e.target.closest(".excel-grid")) {
+        wrap.focus({ preventScroll: true });
       }
     });
 
