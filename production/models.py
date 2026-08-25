@@ -235,9 +235,17 @@ class ProductionProgram(models.Model):
         verbose_name_plural = "برنامه‌های تولید"
 
     def __str__(self) -> str:
-        return f"{self.item.uid} — {self.item.product.name}"
+        return f"{self.resolved_uid} — {self.item.product.name}"
 
     # --- helpers -------------------------------------------------------
+    @property
+    def resolved_uid(self) -> str:
+        """UID for the currently selected production type (14-digit scheme)."""
+        line = self.line
+        if line is not None and getattr(line, "uid", ""):
+            return line.uid
+        return self.item.uid_for_type(self.production_type or 1)
+
     @property
     def line(self):
         """The WeeklyPlanLine for the selected production_type (1-based)."""
@@ -303,7 +311,7 @@ class ProductionDayEntry(models.Model):
         verbose_name_plural = "آمار تولید روزانه"
 
     def __str__(self) -> str:
-        return f"{self.program.item.uid} — {self.date}"
+        return f"{self.program.resolved_uid} — {self.date}"
 
     @property
     def deviation(self) -> int:

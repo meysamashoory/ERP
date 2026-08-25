@@ -1,20 +1,34 @@
 {% extends "base.html" %}
-{% block title %}برنامه {{ plan.program_number }}{% endblock %}
-{% block heading %}شماره {{ plan.program_number }} — {{ plan.date }} ({{ plan.weekday_name }}){% endblock %}
+{% load planning_extras %}
+{% block title %}شماره برنامه {{ plan.program_number|program_no }}{% endblock %}
+{% block heading %}
+<span class="plan-heading-text">شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }} <span class="plan-status-inline">({% if editable %}در حال ویرایش{% else %}فقط مشاهده{% endif %})</span></span>
+{% endblock %}
 {% block nav_planning %}active{% endblock %}
 
 {% block topbar_actions %}
 <div class="topbar-actions">
-  <a class="btn btn-sm btn-ghost" href="{% url 'dashboard' %}">صفحه اصلی</a>
-  {% if profile.can_create_plans %}
-  <button type="button" class="btn btn-sm" id="toggle-plan-edit">ویرایش شماره و تاریخ</button>
+  {% if alarm_items %}
+  <button type="button" class="btn btn-sm btn-warn" id="btn-check-alarms">بررسی هشدارها</button>
   {% endif %}
-  <span class="badge status-{{ plan.status }}">{{ plan.get_status_display }}</span>
+  <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
+    data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} _ روز {{ plan.weekday_name }} {{ plan.date|jdate }}">تقویم برنامه</button>
+  {% if editable %}
+    {% if profile.can_create_plans %}
+    <button type="button" class="btn btn-sm" id="toggle-plan-edit">ویرایش شماره و تاریخ</button>
+    {% endif %}
+    <form method="post" action="{% url 'plan_set_status' plan.pk %}" class="inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="status" value="approved">
+      <input type="hidden" name="next" value="{% url 'plan_list' %}">
+      <button class="btn btn-sm btn-ok" type="submit">ذخیره</button>
+    </form>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block content %}
-{% if profile.can_create_plans %}
+{% if editable and profile.can_create_plans %}
 <div class="panel" id="plan-edit-panel" style="display:none">
   <div class="panel-body">
     <form method="post" action="{% url 'plan_edit' plan.pk %}" class="inline-edit-form">
@@ -30,80 +44,280 @@
 {% endif %}
 
 {% if editable %}
-<div class="panel">
-  <div class="panel-head">
-    <h2>{% if editing_item %}ویرایش کالا{% else %}افزودن کالا{% endif %}</h2>
-    {% if editing_item %}<a class="btn btn-sm btn-ghost" href="{% url 'plan_detail' plan.pk %}">افزودن کالای جدید</a>{% endif %}
-  </div>
-  <div class="panel-body">
-    <form method="post" action="{% url 'plan_item_save' plan.pk %}">
-      {% csrf_token %}
-      {% if editing_item %}<input type="hidden" name="item_id" value="{{ editing_item.pk }}">{% endif %}
-      <div class="form-grid">
-        {% include "partials/form_fields.html" with form=item_form %}
-      </div>
-
-      <h3 style="margin:18px 0 8px;font-size:15px">ردیف‌های تولید (نوع تولید / مقدار / سیکل)</h3>
-      {{ line_formset.management_form }}
-      <div data-formset="lines">
-        {% for lform in line_formset %}
-        <div class="repeat-row" data-formset-row>
-          {{ lform.id }}
-          {% for field in lform.visible_fields %}{% if field.name != 'id' %}
-          <div class="field"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>
-          {% endif %}{% endfor %}
+<div class="plan-workspace">
+  <div class="plan-workspace-main">
+    <div class="panel panel-compact">
+      <div class="panel-body panel-body-compact">
+        {% if editing_item %}
+        <div class="edit-switch">
+          <form method="post" action="{% url 'plan_item_delete' plan.pk editing_item.pk %}" class="inline-form"
+            onsubmit="return confirm('ردیف انتخاب‌شده حذف شود؟');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-ghost">حذف ردیف انتخاب شده</button>
+          </form>
         </div>
+        {% endif %}
+        <form method="post" action="{% url 'plan_item_save' plan.pk %}" id="item-form" data-product-kind="fitting" novalidate>
+          {% csrf_token %}
+          {% if editing_item %}<input type="hidden" name="item_id" value="{{ editing_item.pk }}">{% endif %}
+          {{ item_form.production_days }}
+
+          <div class="plan-form-grid">
+            <div class="field {% if item_form.subgroup.errors %}has-error{% endif %}" data-field="subgroup" {% if item_form.subgroup.errors %}title="{{ item_form.subgroup.errors.0 }}"{% endif %}><label>{{ item_form.subgroup.label }}</label>{{ item_form.subgroup }}</div>
+            <div class="field {% if item_form.product.errors %}has-error{% endif %}" data-field="product" {% if item_form.product.errors %}title="{{ item_form.product.errors.0 }}"{% endif %}><label>{{ item_form.product.label }}</label>{{ item_form.product }}</div>
+            <div class="field {% if item_form.code.errors %}has-error{% endif %}" data-field="code" {% if item_form.code.errors %}title="{{ item_form.code.errors.0 }}"{% endif %}><label>{{ item_form.code.label }}</label>{{ item_form.code }}</div>
+            <div class="field {% if item_form.mold.errors %}has-error{% endif %}" data-field="mold" {% if item_form.mold.errors %}title="{{ item_form.mold.errors.0 }}"{% endif %}><label>{{ item_form.mold.label }}</label>{{ item_form.mold }}</div>
+
+            <div class="field {% if item_form.unit.errors %}has-error{% endif %}" data-field="unit" {% if item_form.unit.errors %}title="{{ item_form.unit.errors.0 }}"{% endif %}><label>{{ item_form.unit.label }}</label>{{ item_form.unit }}</div>
+            <div class="field {% if item_form.machine.errors %}has-error{% endif %}" data-field="machine" {% if item_form.machine.errors %}title="{{ item_form.machine.errors.0 }}"{% endif %}><label>{{ item_form.machine.label }}</label>{{ item_form.machine }}</div>
+            <div class="field {% if item_form.mold_change_weekday.errors %}has-error{% endif %}" data-field="mold_change_weekday" {% if item_form.mold_change_weekday.errors %}title="{{ item_form.mold_change_weekday.errors.0 }}"{% endif %}><label>{{ item_form.mold_change_weekday.label }}</label>{{ item_form.mold_change_weekday }}</div>
+            <div class="field {% if item_form.mold_change_date.errors %}has-error{% endif %}" data-field="mold_change_date" {% if item_form.mold_change_date.errors %}title="{{ item_form.mold_change_date.errors.0 }}"{% endif %}><label>{{ item_form.mold_change_date.label }}</label>{{ item_form.mold_change_date }}</div>
+          </div>
+
+          {{ line_formset.management_form }}
+          <div data-formset="lines" class="lines-block plan-lines" data-number-labels="1">
+            {% for lform in line_formset %}
+            <div class="repeat-row plan-line-row" data-formset-row>
+              {{ lform.id }}
+              <div class="field {% if lform.production_type.errors %}has-error{% endif %}" data-line-field="production_type" {% if lform.production_type.errors %}title="{{ lform.production_type.errors.0 }}"{% endif %}><label data-label-base="نوع تولید">نوع تولید</label>{{ lform.production_type }}</div>
+              <div class="field {% if lform.active_cavities.errors %}has-error{% endif %}" data-line-field="active_cavities" {% if lform.active_cavities.errors %}title="{{ lform.active_cavities.errors.0 }}"{% endif %}><label data-label-base="تعداد حفره">تعداد حفره</label>{{ lform.active_cavities }}</div>
+              <div class="field {% if lform.quantity.errors %}has-error{% endif %}" data-line-field="quantity" {% if lform.quantity.errors %}title="{{ lform.quantity.errors.0 }}"{% endif %}><label data-label-base="مقدار تولید">مقدار تولید</label>{{ lform.quantity }}</div>
+              <div class="field {% if lform.cycle.errors %}has-error{% endif %}" data-line-field="cycle" {% if lform.cycle.errors %}title="{{ lform.cycle.errors.0 }}"{% endif %}><label data-label-base="سیکل تولید (ثانیه)">سیکل تولید (ثانیه)</label>{{ lform.cycle }}</div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <template data-formset-empty="lines">
+            <div class="repeat-row plan-line-row" data-formset-row>
+              {{ line_formset.empty_form.id }}
+              <div class="field" data-line-field="production_type"><label data-label-base="نوع تولید">نوع تولید</label>{{ line_formset.empty_form.production_type }}</div>
+              <div class="field" data-line-field="active_cavities"><label data-label-base="تعداد حفره">تعداد حفره</label>{{ line_formset.empty_form.active_cavities }}</div>
+              <div class="field" data-line-field="quantity"><label data-label-base="مقدار تولید">مقدار تولید</label>{{ line_formset.empty_form.quantity }}</div>
+              <div class="field" data-line-field="cycle"><label data-label-base="سیکل تولید (ثانیه)">سیکل تولید (ثانیه)</label>{{ line_formset.empty_form.cycle }}</div>
+            </div>
+          </template>
+
+          <div class="line-actions">
+            <button type="button" class="btn btn-sm btn-ghost" data-formset-add="lines"
+              data-require-first-type="1" data-number-line-labels="1">+ افزودن ردیف تولید</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-production-days">روزهای تولید</button>
+            <span class="line-actions-spacer"></span>
+            <button class="btn" type="submit">{% if editing_item %}ذخیره تغییرات کالا{% else %}افزودن کالا{% endif %}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <section class="insight-glass" style="--insight-scale: {{ mold_stats.height_coefficient }}" data-insights data-insights-url="{% url 'product_insights' %}">
+      <div class="insight-glass-inner" data-insights-body>
+        {% for card in insights %}
+        <article class="insight-card">
+          <p class="insight-label">{{ card.label }}</p>
+          <p class="insight-value">{{ card.value }}</p>
+        </article>
+        {% empty %}
+        <p class="insight-empty muted">هنوز فیلد اطلاعاتی تعریف نشده است. از «مدیریت داده‌ها» فیلدهای نوار شیشه‌ای را اضافه کنید.</p>
         {% endfor %}
       </div>
-      <div style="margin:10px 0">
-        <button type="button" class="btn btn-sm btn-ghost" data-formset-add="lines">+ افزودن ردیف تولید</button>
-      </div>
-
-      <div class="form-actions">
-        <button class="btn" type="submit">{% if editing_item %}ذخیره تغییرات کالا{% else %}افزودن کالا{% endif %}</button>
-      </div>
-    </form>
+      <button type="button" class="btn btn-sm btn-ghost insight-details-btn" id="btn-insight-details" disabled>جزئیات</button>
+    </section>
   </div>
 </div>
 {% else %}
-<div class="panel"><div class="panel-body muted">این برنامه در وضعیت «{{ plan.get_status_display }}» است و تنها قابل مشاهده می‌باشد. برای ویرایش، وضعیت را از فهرست برنامه‌ها به «موقت» تغییر دهید.</div></div>
+<div class="panel"><div class="panel-body muted">حالت مشاهده — این برنامه فقط قابل مشاهده است. برای ویرایش، از فهرست برنامه‌ها گزینه «ویرایش» را انتخاب و اعمال کنید.</div></div>
+
+<section class="insight-glass mold-glass-green" style="--insight-scale: {{ mold_stats.height_coefficient }}">
+  <div class="insight-glass-inner mold-glass-inner">
+    {% for row in mold_stats.glass_rows %}
+    <article class="insight-card mold-unit-card">
+      <p class="insight-label">{{ row.label }}</p>
+      <p class="insight-value">{{ row.value }}</p>
+      {% if row.groups %}
+      <ul class="mold-group-list">
+        {% for g in row.groups %}
+        <li>گروه {{ g.name }} — {{ g.count }} قالب</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </article>
+    {% empty %}
+    <p class="insight-empty muted">هنوز تعویض قالبی در این برنامه ثبت نشده است.</p>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
-<div class="panel">
-  <div class="panel-head"><h2>کالاهای برنامه</h2></div>
+<div class="panel panel-items-scroll">
   {% if plan.items.all %}
-  <table class="table">
-    <thead><tr><th>کد کالا</th><th>نام محصول</th><th>واحد</th><th>دستگاه</th><th>روز تعویض قالب</th><th>تاریخ تعویض</th><th>حفره فعال</th><th>ردیف‌های تولید</th>{% if editable %}<th></th>{% endif %}</tr></thead>
-    <tbody>
-      {% for item in plan.items.all %}
-      <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
-        <td>{{ item.product.code }}</td>
-        <td>{{ item.product.name }}{% if item.history_alarm %} <span class="badge badge-rejected">بدون سابقه</span>{% endif %}</td>
-        <td>واحد {{ item.unit.number }}</td>
-        <td>{{ item.machine.number }}</td>
-        <td>{{ item.get_mold_change_weekday_display }}</td>
-        <td class="num">{{ item.mold_change_date }}</td>
-        <td class="num">{{ item.active_cavities }}</td>
-        <td>
+  <div class="items-scroll">
+    <table class="table table-plan-items">
+      <thead>
+        <tr>
+          <th>شناسه تعویض</th>
+          <th>شماره برنامه</th>
+          <th>تاریخ برنامه‌ریزی</th>
+          <th>شماره دستگاه/واحد</th>
+          <th>کد کالا</th>
+          <th>نام جنس</th>
+          <th>شماره قالب</th>
+          <th>کد یکتا</th>
+          <th>تاریخ شروع</th>
+          <th>روز شروع</th>
+          <th>مقدار تولید</th>
+          <th>سیکل پیش‌فرض</th>
+          <th>ساعت تولید</th>
+          <th>تعداد حفره فعال</th>
+          <th>روزهای تولید</th>
+          {% if editable %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in plan.items.all %}
           {% for line in item.lines.all %}
-            <div>{{ line.production_type }} — {{ line.quantity }} عدد / سیکل {{ line.cycle }}</div>
-          {% empty %}—{% endfor %}
-        </td>
-        {% if editable %}
-        <td class="row-actions"><a class="link-edit" href="{% url 'plan_detail' plan.pk %}?edit={{ item.pk }}">ویرایش</a></td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+          <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
+            <td dir="ltr">{{ item.uid }}</td>
+            <td>{{ plan.program_number|program_no }}</td>
+            <td>{{ plan.date|jdate }}</td>
+            <td>{{ item.machine.number }}/{{ item.unit.number }}</td>
+            <td>{{ item.product.code }}</td>
+            <td>{{ item.product.name }}</td>
+            <td>{% if item.mold %}{{ item.mold }}{% elif line.mold %}{{ line.mold }}{% else %}—{% endif %}</td>
+            <td dir="ltr">{% if line.uid %}{{ line.uid }}{% else %}—{% endif %}</td>
+            <td>{{ item.mold_change_date|jdate }}</td>
+            <td>{{ item.get_mold_change_weekday_display }}</td>
+            <td>{{ line.quantity }}</td>
+            <td>{{ line.cycle }}</td>
+            <td>{{ line.production_hours }}</td>
+            <td>{{ line.active_cavities|default:item.active_cavities }}</td>
+            <td>
+              {% if item.has_production_days %}
+              <button type="button" class="btn btn-sm btn-ghost" data-view-days
+                data-days="{{ item.production_days|as_json }}"
+                data-readonly="1">روزهای تولید</button>
+              {% else %}
+              <span class="muted">—</span>
+              {% endif %}
+            </td>
+            {% if editable %}
+            <td class="row-actions">
+              {% if editing_item and editing_item.pk == item.pk %}
+              <span class="editing-label">در حال ویرایش</span>
+              {% else %}
+              <a class="link-edit" href="{% url 'plan_detail' plan.pk %}?mode=edit&edit={{ item.pk }}">ویرایش</a>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% empty %}
+          <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
+            <td dir="ltr">{{ item.uid }}</td>
+            <td>{{ plan.program_number|program_no }}</td>
+            <td>{{ plan.date|jdate }}</td>
+            <td>{{ item.machine.number }}/{{ item.unit.number }}</td>
+            <td>{{ item.product.code }}</td>
+            <td>{{ item.product.name }}</td>
+            <td>{% if item.mold %}{{ item.mold }}{% else %}—{% endif %}</td>
+            <td>—</td>
+            <td>{{ item.mold_change_date|jdate }}</td>
+            <td>{{ item.get_mold_change_weekday_display }}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>{{ item.active_cavities }}</td>
+            <td>
+              {% if item.has_production_days %}
+              <button type="button" class="btn btn-sm btn-ghost" data-view-days
+                data-days="{{ item.production_days|as_json }}"
+                data-readonly="1">روزهای تولید</button>
+              {% else %}
+              <span class="muted">—</span>
+              {% endif %}
+            </td>
+            {% if editable %}
+            <td class="row-actions">
+              {% if editing_item and editing_item.pk == item.pk %}
+              <span class="editing-label">در حال ویرایش</span>
+              {% else %}
+              <a class="link-edit" href="{% url 'plan_detail' plan.pk %}?mode=edit&edit={{ item.pk }}">ویرایش</a>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}<p class="empty">هنوز کالایی اضافه نشده است.</p>{% endif %}
 </div>
+
+<dialog id="plan-calendar-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>تقویم برنامه — <span id="calendar-dialog-title"></span></h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div id="calendar-dialog-body" class="calendar-dialog-body muted">در حال بارگذاری…</div>
+  </div>
+</dialog>
+
+<dialog id="alarms-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>بررسی هشدارها</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div class="alarms-dialog-body">
+      {% if alarm_items %}
+      <table class="table">
+        <thead><tr><th>شناسه</th><th>کد کالا</th><th>نام کالا</th><th>دستگاه/واحد</th><th>هشدار</th></tr></thead>
+        <tbody>
+          {% for a in alarm_items %}
+          <tr>
+            <td dir="ltr">{{ a.uid }}</td>
+            <td>{{ a.code }}</td>
+            <td>{{ a.name }}</td>
+            <td>{{ a.machine }}</td>
+            <td>بدون سابقه تولید روی دستگاه</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">هشداری ثبت نشده است.</p>
+      {% endif %}
+    </div>
+  </div>
+</dialog>
+
+<dialog id="insight-details-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>جزئیات راهنما</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div id="insight-details-body" class="insight-details-body muted">در حال بارگذاری…</div>
+  </div>
+</dialog>
+
+<dialog id="production-days-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3 id="prod-days-dialog-title">روزهای تولید</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div id="prod-days-body" class="prod-days-body"></div>
+    <div class="prod-days-footer" id="prod-days-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="prod-days-add">+</button>
+      <button type="button" class="btn" id="prod-days-save">ثبت</button>
+    </div>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
-  // Inline edit of program number / date.
   var toggle = document.getElementById("toggle-plan-edit");
   var panel = document.getElementById("plan-edit-panel");
   var cancel = document.getElementById("cancel-plan-edit");
@@ -116,15 +330,60 @@
   if (cancel && panel) cancel.addEventListener("click", function () { panel.style.display = "none"; });
 })();
 (function () {
-  // Dynamic تاریخ تعویض قالب based on the chosen weekday (plan-specific).
+  var dialog = document.getElementById("plan-calendar-dialog");
+  var titleEl = document.getElementById("calendar-dialog-title");
+  var body = document.getElementById("calendar-dialog-body");
+  if (!dialog) return;
+
+  function close() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); close(); }
+  });
+
+  document.querySelectorAll("[data-calendar-plan]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-calendar-plan");
+      titleEl.textContent = btn.getAttribute("data-calendar-title") || "";
+      body.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+      fetch("{% url 'plan_calendar_json' %}?plan=" + encodeURIComponent(id))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var units = data.matrix_units || [];
+          var rows = data.matrix_rows || [];
+          var html = '<table class="table plan-matrix-table"><thead><tr><th>روز تعویض</th><th>تاریخ تعویض</th>';
+          units.forEach(function (n) { html += "<th>واحد " + n + "</th>"; });
+          html += "</tr></thead><tbody>";
+          if (!rows.length) {
+            html += '<tr><td colspan="' + (units.length + 2) + '" class="muted">داده‌ای نیست</td></tr>';
+          } else {
+            rows.forEach(function (row) {
+              html += "<tr><td>" + row.weekday + '</td><td>' + row.date + "</td>";
+              (row.counts_list || []).forEach(function (c) { html += "<td>" + c + "</td>"; });
+              html += "</tr>";
+            });
+          }
+          html += "</tbody></table>";
+          body.innerHTML = html;
+        })
+        .catch(function () { body.innerHTML = '<p class="muted">خطا در دریافت تقویم.</p>'; });
+    });
+  });
+})();
+(function () {
   var weekday = document.getElementById("id_mold_change_weekday");
   var dateSel = document.getElementById("id_mold_change_date");
   if (!weekday || !dateSel) return;
 
   function setDates(dates, keep) {
     var ts = dateSel.tomselect;
+    var prev = ts ? ts.getValue() : dateSel.value;
     if (ts) {
-      var prev = ts.getValue();
+      ts.clear(true);
       ts.clearOptions();
       dates.forEach(function (d) { ts.addOption({ value: d, text: d }); });
       ts.refreshOptions(false);
@@ -135,6 +394,8 @@
       dates.forEach(function (d) {
         var o = document.createElement("option"); o.value = d; o.textContent = d; dateSel.appendChild(o);
       });
+      if (keep && prev && dates.indexOf(prev) !== -1) dateSel.value = prev;
+      else dateSel.value = "";
     }
   }
 
@@ -149,8 +410,278 @@
   var wts = weekday.tomselect;
   if (wts) wts.on("change", function () { refresh(false); });
   else weekday.addEventListener("change", function () { refresh(false); });
-  // On load (edit), keep the current mold-change date option.
   refresh(true);
+})();
+(function () {
+  var wrap = document.querySelector("[data-insights]");
+  if (!wrap) return;
+  var url = wrap.getAttribute("data-insights-url");
+  var body = wrap.querySelector("[data-insights-body]");
+  var prod = document.getElementById("id_product");
+  var detailsBtn = document.getElementById("btn-insight-details");
+  var detailsDialog = document.getElementById("insight-details-dialog");
+  var detailsBody = document.getElementById("insight-details-body");
+  if (!url || !body || !prod) return;
+
+  function render(cards) {
+    if (!cards || !cards.length) {
+      body.innerHTML = '<p class="insight-empty muted">مقداری برای نمایش نیست.</p>';
+      return;
+    }
+    body.innerHTML = cards.map(function (c) {
+      return '<article class="insight-card"><p class="insight-label">' + c.label +
+        '</p><p class="insight-value">' + (c.value == null || c.value === "" ? "—" : c.value) + "</p></article>";
+    }).join("");
+  }
+
+  function currentProductId() {
+    return prod.tomselect ? prod.tomselect.getValue() : prod.value;
+  }
+
+  function load() {
+    var id = currentProductId();
+    if (detailsBtn) detailsBtn.disabled = !id;
+    if (!id) { render([]); return; }
+    fetch(url + "?product=" + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { render(d.insights || []); });
+  }
+
+  if (detailsBtn && detailsDialog && detailsBody) {
+    detailsBtn.addEventListener("click", function () {
+      var id = currentProductId();
+      if (!id) return;
+      detailsBody.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+      if (typeof detailsDialog.showModal === "function") detailsDialog.showModal();
+      else detailsDialog.setAttribute("open", "");
+      fetch(url + "?product=" + encodeURIComponent(id) + "&details=1")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var rows = d.rows || [];
+          var cols = d.columns || ["سیکل", "دستگاه تولید شده", "تعداد حفره تولید شده"];
+          if (!rows.length) {
+            detailsBody.innerHTML = '<p class="muted">سابقه تولیدی برای این کالا ثبت نشده است.</p>';
+            return;
+          }
+          var html = '<table class="table insight-history-table"><thead><tr>';
+          cols.forEach(function (c) { html += "<th>" + c + "</th>"; });
+          html += "</tr></thead><tbody>";
+          rows.forEach(function (row) {
+            html += "<tr><td>" + (row.cycle == null || row.cycle === "" ? "—" : row.cycle) +
+              "</td><td>" + (row.machine == null || row.machine === "" ? "—" : row.machine) +
+              "</td><td>" + (row.cavities == null || row.cavities === "" ? "—" : row.cavities) +
+              "</td></tr>";
+          });
+          html += "</tbody></table>";
+          detailsBody.innerHTML = html;
+        })
+        .catch(function () { detailsBody.innerHTML = '<p class="muted">خطا در دریافت جزئیات.</p>'; });
+    });
+    detailsDialog.addEventListener("click", function (e) {
+      if (e.target.closest("[data-dialog-close]")) {
+        e.preventDefault();
+        if (typeof detailsDialog.close === "function") detailsDialog.close();
+        else detailsDialog.removeAttribute("open");
+      }
+    });
+  }
+
+  if (prod.tomselect) prod.tomselect.on("change", load);
+  else prod.addEventListener("change", load);
+  load();
+})();
+
+(function () {
+  var alarmsBtn = document.getElementById("btn-check-alarms");
+  var alarmsDialog = document.getElementById("alarms-dialog");
+  if (alarmsBtn && alarmsDialog) {
+    alarmsBtn.addEventListener("click", function () {
+      if (typeof alarmsDialog.showModal === "function") alarmsDialog.showModal();
+      else alarmsDialog.setAttribute("open", "");
+    });
+    alarmsDialog.addEventListener("click", function (e) {
+      if (e.target.closest("[data-dialog-close]")) {
+        e.preventDefault();
+        if (typeof alarmsDialog.close === "function") alarmsDialog.close();
+        else alarmsDialog.removeAttribute("open");
+      }
+    });
+  }
+})();
+
+(function () {
+  setTimeout(function () {
+    document.querySelectorAll("select[data-combo]").forEach(function (sel) {
+      if (sel.tomselect && sel.tomselect.isOpen) sel.tomselect.close();
+    });
+  }, 80);
+})();
+
+/* Numbered production-row labels + gate on نوع تولید */
+(function () {
+  var FA = "۰۱۲۳۴۵۶۷۸۹";
+  function toFa(n) {
+    return String(n).replace(/\d/g, function (d) { return FA[d]; });
+  }
+  function renumber() {
+    var box = document.querySelector('[data-formset="lines"]');
+    if (!box) return;
+    var rows = box.querySelectorAll("[data-formset-row]");
+    rows.forEach(function (row, i) {
+      var n = toFa(i + 1);
+      row.querySelectorAll("[data-label-base]").forEach(function (lab) {
+        var base = lab.getAttribute("data-label-base") || "";
+        if (base.indexOf("سیکل") === 0) {
+          lab.textContent = "سیکل تولید " + n + " (ثانیه)";
+        } else {
+          lab.textContent = base + " " + n;
+        }
+      });
+    });
+  }
+  window.ERP_PLAN = window.ERP_PLAN || {};
+  window.ERP_PLAN.renumberLines = renumber;
+  renumber();
+})();
+
+/* Production days dialog */
+(function () {
+  var dialog = document.getElementById("production-days-dialog");
+  var body = document.getElementById("prod-days-body");
+  var footer = document.getElementById("prod-days-footer");
+  var hidden = document.getElementById("id_production_days");
+  var btnEdit = document.getElementById("btn-production-days");
+  var btnAdd = document.getElementById("prod-days-add");
+  var btnSave = document.getElementById("prod-days-save");
+  if (!dialog || !body) return;
+
+  var SHIFT_OPTS = [
+    { v: "", t: "——" },
+    { v: "day", t: "فقط شیفت روز" },
+    { v: "night", t: "فقط شیفت شب" },
+    { v: "both", t: "هر دو شیفت" }
+  ];
+  var readonly = false;
+
+  function close() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); close(); }
+  });
+
+  function openDialog() {
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    if (window.ERP) window.ERP.enhance(body);
+  }
+
+  function weekdayFor(inp, dayEl) {
+    var v = inp.value;
+    if (!v) { dayEl.textContent = "—"; return; }
+    fetch("{% url 'weekday_for_date' %}?date=" + encodeURIComponent(v))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { dayEl.textContent = d.weekday || "—"; })
+      .catch(function () { dayEl.textContent = "—"; });
+  }
+
+  function rowHtml(row, idx) {
+    row = row || { date: "", shift: "", note: "" };
+    var opts = SHIFT_OPTS.map(function (o) {
+      return '<option value="' + o.v + '"' + (o.v === (row.shift || "") ? " selected" : "") + ">" + o.t + "</option>";
+    }).join("");
+    var dis = readonly ? " disabled" : "";
+    return '<div class="prod-day-row" data-prod-day-row>' +
+      '<div class="field"><label>تاریخ</label>' +
+      '<input type="text" class="input" data-jdp data-prod-date autocomplete="off" value="' + (row.date || "") + '"' + dis + ">" +
+      '</div>' +
+      '<div class="prod-day-weekday"><span class="prod-day-weekday-label">روز</span>' +
+      '<span class="prod-day-weekday-value" data-prod-weekday>—</span></div>' +
+      '<div class="field"><label>شیفت</label><select data-combo data-prod-shift' + dis + ">" + opts + "</select></div>" +
+      '<div class="field"><label>توضیحات</label><input type="text" class="input" data-prod-note maxlength="200" value="' + (row.note || "").replace(/"/g, "&quot;") + '"' + dis + "></div>" +
+      "</div>";
+  }
+
+  function bindRow(rowEl) {
+    var dateInp = rowEl.querySelector("[data-prod-date]");
+    var dayEl = rowEl.querySelector("[data-prod-weekday]");
+    if (!dateInp || !dayEl) return;
+    function sync() { weekdayFor(dateInp, dayEl); }
+    dateInp.addEventListener("change", sync);
+    dateInp.addEventListener("input", sync);
+    dateInp.addEventListener("blur", sync);
+    // Jalali datepicker often sets value without a reliable change event.
+    var last = dateInp.value;
+    var timer = setInterval(function () {
+      if (!document.body.contains(dateInp)) { clearInterval(timer); return; }
+      if (dateInp.value !== last) { last = dateInp.value; sync(); }
+    }, 300);
+    if (dateInp.value) sync();
+  }
+
+  function render(rows) {
+    body.innerHTML = "";
+    (rows && rows.length ? rows : [{ date: "", shift: "", note: "" }]).forEach(function (r) {
+      body.insertAdjacentHTML("beforeend", rowHtml(r));
+    });
+    body.querySelectorAll("[data-prod-day-row]").forEach(bindRow);
+    if (footer) footer.style.display = readonly ? "none" : "";
+    openDialog();
+  }
+
+  function collect() {
+    var out = [];
+    body.querySelectorAll("[data-prod-day-row]").forEach(function (row) {
+      var date = (row.querySelector("[data-prod-date]") || {}).value || "";
+      var shiftEl = row.querySelector("[data-prod-shift]");
+      var shift = shiftEl ? (shiftEl.tomselect ? shiftEl.tomselect.getValue() : shiftEl.value) : "";
+      var note = (row.querySelector("[data-prod-note]") || {}).value || "";
+      if (!String(date).trim()) return;
+      out.push({ date: String(date).trim(), shift: shift || "", note: String(note).trim() });
+    });
+    return out;
+  }
+
+  function parseHidden() {
+    if (!hidden || !hidden.value) return [];
+    try { return JSON.parse(hidden.value) || []; } catch (e) { return []; }
+  }
+
+  if (btnEdit) {
+    btnEdit.addEventListener("click", function () {
+      readonly = false;
+      render(parseHidden());
+    });
+  }
+  if (btnAdd) {
+    btnAdd.addEventListener("click", function () {
+      if (readonly) return;
+      body.insertAdjacentHTML("beforeend", rowHtml({}));
+      var last = body.querySelector("[data-prod-day-row]:last-child");
+      if (last) {
+        bindRow(last);
+        if (window.ERP) window.ERP.enhance(last);
+      }
+    });
+  }
+  if (btnSave) {
+    btnSave.addEventListener("click", function () {
+      if (readonly) return;
+      if (hidden) hidden.value = JSON.stringify(collect());
+      close();
+    });
+  }
+
+  document.querySelectorAll("[data-view-days]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var raw = btn.getAttribute("data-days") || "[]";
+      var rows = [];
+      try { rows = JSON.parse(raw); } catch (e) { rows = []; }
+      readonly = true;
+      render(Array.isArray(rows) ? rows : []);
+    });
+  });
 })();
 </script>
 {% endblock %}

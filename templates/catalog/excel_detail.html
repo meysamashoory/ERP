@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ upload.title }} — فایل اکسل{% endblock %}
+{% block heading %}{{ upload.title }}{% endblock %}
+{% block nav_data %}open{% endblock %}
+{% block nav_excel %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بازگشت به فهرست</a>
+  {% if can_delete %}
+  <form method="post" action="{% url 'excel_file_delete' upload.pk %}" class="inline"
+        onsubmit="return confirm('کل فایل و تمام جداول آن حذف شود؟');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-danger-soft">حذف کل فایل</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2>جداول فایل</h2>
+    <span class="muted" style="font-size:13px">
+      {{ tables|length }} جدول
+      {% if upload.original_name %} · {{ upload.original_name }}{% endif %}
+      · به‌روزرسانی {{ upload.updated_at|date:"Y/m/d H:i" }}
+    </span>
+  </div>
+
+  {% if not tables %}
+  <p class="empty">هیچ جدولی در این فایل نیست.</p>
+  {% else %}
+  {{ tables_json|json_script:"excel-tables-data" }}
+  <div class="excel-detail-layout" id="excel-editor"
+       data-save-url-template="{% url 'excel_table_save' 0 %}"
+       data-delete-url-template="{% url 'excel_table_delete' 0 %}"
+       data-can-edit="{% if can_edit %}1{% else %}0{% endif %}"
+       data-can-delete="{% if can_delete %}1{% else %}0{% endif %}">
+    {% csrf_token %}
+    <div class="excel-tabs" role="tablist">
+      {% for t in tables %}
+      <button type="button" class="excel-tab{% if forloop.first %} is-active{% endif %}"
+              role="tab"
+              data-table-id="{{ t.pk }}"
+              aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+        {{ t.name }}
+      </button>
+      {% endfor %}
+    </div>
+
+    {% for t in tables %}
+    <div class="excel-pane{% if forloop.first %} is-active{% endif %}"
+         data-table-id="{{ t.pk }}"
+         {% if not forloop.first %}hidden{% endif %}>
+      <div class="excel-pane-toolbar">
+        <div class="excel-pane-meta">
+          {% if can_edit %}
+          <label class="field excel-rename-field">
+            <span>نام جدول</span>
+            <input type="text" class="input excel-table-name-edit" maxlength="200" value="{{ t.name }}">
+          </label>
+          {% else %}
+          <strong class="excel-table-title">{{ t.name }}</strong>
+          {% endif %}
+          <span class="muted">شیت منبع: {{ t.sheet_name|default:t.name }} · منبع گزارش: {{ t.source_id }}</span>
+        </div>
+        <div class="actions excel-pane-actions">
+          {% if can_edit %}
+          <button type="button" class="btn btn-sm btn-ghost btn-add-row">افزودن ردیف</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-add-col">افزودن ستون</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-delete-selection" disabled title="ابتدا یک ردیف یا ستون را انتخاب کنید">حذف انتخاب‌شده</button>
+          <button type="button" class="btn btn-sm btn-primary-soft btn-save-table">ذخیره جدول</button>
+          {% endif %}
+          {% if can_delete %}
+          <button type="button" class="btn btn-sm btn-danger-soft btn-delete-table">حذف جدول</button>
+          {% endif %}
+        </div>
+      </div>
+      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است (یک‌بار انتخاب، بار دوم کلیک برای نوشتن یا F2). داده فقط‌خواندنی است. لبهٔ ستون/ردیف را بکشید؛ دوبار کلیک روی لبه = اندازه متن. بین سلول‌ها با کلیک و کلیدهای جهت حرکت کنید.</p>
+      <div class="excel-grid-wrap" tabindex="0">
+        <table class="excel-grid" aria-label="جدول {{ t.name }}">
+          <colgroup></colgroup>
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="excel-save-status muted" aria-live="polite"></p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/excel_grid.js' %}?v=4"></script>
+{% endblock %}
