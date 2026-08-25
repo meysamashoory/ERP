@@ -16,6 +16,11 @@
   const saveTpl = root.dataset.saveUrlTemplate;
   const deleteTpl = root.dataset.deleteUrlTemplate;
   const canEdit = root.dataset.canEdit === "1";
+
+  const DEFAULT_COL_W = 120;
+  const DEFAULT_ROW_H = 28;
+  const ROW_HEAD_W = 48;
+
   const tablesData = JSON.parse(
     document.getElementById("excel-tables-data").textContent || "[]"
   );
@@ -23,10 +28,6 @@
   tablesData.forEach(function (t) {
     byId[String(t.id)] = normalizeTable(t);
   });
-
-  const DEFAULT_COL_W = 120;
-  const DEFAULT_ROW_H = 28;
-  const ROW_HEAD_W = 48;
 
   function normalizeTable(t) {
     const headers = Array.isArray(t.headers) ? t.headers.map(String) : [];
