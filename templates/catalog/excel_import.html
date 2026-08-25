@@ -16,7 +16,7 @@
   <div class="panel-head panel-head-compact">
     <h2>انتخاب فایل</h2>
   </div>
-  <p class="muted" style="margin:0 0 14px">فایل اکسل می‌تواند چند شیت داشته باشد؛ پس از انتخاب، جداول قابل وارد کردن را مشخص می‌کنید.</p>
+  <p class="muted" style="margin:0 0 14px">هر شیت به‌عنوان یک جدول با همان نام وارد می‌شود؛ می‌توانید نام جدول را قبل از ورود ویرایش کنید.</p>
   <div class="excel-import-form">
     <div class="field">
       <label for="excel-file-input">فایل (.xlsx / .xlsm / .csv)</label>
@@ -105,6 +105,14 @@
     });
   });
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   previewBtn.addEventListener("click", function () {
     if (!currentFile) return;
     setHint("در حال خواندن شیت‌ها…");
@@ -125,16 +133,23 @@
       titleInput.value = data.filename || currentFile.name;
       sheetList.innerHTML = "";
       (data.sheets || []).forEach(function (s, idx) {
-        var row = document.createElement("label");
+        var sheetName = s.name || ("شیت " + (idx + 1));
+        var row = document.createElement("div");
         row.className = "excel-sheet-row";
         row.innerHTML =
-          '<input type="checkbox" data-sheet checked value="' + String(s.name).replace(/"/g, "&quot;") + '">' +
-          '<span class="excel-sheet-meta">' +
-            '<strong>' + (s.name || ("شیت " + (idx + 1))) + '</strong>' +
-            '<span class="muted">' + (s.column_count || 0) + ' ستون · ' + (s.row_count || 0) + ' ردیف</span>' +
-          '</span>';
+          '<label class="excel-sheet-check">' +
+            '<input type="checkbox" data-sheet checked value="' + escapeHtml(sheetName) + '">' +
+          '</label>' +
+          '<div class="excel-sheet-meta">' +
+            '<label class="field excel-table-name-field">' +
+              '<span>نام جدول</span>' +
+              '<input type="text" class="input excel-table-name-input" maxlength="200" value="' + escapeHtml(sheetName) + '" data-sheet-name="' + escapeHtml(sheetName) + '">' +
+            '</label>' +
+            '<span class="muted">شیت منبع: <strong>' + escapeHtml(sheetName) + '</strong> · ' +
+              (s.column_count || 0) + ' ستون · ' + (s.row_count || 0) + ' ردیف</span>' +
+          '</div>';
         sheetList.appendChild(row);
-        row.querySelector("input").addEventListener("change", syncSelectAllState);
+        row.querySelector("input[data-sheet]").addEventListener("change", syncSelectAllState);
       });
       selectAll.checked = true;
       selectAll.indeterminate = false;
@@ -149,8 +164,13 @@
   confirmBtn.addEventListener("click", function () {
     if (!currentFile) return;
     var selected = [];
-    sheetList.querySelectorAll("input[data-sheet]:checked").forEach(function (b) {
-      selected.push(b.value);
+    sheetList.querySelectorAll(".excel-sheet-row").forEach(function (row) {
+      var box = row.querySelector("input[data-sheet]");
+      if (!box || !box.checked) return;
+      var nameInput = row.querySelector(".excel-table-name-input");
+      var sheet = box.value;
+      var name = (nameInput && nameInput.value.trim()) || sheet;
+      selected.push({ sheet: sheet, name: name });
     });
     if (!selected.length) {
       setHint("حداقل یک جدول را انتخاب کنید.", true);

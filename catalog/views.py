@@ -122,8 +122,19 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
     if not isinstance(selected, list) or not selected:
         return JsonResponse({"ok": False, "error": "حداقل یک جدول را انتخاب کنید."}, status=400)
 
-    sheet_names = [str(s).strip() for s in selected if str(s).strip()]
-    if not sheet_names:
+    # Accept ["Sheet1", ...] or [{"sheet":"Sheet1","name":"جدول ۱"}, ...]
+    selections: list[tuple[str, str]] = []
+    for item in selected:
+        if isinstance(item, dict):
+            sheet = str(item.get("sheet") or item.get("sheet_name") or "").strip()
+            name = str(item.get("name") or sheet).strip()
+        else:
+            sheet = str(item).strip()
+            name = sheet
+        if not sheet:
+            continue
+        selections.append((sheet[:200], (name or sheet)[:200]))
+    if not selections:
         return JsonResponse({"ok": False, "error": "حداقل یک جدول را انتخاب کنید."}, status=400)
 
     upload = ExcelUpload(
@@ -135,22 +146,33 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
     upload.save()
 
     created = 0
-    for order, sheet_name in enumerate(sheet_names):
+    errors: list[str] = []
+    for order, (sheet_name, table_name) in enumerate(selections):
         if hasattr(uploaded, "seek"):
             uploaded.seek(0)
         try:
             headers, rows = read_sheet_data(uploaded, sheet_name)
-        except Exception:  # noqa: BLE001
-            headers, rows = [], []
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{sheet_name}: {exc}")
+            continue
         ExcelTable.objects.create(
             upload=upload,
-            name=sheet_name[:200],
-            sheet_name=sheet_name[:200],
+            name=table_name,
+            sheet_name=sheet_name,
             headers=headers,
             rows=rows,
             order=order,
         )
         created += 1
+
+    if created == 0:
+        if upload.file:
+            upload.file.delete(save=False)
+        upload.delete()
+        return JsonResponse({
+            "ok": False,
+            "error": "هیچ جدولی وارد نشد. " + ("؛ ".join(errors) if errors else ""),
+        }, status=400)
 
     return JsonResponse({
         "ok": True,
@@ -171,8 +193,10 @@ def excel_detail(request: HttpRequest, pk: int) -> HttpResponse:
         {
             "id": t.pk,
             "name": t.name,
+            "sheet_name": t.sheet_name,
             "headers": t.headers if isinstance(t.headers, list) else [],
             "rows": t.rows if isinstance(t.rows, list) else [],
+            "layout": t.layout if isinstance(t.layout, dict) else {},
             "row_count": t.row_count,
             "column_count": t.column_count,
         }
@@ -204,6 +228,7 @@ def excel_table_save(request: HttpRequest, pk: int) -> JsonResponse:
     headers = payload.get("headers")
     rows = payload.get("rows")
     name = payload.get("name")
+    layout = payload.get("layout")
     if name is not None:
         name = str(name).strip()[:200]
         if name:
@@ -221,6 +246,23 @@ def excel_table_save(request: HttpRequest, pk: int) -> JsonResponse:
                 continue
             clean_rows.append([str(c)[:2000] if c is not None else "" for c in row[:width]])
         table.rows = clean_rows
+    if isinstance(layout, dict):
+        clean_layout: dict = {}
+
+        def _ints(values, lo, hi, default, limit):
+            out = []
+            if not isinstance(values, list):
+                return out
+            for raw in values[:limit]:
+                try:
+                    out.append(max(lo, min(hi, int(float(raw)))))
+                except (TypeError, ValueError):
+                    out.append(default)
+            return out
+
+        clean_layout["colWidths"] = _ints(layout.get("colWidths"), 40, 800, 120, 80)
+        clean_layout["rowHeights"] = _ints(layout.get("rowHeights"), 18, 200, 28, 5000)
+        table.layout = clean_layout
     table.save()
     return JsonResponse({
         "ok": True,

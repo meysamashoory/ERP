@@ -78,7 +78,10 @@ class ExcelManagementTests(TestCase):
             {
                 "file": self._xlsx("multi.xlsx"),
                 "title": "فایل تست موجودی",
-                "selected_sheets": json.dumps(["موجودی", "قیمت"]),
+                "selected_sheets": json.dumps([
+                    {"sheet": "موجودی", "name": "جدول موجودی"},
+                    {"sheet": "قیمت", "name": "قیمت"},
+                ]),
             },
         )
         self.assertEqual(confirm.status_code, 200)
@@ -88,9 +91,13 @@ class ExcelManagementTests(TestCase):
         upload = ExcelUpload.objects.get(pk=payload["upload_id"])
         self.assertEqual(upload.title, "فایل تست موجودی")
         tables = list(upload.tables.order_by("order"))
-        self.assertEqual([t.name for t in tables], ["موجودی", "قیمت"])
+        self.assertEqual([t.name for t in tables], ["جدول موجودی", "قیمت"])
+        self.assertEqual([t.sheet_name for t in tables], ["موجودی", "قیمت"])
         self.assertEqual(tables[0].headers[0], "کد")
         self.assertEqual(tables[0].row_count, 2)
+        # Must import the named sheet data, not silently fall back to sheet 1
+        self.assertEqual(tables[1].headers, ["کد", "قیمت"])
+        self.assertEqual(tables[1].rows[0][1], "1000")
 
         detail = self.client.get(reverse("excel_detail", args=[upload.pk]))
         self.assertEqual(detail.status_code, 200)
@@ -98,7 +105,7 @@ class ExcelManagementTests(TestCase):
         self.assertContains(detail, "قیمت")
         self.assertContains(detail, "excel-grid")
 
-    def test_save_table_cells(self):
+    def test_save_table_headers_name_and_layout(self):
         self.client.login(username="expert", password="erp12345")
         upload = ExcelUpload.objects.create(title="ت", uploaded_by=self.expert)
         table = ExcelTable.objects.create(
@@ -111,18 +118,35 @@ class ExcelManagementTests(TestCase):
         resp = self.client.post(
             reverse("excel_table_save", args=[table.pk]),
             data=json.dumps({
-                "name": "شیت۱",
+                "name": "جدول ویرایش‌شده",
                 "headers": ["A", "B", "C"],
                 "rows": [["1", "2", "3"], ["4", "5", "6"]],
+                "layout": {"colWidths": [100, 140, 80], "rowHeights": [30, 32]},
             }),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["ok"])
         table.refresh_from_db()
+        self.assertEqual(table.name, "جدول ویرایش‌شده")
         self.assertEqual(table.column_count, 3)
         self.assertEqual(table.row_count, 2)
         self.assertEqual(table.rows[1][2], "6")
+        self.assertEqual(table.layout.get("colWidths"), [100, 140, 80])
+
+    def test_missing_sheet_does_not_import_sheet_one(self):
+        self.client.login(username="expert", password="erp12345")
+        confirm = self.client.post(
+            reverse("excel_import_confirm"),
+            {
+                "file": self._xlsx("multi.xlsx"),
+                "title": "بد",
+                "selected_sheets": json.dumps([{"sheet": "وجودندارد", "name": "X"}]),
+            },
+        )
+        self.assertEqual(confirm.status_code, 400)
+        self.assertFalse(confirm.json()["ok"])
+        self.assertFalse(ExcelUpload.objects.filter(title="بد").exists())
 
     def test_delete_table_manager_only(self):
         upload = ExcelUpload.objects.create(title="حذف", uploaded_by=self.admin)

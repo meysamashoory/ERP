@@ -817,21 +817,23 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .excel-import-form .field { margin-bottom: 0; min-width: 220px; }
 .excel-import-form input[type="file"] { font-family: inherit; font-size: 13px; }
 
-.excel-import-dialog { width: min(520px, 94vw); }
+.excel-import-dialog { width: min(560px, 94vw); }
 .excel-import-fields { display: grid; gap: 14px; margin: 12px 0 18px; }
 .excel-select-all {
   display: flex; align-items: center; gap: 8px;
   font-size: 13px; font-weight: 600; color: #334155;
 }
-.excel-sheet-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+.excel-sheet-list { display: grid; gap: 8px; max-height: 320px; overflow: auto; }
 .excel-sheet-row {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
-  background: #f8fafc; cursor: pointer;
+  background: #f8fafc;
 }
 .excel-sheet-row:hover { border-color: #93c5fd; background: #eff6ff; }
-.excel-sheet-meta { display: grid; gap: 2px; }
-.excel-sheet-meta strong { font-size: 14px; }
+.excel-sheet-check { display: flex; padding-top: 28px; }
+.excel-sheet-meta { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.excel-table-name-field { margin: 0; }
+.excel-table-name-field span { font-size: 12px; color: #64748b; }
 .excel-file-link { font-weight: 700; color: #1d4ed8; text-decoration: none; }
 .excel-file-link:hover { text-decoration: underline; }
 .btn-danger-soft {
@@ -859,44 +861,77 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .excel-pane { padding: 12px 14px 16px; }
 .excel-pane-toolbar {
   display: flex; flex-wrap: wrap; gap: 10px;
-  align-items: center; justify-content: space-between; margin-bottom: 10px;
+  align-items: flex-end; justify-content: space-between; margin-bottom: 8px;
 }
-.excel-pane-meta { display: grid; gap: 2px; }
+.excel-pane-meta { display: grid; gap: 4px; }
+.excel-rename-field { margin: 0; min-width: min(280px, 100%); }
+.excel-rename-field span { font-size: 12px; color: #64748b; }
 .excel-pane-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.excel-hint { margin: 0 0 10px; font-size: 12px; line-height: 1.6; }
 .excel-grid-wrap {
   overflow: auto; max-height: min(70vh, 720px);
-  border: 1px solid #cbd5e1; border-radius: 8px; background: #fff;
+  border: 1px solid #94a3b8; border-radius: 4px; background: #fff;
+  outline: none;
 }
+.excel-grid-wrap:focus { box-shadow: inset 0 0 0 2px #93c5fd; }
 .excel-grid {
   border-collapse: collapse; min-width: 100%; font-size: 13px;
-  table-layout: fixed;
+  table-layout: fixed; user-select: none;
 }
 .excel-grid th, .excel-grid td {
-  border: 1px solid #e2e8f0; padding: 0; vertical-align: middle;
-  background: #fff;
+  border: 1px solid #cbd5e1; padding: 0; vertical-align: middle;
+  background: #fff; position: relative;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .excel-corner, .excel-row-head {
-  width: 44px; min-width: 44px; text-align: center;
-  background: #f1f5f9 !important; color: #64748b; font-weight: 600;
-  position: sticky; right: 0; z-index: 2;
+  width: 48px; min-width: 48px; text-align: center;
+  background: #e2e8f0 !important; color: #475569; font-weight: 600;
+  position: sticky; right: 0; z-index: 3; cursor: pointer;
 }
-.excel-col-head { background: #f8fafc !important; min-width: 120px; }
+.excel-col-head {
+  background: #e2e8f0 !important; min-width: 40px;
+  cursor: pointer; z-index: 2;
+}
 .excel-col-head-inner {
-  display: flex; align-items: stretch; gap: 0; min-height: 34px;
+  display: flex; align-items: center; min-height: 28px; padding: 0 8px;
+  pointer-events: none;
 }
-.excel-cell-input {
-  width: 100%; min-width: 100px; border: 0; background: transparent;
-  padding: 7px 8px; font: inherit; color: inherit; outline: none;
-  box-sizing: border-box;
+.excel-header-label {
+  font-weight: 700; overflow: hidden; text-overflow: ellipsis; width: 100%;
 }
-.excel-cell-input:focus { background: #eff6ff; box-shadow: inset 0 0 0 2px #93c5fd; }
-.excel-header-input { font-weight: 700; background: transparent; }
-.excel-col-del, .excel-row-del {
-  appearance: none; border: 0; background: transparent; cursor: pointer;
-  color: #94a3b8; font: inherit; padding: 4px 8px;
+.excel-header-input {
+  width: 100%; border: 0; background: #fff;
+  padding: 6px 8px; font: inherit; font-weight: 700; outline: none;
+  box-shadow: inset 0 0 0 2px #2563eb;
 }
-.excel-col-del:hover, .excel-row-del:hover { color: #b91c1c; background: #fee2e2; }
+.excel-data-cell {
+  padding: 0 8px; color: #0f172a; cursor: default;
+  background: #fff;
+}
+.excel-row-num { display: inline-block; width: 100%; line-height: 1; }
+.excel-col-resizer {
+  position: absolute; top: 0; left: 0; width: 5px; height: 100%;
+  cursor: col-resize; z-index: 4;
+}
+.excel-col-resizer:hover { background: #2563eb; }
+.excel-row-resizer {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 5px;
+  cursor: row-resize; z-index: 4;
+}
+.excel-row-resizer:hover { background: #2563eb; }
+.excel-grid tr.is-selected-row > td,
+.excel-grid tr.is-selected-row > th {
+  background: #dbeafe !important;
+}
+.excel-grid .is-selected-col {
+  background: #dbeafe !important;
+}
+.excel-grid .is-dragging { opacity: 0.55; }
+.excel-grid .is-drop-target {
+  box-shadow: inset 0 0 0 2px #2563eb;
+}
 .excel-save-status { margin: 8px 0 0; font-size: 13px; min-height: 1.2em; }
+.btn-delete-selection:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .col-group { margin-bottom: 18px; }
 .col-group h3 { margin: 0 0 8px; font-size: 14px; }

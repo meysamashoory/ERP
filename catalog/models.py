@@ -541,6 +541,12 @@ class ExcelTable(models.Model):
     sheet_name = models.CharField("نام شیت اصلی", max_length=200, blank=True)
     headers = models.JSONField("ستون‌ها", default=list, blank=True)
     rows = models.JSONField("ردیف‌ها", default=list, blank=True)
+    layout = models.JSONField(
+        "چیدمان گرید",
+        default=dict,
+        blank=True,
+        help_text="عرض ستون‌ها و ارتفاع ردیف‌ها برای نمایش شبیه اکسل",
+    )
     order = models.PositiveIntegerField("ترتیب", default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

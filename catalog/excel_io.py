@@ -122,10 +122,9 @@ def read_sheet_data(uploaded_file, sheet_name: str) -> tuple[list[str], list[lis
             if str(ws.title) == sheet_name:
                 target = ws
                 break
-        if target is None and wb.worksheets:
-            target = wb.worksheets[0]
+        # Never fall back to sheet 1 — wrong sheet would be imported under another name.
         if target is None:
-            return [], []
+            raise ValueError(f"شیت «{sheet_name}» در فایل یافت نشد.")
         matrix = []
         for i, row in enumerate(target.iter_rows(values_only=True)):
             if i > MAX_IMPORT_ROWS:
