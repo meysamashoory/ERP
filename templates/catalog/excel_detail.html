@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ upload.title }} — فایل اکسل{% endblock %}
+{% block heading %}{{ upload.title }}{% endblock %}
+{% block nav_data %}open{% endblock %}
+{% block nav_excel %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بازگشت به فهرست</a>
+  {% if can_delete %}
+  <form method="post" action="{% url 'excel_file_delete' upload.pk %}" class="inline"
+        onsubmit="return confirm('کل فایل و تمام جداول آن حذف شود؟');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-danger-soft">حذف کل فایل</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2>جداول فایل</h2>
+    <span class="muted" style="font-size:13px">
+      {{ tables|length }} جدول
+      {% if upload.original_name %} · {{ upload.original_name }}{% endif %}
+      · به‌روزرسانی {{ upload.updated_at|date:"Y/m/d H:i" }}
+    </span>
+  </div>
+
+  {% if not tables %}
+  <p class="empty">هیچ جدولی در این فایل نیست.</p>
+  {% else %}
+  {{ tables_json|json_script:"excel-tables-data" }}
+  <div class="excel-detail-layout" id="excel-editor"
+       data-save-url-template="{% url 'excel_table_save' 0 %}"
+       data-delete-url-template="{% url 'excel_table_delete' 0 %}"
+       data-can-edit="{% if can_edit %}1{% else %}0{% endif %}"
+       data-can-delete="{% if can_delete %}1{% else %}0{% endif %}">
+    {% csrf_token %}
+    <div class="excel-tabs" role="tablist">
+      {% for t in tables %}
+      <button type="button" class="excel-tab{% if forloop.first %} is-active{% endif %}"
+              role="tab"
+              data-table-id="{{ t.pk }}"
+              aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+        {{ t.name }}
+      </button>
+      {% endfor %}
+    </div>
+
+    {% for t in tables %}
+    <div class="excel-pane{% if forloop.first %} is-active{% endif %}"
+         data-table-id="{{ t.pk }}"
+         {% if not forloop.first %}hidden{% endif %}>
+      <div class="excel-pane-toolbar">
+        <div class="excel-pane-meta">
+          <strong class="excel-table-title">{{ t.name }}</strong>
+          <span class="muted">شیت: {{ t.sheet_name|default:t.name }} · منبع گزارش: {{ t.source_id }}</span>
+        </div>
+        <div class="actions excel-pane-actions">
+          {% if can_edit %}
+          <button type="button" class="btn btn-sm btn-ghost btn-add-row">افزودن ردیف</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-add-col">افزودن ستون</button>
+          <button type="button" class="btn btn-sm btn-primary-soft btn-save-table">ذخیره جدول</button>
+          {% endif %}
+          {% if can_delete %}
+          <button type="button" class="btn btn-sm btn-danger-soft btn-delete-table">حذف جدول</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="excel-grid-wrap">
+        <table class="excel-grid" aria-label="جدول {{ t.name }}">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="excel-save-status muted" aria-live="polite"></p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const root = document.getElementById("excel-editor");
+  if (!root) return;
+  const csrf = (root.querySelector("[name=csrfmiddlewaretoken]") || {}).value
+    || (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+  const saveTpl = root.dataset.saveUrlTemplate;
+  const deleteTpl = root.dataset.deleteUrlTemplate;
+  const canEdit = root.dataset.canEdit === "1";
+  const tablesData = JSON.parse(document.getElementById("excel-tables-data").textContent || "[]");
+  const byId = {};
+  tablesData.forEach(function (t) { byId[String(t.id)] = t; });
+
+  function stateOf(pane) {
+    const id = pane.dataset.tableId;
+    const t = byId[id] || { headers: [], rows: [], name: "" };
+    return {
+      headers: Array.isArray(t.headers) ? t.headers.slice() : [],
+      rows: Array.isArray(t.rows) ? t.rows.map(function (r) { return Array.isArray(r) ? r.slice() : []; }) : [],
+      name: t.name || "",
+    };
+  }
+
+  function setState(pane, headers, rows, name) {
+    const id = pane.dataset.tableId;
+    if (!byId[id]) byId[id] = { id: Number(id), headers: [], rows: [], name: "" };
+    byId[id].headers = headers;
+    byId[id].rows = rows;
+    if (name != null) byId[id].name = name;
+  }
+
+  function renderGrid(pane) {
+    const st = stateOf(pane);
+    const thead = pane.querySelector("thead");
+    const tbody = pane.querySelector("tbody");
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+
+    const hr = document.createElement("tr");
+    const corner = document.createElement("th");
+    corner.className = "excel-corner";
+    corner.textContent = "#";
+    hr.appendChild(corner);
+    st.headers.forEach(function (h, ci) {
+      const th = document.createElement("th");
+      th.className = "excel-col-head";
+      const wrap = document.createElement("div");
+      wrap.className = "excel-col-head-inner";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "excel-cell-input excel-header-input";
+      inp.value = h;
+      inp.readOnly = !canEdit;
+      if (canEdit) {
+        inp.addEventListener("change", function () {
+          const cur = stateOf(pane);
+          cur.headers[ci] = inp.value;
+          setState(pane, cur.headers, cur.rows);
+        });
+      }
+      wrap.appendChild(inp);
+      if (canEdit) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "excel-col-del";
+        del.title = "حذف ستون";
+        del.textContent = "×";
+        del.addEventListener("click", function () {
+          if (!confirm("این ستون حذف شود؟")) return;
+          const cur = stateOf(pane);
+          if (cur.headers.length <= 1) {
+            alert("حداقل یک ستون لازم است.");
+            return;
+          }
+          cur.headers.splice(ci, 1);
+          cur.rows = cur.rows.map(function (r) {
+            const next = r.slice();
+            next.splice(ci, 1);
+            return next;
+          });
+          setState(pane, cur.headers, cur.rows);
+          renderGrid(pane);
+        });
+        wrap.appendChild(del);
+      }
+      th.appendChild(wrap);
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+
+    st.rows.forEach(function (row, ri) {
+      const tr = document.createElement("tr");
+      const rh = document.createElement("th");
+      rh.className = "excel-row-head";
+      if (canEdit) {
+        const rowBtn = document.createElement("button");
+        rowBtn.type = "button";
+        rowBtn.className = "excel-row-del";
+        rowBtn.title = "حذف ردیف";
+        rowBtn.textContent = String(ri + 1);
+        rowBtn.addEventListener("click", function () {
+          if (!confirm("این ردیف حذف شود؟")) return;
+          const cur = stateOf(pane);
+          cur.rows.splice(ri, 1);
+          setState(pane, cur.headers, cur.rows);
+          renderGrid(pane);
+        });
+        rh.appendChild(rowBtn);
+      } else {
+        rh.textContent = String(ri + 1);
+      }
+      tr.appendChild(rh);
+      st.headers.forEach(function (_, ci) {
+        const td = document.createElement("td");
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.className = "excel-cell-input";
+        inp.value = row[ci] != null ? String(row[ci]) : "";
+        inp.readOnly = !canEdit;
+        if (canEdit) {
+          inp.addEventListener("change", function () {
+            const cur = stateOf(pane);
+            if (!cur.rows[ri]) cur.rows[ri] = [];
+            while (cur.rows[ri].length < cur.headers.length) cur.rows[ri].push("");
+            cur.rows[ri][ci] = inp.value;
+            setState(pane, cur.headers, cur.rows);
+          });
+        }
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  root.querySelectorAll(".excel-pane").forEach(function (pane) {
+    renderGrid(pane);
+  });
+
+  root.querySelectorAll(".excel-tab").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      const id = tab.dataset.tableId;
+      root.querySelectorAll(".excel-tab").forEach(function (t) {
+        const on = t === tab;
+        t.classList.toggle("is-active", on);
+        t.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      root.querySelectorAll(".excel-pane").forEach(function (p) {
+        const on = p.dataset.tableId === id;
+        p.classList.toggle("is-active", on);
+        p.hidden = !on;
+      });
+    });
+  });
+
+  root.querySelectorAll(".excel-pane").forEach(function (pane) {
+    pane.querySelector(".btn-add-row") && pane.querySelector(".btn-add-row").addEventListener("click", function () {
+      const st = stateOf(pane);
+      st.rows.push(st.headers.map(function () { return ""; }));
+      setState(pane, st.headers, st.rows);
+      renderGrid(pane);
+    });
+    pane.querySelector(".btn-add-col") && pane.querySelector(".btn-add-col").addEventListener("click", function () {
+      const name = prompt("نام ستون جدید:", "ستون جدید");
+      if (name == null) return;
+      const st = stateOf(pane);
+      st.headers.push(String(name).trim() || "ستون جدید");
+      st.rows = st.rows.map(function (r) {
+        const next = r.slice();
+        next.push("");
+        return next;
+      });
+      setState(pane, st.headers, st.rows);
+      renderGrid(pane);
+    });
+    pane.querySelector(".btn-save-table") && pane.querySelector(".btn-save-table").addEventListener("click", async function () {
+      const status = pane.querySelector(".excel-save-status");
+      const st = stateOf(pane);
+      const id = pane.dataset.tableId;
+      const url = saveTpl.replace("/0/", "/" + id + "/");
+      status.textContent = "در حال ذخیره…";
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrf,
+          },
+          body: JSON.stringify({
+            name: st.name,
+            headers: st.headers,
+            rows: st.rows,
+          }),
+          credentials: "same-origin",
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "خطا");
+        status.textContent = "ذخیره شد.";
+        setTimeout(function () { status.textContent = ""; }, 2500);
+      } catch (err) {
+        status.textContent = err.message || "ذخیره ناموفق";
+      }
+    });
+    pane.querySelector(".btn-delete-table") && pane.querySelector(".btn-delete-table").addEventListener("click", function () {
+      if (!confirm("این جدول برای همیشه حذف شود؟")) return;
+      const id = pane.dataset.tableId;
+      const url = deleteTpl.replace("/0/", "/" + id + "/");
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = url;
+      const token = document.createElement("input");
+      token.type = "hidden";
+      token.name = "csrfmiddlewaretoken";
+      token.value = csrf;
+      form.appendChild(token);
+      document.body.appendChild(form);
+      form.submit();
+    });
+  });
+})();
+</script>
+{% endblock %}

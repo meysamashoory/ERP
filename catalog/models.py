@@ -486,13 +486,15 @@ class SystemAlarm(models.Model):
 
 
 class ExcelUpload(models.Model):
-    """Any Excel workbook stored via «مدیریت داده‌ها» for later reuse."""
+    """Imported workbook container shown under «فایل‌های اکسل»."""
 
-    title = models.CharField("عنوان", max_length=200)
+    title = models.CharField("نام فایل", max_length=200)
     file = models.FileField(
         "فایل اکسل",
         upload_to="excel_uploads/%Y/%m/",
-        help_text="فرمت‌های رایج: .xlsx ، .xls ، .xlsm ، .csv",
+        blank=True,
+        null=True,
+        help_text="فرمت‌های رایج: .xlsx ، .xlsm ، .csv",
     )
     original_name = models.CharField("نام اصلی فایل", max_length=255, blank=True)
     notes = models.TextField("توضیحات", blank=True)
@@ -505,19 +507,70 @@ class ExcelUpload(models.Model):
         verbose_name="بارگذارنده",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "فایل اکسل"
-        verbose_name_plural = "فایل‌های اکسل (سوابق آپلود)"
+        verbose_name_plural = "فایل‌های اکسل"
 
     def __str__(self) -> str:
         return self.title or self.original_name or f"اکسل #{self.pk}"
 
+    @property
+    def table_count(self) -> int:
+        return self.tables.count()
+
     def save(self, *args, **kwargs):
         if self.file and not self.original_name:
             self.original_name = getattr(self.file, "name", "") or ""
-            # Keep only the basename if a path leaked in.
             self.original_name = self.original_name.replace("\\", "/").split("/")[-1]
         super().save(*args, **kwargs)
+
+
+class ExcelTable(models.Model):
+    """One imported sheet/table from an Excel workbook (editable grid)."""
+
+    upload = models.ForeignKey(
+        ExcelUpload,
+        on_delete=models.CASCADE,
+        related_name="tables",
+        verbose_name="فایل",
+    )
+    name = models.CharField("نام جدول", max_length=200)
+    sheet_name = models.CharField("نام شیت اصلی", max_length=200, blank=True)
+    headers = models.JSONField("ستون‌ها", default=list, blank=True)
+    rows = models.JSONField("ردیف‌ها", default=list, blank=True)
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "جدول اکسل"
+        verbose_name_plural = "جداول اکسل"
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def source_id(self) -> str:
+        return f"excel_table_{self.pk}"
+
+    @property
+    def row_count(self) -> int:
+        return len(self.rows) if isinstance(self.rows, list) else 0
+
+    @property
+    def column_count(self) -> int:
+        return len(self.headers) if isinstance(self.headers, list) else 0
+
+    def column_defs(self) -> list[tuple[str, str]]:
+        """(key, label) pairs for report source picker."""
+        headers = self.headers if isinstance(self.headers, list) else []
+        out = []
+        for i, h in enumerate(headers):
+            label = str(h or f"ستون {i + 1}")[:120]
+            out.append((f"col_{i}", label))
+        return out
 

@@ -7,7 +7,7 @@
   <title>{% block title %}سامانه برنامه‌ریزی و کنترل تولید{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=9">
   <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=9">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=28">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=29">
 </head>
 <body>
 <div class="layout">
@@ -40,7 +40,11 @@
       {% if profile.can_manage_users or user.is_superuser %}
       <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
       {% endif %}
-      <a href="/admin/">مدیریت داده‌ها</a>
+      <div class="nav-group {% block nav_data %}{% endblock %}">
+        <div class="nav-group-title">مدیریت داده‌ها</div>
+        <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">فایل‌های اکسل</a>
+        <a href="/admin/">سایر داده‌ها (ادمین)</a>
+      </div>
       <form method="post" action="{% url 'logout' %}" class="nav-logout" id="logout-form">{% csrf_token %}
         <button class="nav-logout-btn" type="submit">خروج از سامانه</button>
       </form>

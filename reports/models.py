@@ -38,7 +38,7 @@ class SavedReport(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(999)],
     )
     data_source = models.CharField(
-        "منبع داده", max_length=20, choices=DataSource.choices, default=DataSource.FITTING
+        "منبع داده", max_length=40, choices=DataSource.choices, default=DataSource.FITTING
     )
     access_mode = models.CharField(
         "نوع دسترسی",

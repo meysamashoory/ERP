@@ -28,7 +28,7 @@ from .access import (
     visible_reports,
 )
 from .columns import (
-    COLUMN_GROUPS,
+    get_column_groups,
     entry_sheet_count,
     level_entry_meta,
     normalize_columns,
@@ -203,7 +203,7 @@ def report_create(request: HttpRequest) -> HttpResponse:
         "reports/form.html",
         {
             "form": form,
-            "column_groups": COLUMN_GROUPS,
+            "column_groups": get_column_groups(),
             "columns_data": [],
             "source_links_data": [],
             "mode": "create",
@@ -239,7 +239,7 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
         "reports/form.html",
         {
             "form": form,
-            "column_groups": COLUMN_GROUPS,
+            "column_groups": get_column_groups(),
             "columns_data": columns_data,
             "source_links_data": list(report.source_links or []),
             "mode": "edit",
@@ -593,7 +593,7 @@ def form_create(request: HttpRequest) -> HttpResponse:
             "page_title": "ایجاد فرم",
             "frames_json": "[]",
             "page_settings_json": form.fields["page_settings_json"].initial or "{}",
-            "column_groups": COLUMN_GROUPS,
+            "column_groups": get_column_groups(),
             **_designer_extra(request.user),
         },
     )
@@ -625,7 +625,7 @@ def form_edit(request: HttpRequest, pk: int) -> HttpResponse:
             "print_form": form_obj,
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
             "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
-            "column_groups": COLUMN_GROUPS,
+            "column_groups": get_column_groups(),
             **_designer_extra(request.user),
         },
     )
@@ -685,7 +685,7 @@ def form_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "print_form": form_obj,
             "frames_json": json.dumps(form_obj.frames or [], ensure_ascii=False),
             "page_settings_json": json.dumps(form_obj.page_settings or {}, ensure_ascii=False),
-            "column_groups": COLUMN_GROUPS,
+            "column_groups": get_column_groups(),
         },
     )
 

@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     DeviationReason,
+    ExcelTable,
     ExcelUpload,
     Machine,
     MoldOption,
@@ -317,14 +318,33 @@ class SystemAlarmAdmin(admin.ModelAdmin):
         self.message_user(request, f"{n} آلارم برای همیشه حذف شد.")
 
 
+class ExcelTableInline(admin.TabularInline):
+    model = ExcelTable
+    extra = 0
+    fields = ("name", "sheet_name", "order", "row_count_display", "updated_at")
+    readonly_fields = ("row_count_display", "updated_at")
+    show_change_link = True
+
+    def row_count_display(self, obj):
+        if not obj.pk:
+            return "—"
+        return f"{obj.row_count} × {obj.column_count}"
+
+    row_count_display.short_description = "ردیف × ستون"
+
+
 @admin.register(ExcelUpload)
 class ExcelUploadAdmin(admin.ModelAdmin):
-    list_display = ("title", "original_name", "uploaded_by", "created_at", "download_link")
+    list_display = ("title", "original_name", "table_count", "uploaded_by", "created_at", "download_link")
     list_display_links = ("title",)
     search_fields = ("title", "original_name", "notes")
     list_filter = ("created_at",)
-    readonly_fields = ("original_name", "uploaded_by", "created_at", "download_link")
-    fields = ("title", "file", "notes", "original_name", "uploaded_by", "created_at", "download_link")
+    readonly_fields = ("original_name", "uploaded_by", "created_at", "updated_at", "download_link")
+    fields = (
+        "title", "file", "notes", "original_name",
+        "uploaded_by", "created_at", "updated_at", "download_link",
+    )
+    inlines = [ExcelTableInline]
 
     def save_model(self, request, obj, form, change):
         if not obj.uploaded_by_id:
@@ -338,3 +358,20 @@ class ExcelUploadAdmin(admin.ModelAdmin):
         return format_html('<a href="{}" download>دانلود فایل</a>', obj.file.url)
 
     download_link.short_description = "سوابق / دانلود"
+
+
+@admin.register(ExcelTable)
+class ExcelTableAdmin(admin.ModelAdmin):
+    list_display = ("name", "upload", "sheet_name", "order", "row_count", "column_count", "updated_at")
+    list_filter = ("upload",)
+    search_fields = ("name", "sheet_name", "upload__title")
+    readonly_fields = ("created_at", "updated_at", "source_id_display")
+    fields = (
+        "upload", "name", "sheet_name", "order",
+        "headers", "rows", "source_id_display", "created_at", "updated_at",
+    )
+
+    def source_id_display(self, obj):
+        return obj.source_id if obj.pk else "—"
+
+    source_id_display.short_description = "شناسه منبع گزارش"

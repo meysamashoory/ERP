@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 
 from accounts.permissions import get_profile
 
-from .columns import COLUMN_GROUPS, normalize_columns
+from .columns import get_column_groups, normalize_columns
 from .models import PrintForm, ReportAccessMode, SavedReport
 
 User = get_user_model()
@@ -69,7 +69,7 @@ class SavedReportForm(forms.ModelForm):
         else:
             self.fields["columns_json"].initial = "[]"
             self.source_links_json = "[]"
-        self.column_groups = COLUMN_GROUPS
+        self.column_groups = get_column_groups()
         self.is_manager = bool(profile and profile.is_manager)
         _style_fields(self)
 

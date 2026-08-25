@@ -101,6 +101,62 @@ FILE_COLUMNS = [
     ("file_col_2", "ستون فایل ۲", None),
 ]
 
+
+def is_excel_table_source(source: str) -> bool:
+    return bool(source) and str(source).startswith("excel_table_")
+
+
+def parse_excel_table_id(source: str) -> int | None:
+    if not is_excel_table_source(source):
+        return None
+    raw = str(source).removeprefix("excel_table_")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _excel_table_column_tuples(table) -> list[tuple[str, str, object]]:
+    cols = []
+    for key, label in table.column_defs():
+        cols.append((key, label, None))
+    return cols
+
+
+def get_excel_table_groups() -> list[dict]:
+    """One report source group per imported Excel table (label = table name)."""
+    from catalog.models import ExcelTable
+
+    groups: list[dict] = []
+    qs = (
+        ExcelTable.objects.select_related("upload")
+        .order_by("upload__title", "order", "id")
+    )
+    for table in qs:
+        groups.append({
+            "id": table.source_id,
+            "label": table.name,
+            "hint": f"جدول واردشده از فایل «{table.upload.title}»",
+            "columns": [(k, label) for k, label, _ in _excel_table_column_tuples(table)],
+        })
+    return groups
+
+
+def get_column_groups() -> list[dict]:
+    """Static built-in groups plus live Excel table sources."""
+    groups = [g for g in COLUMN_GROUPS if g.get("id") != "file"]
+    excel_groups = get_excel_table_groups()
+    if excel_groups:
+        groups.extend(excel_groups)
+    else:
+        groups.append({
+            "id": "file",
+            "label": "جداول اکسل (هنوز وارد نشده)",
+            "columns": [(k, label) for k, label, _ in FILE_COLUMNS],
+            "hint": "پس از وارد کردن فایل اکسل از «مدیریت داده‌ها»، نام هر جدول اینجا ظاهر می‌شود.",
+        })
+    return groups
+
 DATA_ENTRY_COLUMNS = [
     ("data_titles", "عناوین ورودی داده", None),
     ("awaiting_production", "قالب در انتظار تولید", None),
@@ -207,6 +263,8 @@ COLUMN_GROUPS = [
     },
 ]
 
+# Prefer get_column_groups() at request time so imported Excel tables appear.
+
 
 def is_data_entry_key(key: str, source: str = "") -> bool:
     return key in DATA_ENTRY_KEYS or source == "data_entry"
@@ -220,17 +278,34 @@ def row_signature(row: dict, keys: list[str]) -> str:
     return "|".join(f"{k}={row.get(k, '')}" for k in keys)
 
 
+def _columns_for_source(source: str) -> list[tuple[str, str, object]]:
+    if is_excel_table_source(source):
+        from catalog.models import ExcelTable
+
+        pk = parse_excel_table_id(source)
+        if pk is None:
+            return []
+        table = ExcelTable.objects.filter(pk=pk).first()
+        if not table:
+            return []
+        return _excel_table_column_tuples(table)
+    return list(COLUMNS_BY_SOURCE.get(source, []))
+
+
 def column_label_map(source: str) -> dict[str, str]:
-    mapping = {k: label for k, label, _ in COLUMNS_BY_SOURCE.get(source, [])}
+    mapping = {k: label for k, label, _ in _columns_for_source(source)}
     for k, label, _ in FILE_COLUMNS:
         mapping[k] = label
     for k, label, _ in DATA_ENTRY_COLUMNS:
         mapping[k] = label
+    if is_excel_table_source(source):
+        for k, label, _ in _columns_for_source(source):
+            mapping[k] = label
     return mapping
 
 
 def available_keys(source: str) -> set[str]:
-    keys = {k for k, _, _ in COLUMNS_BY_SOURCE.get(source, [])}
+    keys = {k for k, _, _ in _columns_for_source(source)}
     keys.update(k for k, _, _ in FILE_COLUMNS)
     keys.update(DATA_ENTRY_KEYS)
     return keys
@@ -317,8 +392,12 @@ def persist_column_uids(report) -> list[dict]:
 
 def _getter_map(source: str) -> dict:
     by_key = {}
-    for k, label, getter in COLUMNS_BY_SOURCE.get(source, []):
-        by_key[k] = (label, getter)
+    for k, label, getter in _columns_for_source(source):
+        if is_excel_table_source(source):
+            # Rows are plain dicts keyed by col_N
+            by_key[k] = (label, (lambda r, _k=k: r.get(_k, "") if isinstance(r, dict) else ""))
+        else:
+            by_key[k] = (label, getter)
     for k, label, getter in FILE_COLUMNS:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
     for k, label, getter in DATA_ENTRY_COLUMNS:
@@ -327,6 +406,8 @@ def _getter_map(source: str) -> dict:
 
 
 def _queryset(data_source: str):
+    if is_excel_table_source(data_source):
+        return []
     if data_source == "pipe":
         return PipeProduction.objects.select_related(
             "unit", "line", "product", "deviation_reason"
@@ -342,6 +423,21 @@ def _queryset(data_source: str):
     ).all()
 
 
+def _excel_row_dicts(table) -> list[dict]:
+    headers = table.headers if isinstance(table.headers, list) else []
+    rows = table.rows if isinstance(table.rows, list) else []
+    width = len(headers)
+    out: list[dict] = []
+    for raw in rows:
+        if not isinstance(raw, list):
+            continue
+        cell = {}
+        for i in range(width):
+            cell[f"col_{i}"] = raw[i] if i < len(raw) and raw[i] is not None else ""
+        out.append(cell)
+    return out
+
+
 def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
     by_key = _getter_map(data_source)
     for k, label, getter in FILE_COLUMNS:
@@ -351,8 +447,9 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
     resolved = []
     for spec in column_specs:
         key = spec["key"]
-        if key not in by_key and spec.get("source") and spec["source"] != data_source:
-            alt = _getter_map(spec["source"])
+        src = spec.get("source") or ""
+        if key not in by_key and src and src != data_source:
+            alt = _getter_map(src)
             if key in alt:
                 label, getter = alt[key]
                 resolved.append({**spec, "label": spec.get("label") or label, "getter": getter})
@@ -366,6 +463,12 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
                     "getter": getter or (lambda _r: ""),
                 }
             )
+        elif is_excel_table_source(src or data_source) and key.startswith("col_"):
+            resolved.append({
+                **spec,
+                "label": spec.get("label") or key,
+                "getter": (lambda r, _k=key: r.get(_k, "") if isinstance(r, dict) else ""),
+            })
     return resolved
 
 
@@ -471,6 +574,28 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
             rows_out.append(cell)
         return rows_out or [{"_sheet": 1}]
 
+    if is_excel_table_source(data_source):
+        from catalog.models import ExcelTable
+
+        pk = parse_excel_table_id(data_source)
+        table = ExcelTable.objects.filter(pk=pk).first() if pk is not None else None
+        records = _excel_row_dicts(table) if table else []
+        rows = []
+        for record in records:
+            cell = {}
+            for spec in specs:
+                sk = storage_key(spec)
+                dk = data_key(spec)
+                if is_data_entry_key(dk, spec.get("source") or ""):
+                    cell[sk] = ""
+                    continue
+                try:
+                    cell[sk] = spec["getter"](record) if spec.get("getter") else record.get(dk, "")
+                except Exception:
+                    cell[sk] = ""
+            rows.append(cell)
+        return rows
+
     rows = []
     for record in _queryset(data_source):
         cell = {}
@@ -525,7 +650,7 @@ def run_report(
         # Default all columns of source at level 1
         specs = [
             {"key": k, "source": data_source, "level": 1, "label": label}
-            for k, label, _ in COLUMNS_BY_SOURCE.get(data_source, [])
+            for k, label, _ in _columns_for_source(data_source)
         ]
 
     resolved = _resolve_specs(data_source, specs)
