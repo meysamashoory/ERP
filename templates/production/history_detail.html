@@ -10,10 +10,17 @@
 {% block content %}
 <div class="panel">
   <div class="panel-head panel-head-compact">
-    <h2>{{ row.product_name }} · {{ row.change_uid }}</h2>
+    <h2 title="{{ row.product_name }} · {{ row.change_uid }}">{{ row.product_name }} · {{ row.change_uid }}</h2>
   </div>
   <div class="panel-body">
     <p class="history-summary">{{ summary }}</p>
+    <dl class="detail-meta">
+      <div><dt>نام کامل محصول</dt><dd>{{ row.product_name }}</dd></div>
+      <div><dt>کد کالا</dt><dd>{{ row.product_code }}</dd></div>
+      <div><dt>شناسه تعویض</dt><dd>{{ row.change_uid }}</dd></div>
+      <div><dt>شماره برنامه</dt><dd>{{ row.plan_number }}</dd></div>
+      <div><dt>وضعیت</dt><dd>{{ row.status_label }}</dd></div>
+    </dl>
   </div>
 </div>
 

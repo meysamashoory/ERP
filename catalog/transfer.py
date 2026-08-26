@@ -26,7 +26,7 @@ LEVEL_PRODUCT_CONSUMABLES = "product_consumables"
 class DestField:
     key: str
     label: str
-    type: str  # string | integer | date | decimal
+    type: str  # string | integer | date | decimal | quantity
     required: bool = False
 
 
@@ -56,8 +56,8 @@ HISTORY_LIST_FIELDS: list[DestField] = [
     DestField("plan_start_date", "تاریخ شروع برنامه", "date"),
     DestField("actual_start_date", "تاریخ شروع واقعی", "date"),
     DestField("actual_end_date", "تاریخ پایان تولید", "date"),
-    DestField("planned_qty", "مقدار تولید برنامه (عدد)", "integer"),
-    DestField("produced_qty", "مقدار تولید واقعی (عدد)", "integer"),
+    DestField("planned_qty", "مقدار تولید برنامه (عدد)", "quantity"),
+    DestField("produced_qty", "مقدار تولید واقعی (عدد)", "quantity"),
     DestField("planned_cycle", "سیکل تولید برنامه (ثانیه)", "integer"),
     DestField("last_cycle", "آخرین سیکل تولید (ثانیه)", "integer"),
     DestField("planned_hours", "ساعت تولید برنامه", "decimal"),
@@ -69,7 +69,7 @@ HISTORY_LIST_FIELDS: list[DestField] = [
 HISTORY_DAILY_FIELDS: list[DestField] = [
     DestField("program_uid", "شناسه تعویض", "string", required=True),
     DestField("work_date", "تاریخ سند", "date", required=True),
-    DestField("produced_qty", "مقدار تولید شده", "integer"),
+    DestField("produced_qty", "مقدار تولید شده", "quantity"),
     DestField("scrap_qty", "ضایعات", "integer"),
     DestField("qty_deviation", "انحراف آمار تولید", "integer"),
     DestField("qty_reason", "علت انحراف آمار", "string"),
@@ -215,11 +215,9 @@ def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
 
 def _normalize_digits(text: str) -> str:
     """Convert Persian/Arabic-Indic digits to ASCII."""
-    table = str.maketrans(
-        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
-        "01234567890123456789",
-    )
-    return text.translate(table)
+    from catalog.qty_parse import normalize_digits
+
+    return normalize_digits(text)
 
 
 def _parse_date(raw: str, label: str) -> tuple[date | None, str | None]:
@@ -395,8 +393,14 @@ def _parse_row(
     fields: list[DestField],
 ) -> tuple[dict[str, Any], list[str]]:
     """Parse mapped cells. Empty cells are skipped (not errors)."""
+    from catalog.qty_parse import (
+        apply_production_type_to_name,
+        extract_qty_and_production_type,
+    )
+
     values: dict[str, Any] = {}
     errors: list[str] = []
+    prod_type = ""
     for f in fields:
         # Unmapped destination field → leave empty, no error
         if col_map.get(f.key) is None:
@@ -405,11 +409,26 @@ def _parse_row(
         # Empty Excel cell → leave empty, no error
         if raw == "":
             continue
+        if f.type == "quantity":
+            qty, ptype, err = extract_qty_and_production_type(raw)
+            if err:
+                errors.append(f"فیلد «{f.label}»: {err}")
+            else:
+                values[f.key] = qty
+                if ptype:
+                    prod_type = ptype
+            continue
         parsed, err = _PARSERS[f.type](raw, f.label)
         if err:
             errors.append(err)
         else:
             values[f.key] = parsed
+
+    if prod_type:
+        name = str(values.get("product_name") or "").strip()
+        if name:
+            values["product_name"] = apply_production_type_to_name(name, prod_type)
+        values["_production_type"] = prod_type
     return values, errors
 
 
@@ -481,9 +500,21 @@ def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None],
             # Still try to keep an archive mirror updated for Excel fields if exists.
             pass
 
-        defaults = {k: v for k, v in values.items() if k != "program_uid"}
+        defaults = {
+            k: v
+            for k, v in values.items()
+            if k not in ("program_uid", "_production_type")
+        }
         defaults.setdefault("scrap_qty", 0)
         defaults.setdefault("produced_qty", 0)
+
+        # Keep catalog product display name in sync when code is known
+        code = str(defaults.get("product_code") or "").strip()
+        new_name = str(defaults.get("product_name") or "").strip()
+        if code and new_name:
+            from catalog.models import Product
+
+            Product.objects.filter(code=code).update(name=new_name)
 
         rec = ProductionHistoryRecord.objects.filter(program_uid=uid).first()
         if rec:

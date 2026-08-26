@@ -57,6 +57,10 @@ class MenuAndHistoryTests(TestCase):
         self.assertContains(products, "بسته‌بندی")
         self.assertContains(products, "مشخصات فنی")
 
+        history = self.client.get(reverse("production_history"))
+        self.assertContains(history, "history-filter-col")
+        self.assertContains(history, "history-filter-q")
+
     def test_report_and_form_create_on_list_pages(self):
         self.client.login(username="admin", password="erp12345")
         reports = self.client.get(reverse("report_list"))
@@ -139,7 +143,8 @@ class ExcelTransferTests(TestCase):
         self.assertTrue(alarms.exists())
         alarm_text = " ".join(alarms.values_list("message", flat=True))
         self.assertIn("مقدار تولید واقعی", alarm_text)
-        self.assertIn("عدد صحیح", alarm_text)
+        self.assertIn("abc", alarm_text)
+        self.assertIn("عدد تولید یافت نشد", alarm_text)
 
         history = self.client.get(reverse("production_history"))
         self.assertContains(history, "36001010101001")
@@ -472,3 +477,54 @@ class ProductDataTests(TestCase):
             "2026-08-23",
         )
         self.assertEqual(_cell_str(date(2026, 8, 23)), "2026-08-23")
+
+    def test_qty_phrase_extracts_number_and_merges_type_into_name(self):
+        from catalog.qty_parse import (
+            apply_production_type_to_name,
+            extract_qty_and_production_type,
+        )
+        from catalog.transfer import transfer_excel_table
+        from production.models import ProductionHistoryRecord
+
+        cases = [
+            ("1000", 1000, ""),
+            ("1000 ضرب", 1000, ""),
+            ("1000 ضرب جنرال", 1000, "جنرال"),
+            ("1000 ضرب یا حدود 10000 ضرب پروتکت", 1000, "پروتکت"),
+            ("۱۰۰۰ ضرب سرمه ای", 1000, "سرمه ای"),
+        ]
+        for raw, qty, ptype in cases:
+            got_qty, got_type, err = extract_qty_and_production_type(raw)
+            self.assertIsNone(err, msg=raw)
+            self.assertEqual(got_qty, qty, msg=raw)
+            self.assertEqual(got_type, ptype, msg=raw)
+
+        self.assertEqual(
+            apply_production_type_to_name("زانو 45-110", "جنرال"),
+            "زانو جنرال 45-110",
+        )
+
+        upload = ExcelUpload.objects.create(title="qty", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="سوابق",
+            headers=["شناسه", "برنامه", "نام", "مقدار"],
+            rows=[["36001999001001", "BP-Q1", "زانو 45-110", "1000 ضرب جنرال"]],
+        )
+        result = transfer_excel_table(
+            table=table,
+            destination_id="production_history",
+            level_id="history_list",
+            mapping={
+                "program_uid": 0,
+                "plan_number": 1,
+                "product_name": 2,
+                "produced_qty": 3,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(result.failed, 0)
+        self.assertEqual(result.transferred, 1)
+        rec = ProductionHistoryRecord.objects.get(program_uid="36001999001001")
+        self.assertEqual(rec.produced_qty, 1000)
+        self.assertEqual(rec.product_name, "زانو جنرال 45-110")

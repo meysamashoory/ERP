@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}سوابق تولید{% endblock %}
 {% block heading %}سوابق تولید{% endblock %}
 {% block nav_history %}active{% endblock %}
@@ -11,56 +12,70 @@
       برای مشاهده جزئیات اسناد روزانه، روی هر ردیف کلیک کنید.
     </span>
   </div>
+
   {% if rows %}
+  <div class="list-filter-bar" id="history-filter-bar">
+    <div class="field">
+      <label for="history-filter-col">ستون</label>
+      <select id="history-filter-col" class="input"></select>
+    </div>
+    <div class="field field-grow">
+      <label for="history-filter-q">جستجو</label>
+      <input type="search" id="history-filter-q" class="input" placeholder="عبارت مورد نظر را بنویسید…" autocomplete="off">
+    </div>
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-clear">پاک کردن</button>
+    <span class="muted list-filter-count" id="history-filter-count"></span>
+  </div>
+
   <div class="table-scroll table-scroll-wide">
     <table class="table table-compact table-list-nav" id="history-list-table">
       <thead>
         <tr>
-          <th>شناسه تعویض</th>
-          <th>شماره برنامه</th>
-          <th>تاریخ برنامه‌ریزی</th>
-          <th>شناسه دستگاه</th>
-          <th>کد کالا</th>
-          <th>نام جنس</th>
-          <th>شماره قالب</th>
-          <th>کد یکتا</th>
-          <th>تاریخ شروع برنامه</th>
-          <th>تاریخ شروع واقعی</th>
-          <th>تاریخ پایان تولید</th>
-          <th>وضعیت</th>
-          <th>مقدار تولید برنامه (عدد)</th>
-          <th>مقدار تولید واقعی (عدد)</th>
-          <th>سیکل تولید برنامه (ثانیه)</th>
-          <th>آخرین سیکل تولید (ثانیه)</th>
-          <th>ساعت تولید برنامه</th>
-          <th>تعداد حفره فعال</th>
-          <th>آخرین وضعیت حفره</th>
-          <th>ضایعات تولید</th>
+          <th data-col="change_uid">شناسه تعویض</th>
+          <th data-col="plan_number">شماره برنامه</th>
+          <th data-col="plan_date">تاریخ برنامه‌ریزی</th>
+          <th data-col="machine">شناسه دستگاه</th>
+          <th data-col="product_code">کد کالا</th>
+          <th data-col="product_name">نام جنس</th>
+          <th data-col="mold_number">شماره قالب</th>
+          <th data-col="unique_code">کد یکتا</th>
+          <th data-col="plan_start">تاریخ شروع برنامه</th>
+          <th data-col="actual_start">تاریخ شروع واقعی</th>
+          <th data-col="actual_end">تاریخ پایان تولید</th>
+          <th data-col="status">وضعیت</th>
+          <th data-col="planned_qty">مقدار تولید برنامه (عدد)</th>
+          <th data-col="actual_qty">مقدار تولید واقعی (عدد)</th>
+          <th data-col="planned_cycle">سیکل تولید برنامه (ثانیه)</th>
+          <th data-col="last_cycle">آخرین سیکل تولید (ثانیه)</th>
+          <th data-col="planned_hours">ساعت تولید برنامه</th>
+          <th data-col="active_cavities">تعداد حفره فعال</th>
+          <th data-col="last_cavities">آخرین وضعیت حفره</th>
+          <th data-col="scrap">ضایعات تولید</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr class="list-row" data-href="{{ row.detail_url }}" tabindex="0">
-          <td class="num cell-nav"><strong>{{ row.change_uid|default:"—" }}</strong></td>
-          <td class="cell-nav">{{ row.plan_number }}</td>
-          <td class="num cell-nav">{{ row.plan_date_display }}</td>
-          <td class="cell-nav">{{ row.machine }}</td>
-          <td class="cell-nav">{{ row.product_code }}</td>
-          <td class="cell-nav">{{ row.product_name }}</td>
-          <td class="cell-nav">{{ row.mold_number }}</td>
-          <td class="cell-nav">{{ row.unique_code }}</td>
-          <td class="num cell-nav">{{ row.plan_start_display }}</td>
-          <td class="num cell-nav">{{ row.actual_start_display }}</td>
-          <td class="num cell-nav">{{ row.actual_end_display }}</td>
-          <td class="cell-nav"><span class="badge status-{{ row.status_code }}">{{ row.status_label }}</span></td>
-          <td class="num cell-nav">{{ row.planned_qty }}</td>
-          <td class="num cell-nav">{{ row.actual_qty }}</td>
-          <td class="num cell-nav">{{ row.planned_cycle }}</td>
-          <td class="num cell-nav">{{ row.last_cycle }}</td>
-          <td class="num cell-nav">{{ row.planned_hours_display }}</td>
-          <td class="num cell-nav">{{ row.active_cavities }}</td>
-          <td class="num cell-nav">{{ row.last_cavities }}</td>
-          <td class="num cell-nav">{{ row.scrap }}</td>
+          <td class="num cell-nav" data-col="change_uid" data-value="{{ row.change_uid }}"><strong>{{ row.change_uid|default:"—" }}</strong></td>
+          <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}">{{ row.plan_number }}</td>
+          <td class="num cell-nav" data-col="plan_date" data-value="{{ row.plan_date_display }}">{{ row.plan_date_display }}</td>
+          <td class="cell-nav" data-col="machine" data-value="{{ row.machine }}">{{ row.machine }}</td>
+          <td class="cell-nav" data-col="product_code" data-value="{{ row.product_code }}">{{ row.product_code }}</td>
+          <td class="cell-nav" data-col="product_name" data-value="{{ row.product_name }}" title="{{ row.product_name }}">{{ row.product_name }}</td>
+          <td class="cell-nav" data-col="mold_number" data-value="{{ row.mold_number }}">{{ row.mold_number }}</td>
+          <td class="cell-nav" data-col="unique_code" data-value="{{ row.unique_code }}">{{ row.unique_code }}</td>
+          <td class="num cell-nav" data-col="plan_start" data-value="{{ row.plan_start_display }}">{{ row.plan_start_display }}</td>
+          <td class="num cell-nav" data-col="actual_start" data-value="{{ row.actual_start_display }}">{{ row.actual_start_display }}</td>
+          <td class="num cell-nav" data-col="actual_end" data-value="{{ row.actual_end_display }}">{{ row.actual_end_display }}</td>
+          <td class="cell-nav" data-col="status" data-value="{{ row.status_label }}"><span class="badge status-{{ row.status_code }}">{{ row.status_label }}</span></td>
+          <td class="num cell-nav" data-col="planned_qty" data-value="{{ row.planned_qty }}">{{ row.planned_qty }}</td>
+          <td class="num cell-nav" data-col="actual_qty" data-value="{{ row.actual_qty }}">{{ row.actual_qty }}</td>
+          <td class="num cell-nav" data-col="planned_cycle" data-value="{{ row.planned_cycle }}">{{ row.planned_cycle }}</td>
+          <td class="num cell-nav" data-col="last_cycle" data-value="{{ row.last_cycle }}">{{ row.last_cycle }}</td>
+          <td class="num cell-nav" data-col="planned_hours" data-value="{{ row.planned_hours_display }}">{{ row.planned_hours_display }}</td>
+          <td class="num cell-nav" data-col="active_cavities" data-value="{{ row.active_cavities }}">{{ row.active_cavities }}</td>
+          <td class="num cell-nav" data-col="last_cavities" data-value="{{ row.last_cavities }}">{{ row.last_cavities }}</td>
+          <td class="num cell-nav" data-col="scrap" data-value="{{ row.scrap }}">{{ row.scrap }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -73,8 +88,19 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'js/list_filter.js' %}?v=1"></script>
 <script>
 (function () {
+  if (window.initColumnFilter) {
+    window.initColumnFilter({
+      tableId: "history-list-table",
+      colSelectId: "history-filter-col",
+      queryId: "history-filter-q",
+      clearId: "history-filter-clear",
+      countId: "history-filter-count",
+      defaultCol: "product_name",
+    });
+  }
   document.querySelectorAll("#history-list-table tbody tr[data-href]").forEach(function (tr) {
     tr.addEventListener("click", function () {
       var href = tr.getAttribute("data-href");
