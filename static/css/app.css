@@ -124,7 +124,7 @@ a { color: var(--brand); }
 }
 .nav-group a.active { background: var(--brand); color: #fff; }
 
-.transfer-map-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.transfer-map-table { width: 100%; border-collapse: collapse; margin: 0; }
 .transfer-map-table th,
 .transfer-map-table td {
   padding: 8px 10px;
@@ -133,7 +133,14 @@ a { color: var(--brand); }
   font-size: 13px;
   vertical-align: middle;
 }
-.transfer-map-table th { color: var(--muted); font-weight: 600; }
+.transfer-map-table th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: #fff; z-index: 1; }
+.transfer-map-scroll {
+  max-height: min(42vh, 360px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 10px 0 4px;
+}
 .transfer-alarms {
   max-height: 160px;
   overflow: auto;
@@ -159,8 +166,48 @@ a { color: var(--brand); }
   border-radius: 6px;
   padding: 2px 7px;
 }
+.history-summary {
+  margin: 0;
+  line-height: 1.85;
+  font-size: 14px;
+  color: var(--ink);
+}
+.table-scroll-wide { overflow-x: auto; }
 dialog.dialog.dialog-wide { width: min(920px, 96vw); }
-
+dialog.dialog.dialog-transfer {
+  max-height: min(92vh, 860px);
+  padding: 0;
+  overflow: hidden;
+}
+dialog.dialog.dialog-transfer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.dialog-transfer-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(92vh, 860px);
+  padding: 18px 22px 14px;
+  box-sizing: border-box;
+}
+.dialog-transfer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+.dialog-transfer-footer {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
 .main { margin-right: 250px; display: flex; flex-direction: column; min-width: 0; min-height: 100vh; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;

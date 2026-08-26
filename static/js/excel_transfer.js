@@ -83,14 +83,20 @@
     }
     // Persian common aliases
     const aliases = {
-      program_uid: ["شناسه", "uid", "id برنامه", "شماره شناسه"],
+      program_uid: ["شناسه", "uid", "id برنامه", "شماره شناسه", "شناسه تعویض"],
       product_code: ["کد کالا", "کد محصول", "کد"],
-      product_name: ["نام محصول", "نام قطعه", "نام"],
+      product_name: ["نام جنس", "نام محصول", "نام قطعه", "نام"],
       machine_number: ["دستگاه", "شماره دستگاه"],
       unit_number: ["واحد", "شماره واحد"],
-      plan_date: ["تاریخ برنامه", "تاریخ"],
-      planned_qty: ["مقدار برنامه", "برنامه"],
-      produced_qty: ["مقدار تولید", "تولید"],
+      plan_date: ["تاریخ برنامه", "تاریخ برنامه‌ریزی", "تاریخ"],
+      plan_number: ["شماره برنامه"],
+      planned_qty: ["مقدار برنامه", "مقدار تولید برنامه", "برنامه"],
+      produced_qty: ["مقدار تولید", "مقدار تولید واقعی", "تولید"],
+      scrap_qty: ["ضایعات", "ضایعات تولید"],
+      planned_cycle: ["سیکل تولید برنامه", "سیکل برنامه"],
+      last_cycle: ["آخرین سیکل"],
+      plan_start_date: ["تاریخ شروع برنامه"],
+      actual_start_date: ["تاریخ شروع واقعی", "تاریخ راه‌اندازی"],
     };
     const list = aliases[field.key] || [];
     for (let i = 0; i < headers.length; i++) {

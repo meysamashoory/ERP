@@ -112,6 +112,50 @@ class ExcelTransferTests(TestCase):
         history = self.client.get(reverse("production_history"))
         self.assertContains(history, "36001010101001")
         self.assertContains(history, "قطعه الف")
+        self.assertContains(history, "شناسه تعویض")
+        self.assertContains(history, "ضایعات تولید")
+
+    def test_hub_hides_finished_programs(self):
+        from production.models import ProductionProgram
+
+        self.client.login(username="admin", password="erp12345")
+        finished = ProductionProgram.objects.filter(
+            status=ProductionProgram.Status.FINISHED
+        ).first()
+        if finished is None:
+            prog = ProductionProgram.objects.first()
+            self.assertIsNotNone(prog)
+            prog.status = ProductionProgram.Status.FINISHED
+            prog.save(update_fields=["status"])
+            finished = prog
+
+        hub = self.client.get(reverse("program_list"))
+        self.assertEqual(hub.status_code, 200)
+        self.assertNotContains(hub, finished.resolved_uid)
+
+        history = self.client.get(reverse("production_history"))
+        self.assertContains(history, finished.resolved_uid)
+
+        detail = self.client.get(reverse("production_history_detail", args=[finished.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "اسناد ثبت‌شده روزانه")
+        self.assertContains(detail, "انحراف آمار تولید")
+
+    def test_transfer_dialog_has_visible_submit(self):
+        self.client.login(username="expert", password="erp12345")
+        upload = ExcelUpload.objects.create(title="دیالوگ", uploaded_by=self.expert)
+        ExcelTable.objects.create(
+            upload=upload,
+            name="t1",
+            headers=["a", "b"],
+            rows=[["1", "2"]],
+        )
+        page = self.client.get(reverse("excel_detail", args=[upload.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'id="transfer-submit"')
+        self.assertContains(page, "انتقال و حذف جدول")
+        self.assertContains(page, "dialog-transfer")
+        self.assertContains(page, "dialog-transfer-footer")
 
     def test_transfer_requires_destination_mapping(self):
         self.client.login(username="expert", password="erp12345")

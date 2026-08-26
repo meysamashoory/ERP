@@ -99,40 +99,44 @@
   {% endif %}
 </div>
 
-<dialog id="excel-transfer-dialog" class="dialog dialog-wide">
-  <div class="dialog-head">
-    <h3>انتقال داده جدول</h3>
-    <button type="button" class="btn btn-sm btn-ghost" data-transfer-close>بستن</button>
-  </div>
-  <p class="muted" style="margin:0 0 10px;font-size:13px">
-    مقصد را انتخاب کنید، سپس هر سرستون مقصد را با یک ستون از جدول اکسل متناظر کنید.
-    پس از تأیید، جدول از بخش بارگذاری حذف می‌شود؛ ردیف‌های ناموفق به‌صورت آلارم ثبت می‌شوند.
-  </p>
-  <div class="field">
-    <label for="transfer-destination">بخش مقصد</label>
-    <select id="transfer-destination" class="input"></select>
-  </div>
-  <div class="table-scroll">
-    <table class="transfer-map-table">
-      <thead>
-        <tr>
-          <th>ستون مقصد سامانه</th>
-          <th>نوع</th>
-          <th>ستون متناظر اکسل</th>
-        </tr>
-      </thead>
-      <tbody id="transfer-map-body"></tbody>
-    </table>
-  </div>
-  <div id="transfer-result" hidden></div>
-  <div class="form-actions" style="margin-top:14px">
-    <button type="button" class="btn" id="transfer-submit">انتقال و حذف جدول</button>
-    <button type="button" class="btn btn-ghost" data-transfer-close>انصراف</button>
+<dialog id="excel-transfer-dialog" class="dialog dialog-wide dialog-transfer">
+  <div class="dialog-transfer-layout">
+    <div class="dialog-head">
+      <h3>انتقال داده جدول</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-transfer-close>بستن</button>
+    </div>
+    <div class="dialog-transfer-body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">
+        مقصد را انتخاب کنید، سپس هر سرستون مقصد را با یک ستون از جدول اکسل متناظر کنید.
+        پس از تأیید، جدول از بخش بارگذاری حذف می‌شود؛ ردیف‌های ناموفق به‌صورت آلارم ثبت می‌شوند.
+      </p>
+      <div class="field">
+        <label for="transfer-destination">بخش مقصد</label>
+        <select id="transfer-destination" class="input"></select>
+      </div>
+      <div class="transfer-map-scroll">
+        <table class="transfer-map-table">
+          <thead>
+            <tr>
+              <th>ستون مقصد سامانه</th>
+              <th>نوع</th>
+              <th>ستون متناظر اکسل</th>
+            </tr>
+          </thead>
+          <tbody id="transfer-map-body"></tbody>
+        </table>
+      </div>
+      <div id="transfer-result" hidden></div>
+    </div>
+    <div class="dialog-transfer-footer form-actions">
+      <button type="button" class="btn" id="transfer-submit">انتقال و حذف جدول</button>
+      <button type="button" class="btn btn-ghost" data-transfer-close>انصراف</button>
+    </div>
   </div>
 </dialog>
 {% endblock %}
 
 {% block scripts %}
 <script src="{% static 'js/excel_grid.js' %}?v=5"></script>
-<script src="{% static 'js/excel_transfer.js' %}?v=1"></script>
+<script src="{% static 'js/excel_transfer.js' %}?v=2"></script>
 {% endblock %}

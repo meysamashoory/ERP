@@ -32,19 +32,30 @@ class TransferResult:
 
 
 PRODUCTION_HISTORY_FIELDS: list[DestField] = [
-    DestField("program_uid", "شناسه برنامه", "string", required=True),
-    DestField("plan_date", "تاریخ برنامه", "date"),
+    DestField("program_uid", "شناسه تعویض", "string", required=True),
+    DestField("plan_number", "شماره برنامه", "string"),
+    DestField("plan_date", "تاریخ برنامه‌ریزی", "date"),
     DestField("mold_change_date", "تاریخ تعویض قالب", "date"),
     DestField("unit_number", "شماره واحد", "integer"),
     DestField("machine_number", "شماره دستگاه", "string"),
     DestField("product_code", "کد کالا", "string"),
-    DestField("product_name", "نام محصول", "string"),
+    DestField("product_name", "نام جنس", "string"),
     DestField("mold_name", "نام قالب", "string"),
+    DestField("mold_number", "شماره قالب", "string"),
+    DestField("unique_code", "کد یکتا", "string"),
     DestField("material", "مواد", "string"),
     DestField("color", "رنگ", "string"),
     DestField("sequence", "ترتیب روی دستگاه", "integer"),
-    DestField("planned_qty", "مقدار برنامه", "integer"),
-    DestField("produced_qty", "مقدار تولید", "integer"),
+    DestField("plan_start_date", "تاریخ شروع برنامه", "date"),
+    DestField("actual_start_date", "تاریخ شروع واقعی", "date"),
+    DestField("planned_qty", "مقدار تولید برنامه", "integer"),
+    DestField("produced_qty", "مقدار تولید واقعی", "integer"),
+    DestField("planned_cycle", "سیکل تولید برنامه", "integer"),
+    DestField("last_cycle", "آخرین سیکل تولید", "integer"),
+    DestField("planned_hours", "ساعت تولید برنامه", "decimal"),
+    DestField("active_cavities", "تعداد حفره فعال", "integer"),
+    DestField("last_cavities", "آخرین وضعیت حفره", "integer"),
+    DestField("scrap_qty", "ضایعات تولید", "integer"),
     DestField("status", "وضعیت", "string"),
     DestField("notes", "توضیحات", "string"),
 ]
@@ -126,10 +137,23 @@ def _parse_string(raw: str, label: str) -> tuple[str, str | None]:
     return raw, None
 
 
+def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
+    if raw == "":
+        return None, None
+    cleaned = raw.replace(",", "").replace("٬", "").replace(" ", "")
+    try:
+        from decimal import Decimal
+
+        return Decimal(cleaned), None
+    except Exception:  # noqa: BLE001
+        return None, f"مقدار «{raw}» برای «{label}» عدد اعشاری نیست."
+
+
 _PARSERS: dict[str, Callable[[str, str], tuple[Any, str | None]]] = {
     "string": _parse_string,
     "integer": _parse_integer,
     "date": _parse_date,
+    "decimal": _parse_decimal,
 }
 
 
@@ -273,32 +297,34 @@ def _transfer_production_history(
                 if key == "program_uid":
                     continue
                 setattr(rec, key, val)
+            if rec.scrap_qty is None:
+                rec.scrap_qty = 0
+            if rec.produced_qty is None:
+                rec.produced_qty = 0
+            if not rec.plan_start_date and values.get("mold_change_date"):
+                rec.plan_start_date = values.get("mold_change_date")
             rec.source_table_name = table.name
             rec.transferred_by = user
             rec.save()
             result.transferred += 1
             continue
 
-        ProductionHistoryRecord.objects.create(
-            program_uid=uid,
-            plan_date=values.get("plan_date"),
-            mold_change_date=values.get("mold_change_date"),
-            unit_number=values.get("unit_number"),
-            machine_number=values.get("machine_number") or "",
-            product_code=values.get("product_code") or "",
-            product_name=values.get("product_name") or "",
-            mold_name=values.get("mold_name") or "",
-            material=values.get("material") or "",
-            color=values.get("color") or "",
-            sequence=values.get("sequence"),
-            planned_qty=values.get("planned_qty"),
-            produced_qty=values.get("produced_qty"),
-            status=values.get("status") or "",
-            notes=values.get("notes") or "",
-            source_table_name=table.name,
-            transferred_by=user,
-            extra={"excel_headers": headers, "excel_row_index": row_i},
-        )
+        create_kwargs = {
+            "program_uid": uid,
+            "source_table_name": table.name,
+            "transferred_by": user,
+            "extra": {"excel_headers": headers, "excel_row_index": row_i},
+        }
+        for f in PRODUCTION_HISTORY_FIELDS:
+            if f.key == "program_uid":
+                continue
+            if f.key in values:
+                create_kwargs[f.key] = values[f.key]
+        create_kwargs.setdefault("scrap_qty", 0)
+        create_kwargs.setdefault("produced_qty", 0)
+        if "plan_start_date" not in create_kwargs and values.get("mold_change_date"):
+            create_kwargs["plan_start_date"] = values.get("mold_change_date")
+        ProductionHistoryRecord.objects.create(**create_kwargs)
         existing_hist_uids.add(uid)
         result.transferred += 1
 

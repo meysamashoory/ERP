@@ -127,11 +127,22 @@ def entry_edit(request, pk):
 
 @login_required
 def program_list(request):
-    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes)."""
+    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes).
+
+    Injection tab shows awaiting (to start), running, and temporarily stopped
+    programs. Finished programs appear only under «سوابق تولید».
+    """
     profile = _profile(request)
     programs = (
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
+        )
+        .filter(
+            status__in=[
+                ProductionProgram.Status.AWAITING,
+                ProductionProgram.Status.RUNNING,
+                ProductionProgram.Status.TEMP_STOP,
+            ]
         )
         .order_by("-item__plan__date", "item__machine__unit__number",
                   "item__machine__number", "item__sequence")
@@ -162,88 +173,74 @@ def program_list(request):
 
 @login_required
 def production_history(request):
-    """Aggregate all planned molds / programs sorted by program UID.
+    """Aggregate planned molds / programs sorted by change UID (شناسه تعویض)."""
+    from .history import build_history_rows
 
-    Combines live ProductionProgram rows (from weekly planning + production
-    entry) with Excel-transferred ProductionHistoryRecord rows. Sort key is
-    the 14-digit program UID used across planning.
-    """
     profile = _profile(request)
-    live_uids: set[str] = set()
-    rows: list[dict] = []
-
-    programs = ProductionProgram.objects.select_related(
-        "item__product",
-        "item__machine__unit",
-        "item__plan",
-        "item__mold",
-        "mold",
-    )
-    for p in programs:
-        uid = (p.resolved_uid or p.item.uid or "").strip()
-        live_uids.add(uid)
-        totals = program_totals(p)
-        mold_label = ""
-        if p.mold_id:
-            mold_label = str(p.mold)
-        elif p.item.mold_id:
-            mold_label = str(p.item.mold)
-        rows.append(
-            {
-                "uid": uid,
-                "source": "live",
-                "plan_number": p.item.plan.program_number,
-                "plan_date": p.item.plan.date,
-                "machine": p.machine_label,
-                "product_code": p.item.product.code,
-                "product_name": p.item.product.name,
-                "mold": mold_label,
-                "sequence": p.item.sequence,
-                "status": p.get_status_display(),
-                "status_code": p.status,
-                "planned": totals["planned"],
-                "produced": totals["produced"],
-                "program": p,
-                "archive": None,
-            }
-        )
-
-    archives = ProductionHistoryRecord.objects.all()
-    for rec in archives:
-        uid = (rec.program_uid or "").strip()
-        if uid and uid in live_uids:
-            # Live row already represents this UID.
-            continue
-        machine_bits = []
-        if rec.unit_number:
-            machine_bits.append(f"واحد {rec.unit_number}")
-        if rec.machine_number:
-            machine_bits.append(f"دستگاه {rec.machine_number}")
-        rows.append(
-            {
-                "uid": uid,
-                "source": "archive",
-                "plan_number": "—",
-                "plan_date": rec.plan_date,
-                "machine": " ".join(machine_bits) or "—",
-                "product_code": rec.product_code or "—",
-                "product_name": rec.product_name or "—",
-                "mold": rec.mold_name or "—",
-                "sequence": rec.sequence,
-                "status": rec.status or "آرشیو اکسل",
-                "status_code": "archive",
-                "planned": rec.planned_qty,
-                "produced": rec.produced_qty,
-                "program": None,
-                "archive": rec,
-            }
-        )
-
-    rows.sort(key=lambda r: (r["uid"] or "", r["source"], r.get("sequence") or 0))
+    rows = build_history_rows()
     return render(
         request,
         "production/history.html",
         {"rows": rows, "profile": profile},
+    )
+
+
+@login_required
+def production_history_detail(request, pk):
+    """Detail of one live production program with per-entry documents."""
+    from .history import entry_detail_rows, history_row_from_program, program_summary_text
+
+    profile = _profile(request)
+    program = get_object_or_404(
+        ProductionProgram.objects.select_related(
+            "item__product", "item__machine__unit", "item__plan", "mold"
+        ).prefetch_related("item__lines", "entries__deviation_reason"),
+        pk=pk,
+    )
+    row = history_row_from_program(program)
+    return render(
+        request,
+        "production/history_detail.html",
+        {
+            "profile": profile,
+            "row": row,
+            "program": program,
+            "summary": program_summary_text(program),
+            "entries": entry_detail_rows(program),
+            "totals": program_totals(program),
+        },
+    )
+
+
+@login_required
+def production_history_archive_detail(request, pk):
+    """Detail for an Excel-imported history archive row."""
+    from .history import (
+        archive_summary_text,
+        entry_detail_rows_from_archive,
+        history_row_from_archive,
+    )
+
+    profile = _profile(request)
+    rec = get_object_or_404(ProductionHistoryRecord, pk=pk)
+    row = history_row_from_archive(rec)
+    entries = entry_detail_rows_from_archive(rec)
+    return render(
+        request,
+        "production/history_detail.html",
+        {
+            "profile": profile,
+            "row": row,
+            "program": None,
+            "summary": archive_summary_text(rec),
+            "entries": entries,
+            "totals": {
+                "produced": row["actual_qty"],
+                "planned": row["planned_qty"],
+                "deviation": (row["planned_qty"] or 0) - (row["actual_qty"] or 0),
+                "hours": 0,
+            },
+        },
     )
 
 
