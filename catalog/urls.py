@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("data/system/", views.system_data_hub, name="system_data"),
     path("data/excel/", views.excel_list, name="excel_list"),
     path("data/excel/import/", views.excel_import, name="excel_import"),
     path("data/excel/preview/", views.excel_preview, name="excel_preview"),

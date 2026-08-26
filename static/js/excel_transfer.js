@@ -1,5 +1,5 @@
 /**
- * Excel table → system destination transfer dialog (column mapping + alarms).
+ * Excel table → system destination transfer dialog (column mapping + levels).
  */
 (function () {
   const root = document.getElementById("excel-editor");
@@ -22,6 +22,7 @@
   });
 
   const destSelect = document.getElementById("transfer-destination");
+  const levelSelect = document.getElementById("transfer-level");
   const mapBody = document.getElementById("transfer-map-body");
   const resultBox = document.getElementById("transfer-result");
   const submitBtn = document.getElementById("transfer-submit");
@@ -40,13 +41,24 @@
     });
   }
 
-  function excelOptions(headers) {
-    let html = '<option value="-1">— انتخاب نشده —</option>';
-    (headers || []).forEach(function (h, i) {
-      const label = (h || "ستون " + (i + 1)) + " (" + colLetter(i) + ")";
-      html += '<option value="' + i + '">' + escapeHtml(label) + "</option>";
+  function currentLevel() {
+    const dest = currentDest();
+    if (!dest || !dest.levels) return null;
+    return dest.levels.find(function (l) {
+      return l.id === levelSelect.value;
+    }) || dest.levels[0] || null;
+  }
+
+  function refreshLevels() {
+    const dest = currentDest();
+    levelSelect.innerHTML = "";
+    (dest && dest.levels ? dest.levels : []).forEach(function (lv) {
+      const opt = document.createElement("option");
+      opt.value = lv.id;
+      opt.textContent = lv.label;
+      levelSelect.appendChild(opt);
     });
-    return html;
+    if (dest && dest.levels && dest.levels[0]) levelSelect.value = dest.levels[0].id;
   }
 
   function colLetter(index) {
@@ -81,22 +93,21 @@
         }
       }
     }
-    // Persian common aliases
     const aliases = {
-      program_uid: ["شناسه", "uid", "id برنامه", "شماره شناسه", "شناسه تعویض"],
+      program_uid: ["شناسه", "uid", "شناسه تعویض"],
       product_code: ["کد کالا", "کد محصول", "کد"],
-      product_name: ["نام جنس", "نام محصول", "نام قطعه", "نام"],
+      product_name: ["نام جنس", "نام محصول", "نام"],
       machine_number: ["دستگاه", "شماره دستگاه"],
       unit_number: ["واحد", "شماره واحد"],
-      plan_date: ["تاریخ برنامه", "تاریخ برنامه‌ریزی", "تاریخ"],
+      plan_date: ["تاریخ برنامه", "تاریخ برنامه‌ریزی"],
       plan_number: ["شماره برنامه"],
-      planned_qty: ["مقدار برنامه", "مقدار تولید برنامه", "برنامه"],
-      produced_qty: ["مقدار تولید", "مقدار تولید واقعی", "تولید"],
-      scrap_qty: ["ضایعات", "ضایعات تولید"],
-      planned_cycle: ["سیکل تولید برنامه", "سیکل برنامه"],
-      last_cycle: ["آخرین سیکل"],
+      planned_qty: ["مقدار تولید برنامه", "مقدار برنامه"],
+      produced_qty: ["مقدار تولید واقعی", "مقدار تولید شده", "تولید"],
+      scrap_qty: ["ضایعات"],
       plan_start_date: ["تاریخ شروع برنامه"],
-      actual_start_date: ["تاریخ شروع واقعی", "تاریخ راه‌اندازی"],
+      actual_start_date: ["تاریخ شروع واقعی", "راه‌اندازی"],
+      actual_end_date: ["تاریخ پایان", "پایان تولید"],
+      work_date: ["تاریخ سند", "تاریخ"],
     };
     const list = aliases[field.key] || [];
     for (let i = 0; i < headers.length; i++) {
@@ -108,14 +119,56 @@
     return -1;
   }
 
+  function selectedIndexes(exceptField) {
+    const used = {};
+    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+      if (exceptField && sel.dataset.field === exceptField) return;
+      const v = parseInt(sel.value, 10);
+      if (!isNaN(v) && v >= 0) used[v] = true;
+    });
+    return used;
+  }
+
+  function buildOptions(headers, selected, exceptField) {
+    const used = selectedIndexes(exceptField);
+    let html = '<option value="-1">— انتخاب نشده —</option>';
+    (headers || []).forEach(function (h, i) {
+      if (used[i] && i !== selected) return;
+      const label = (h || "ستون " + (i + 1)) + " (" + colLetter(i) + ")";
+      html +=
+        '<option value="' +
+        i +
+        '"' +
+        (i === selected ? " selected" : "") +
+        ">" +
+        escapeHtml(label) +
+        "</option>";
+    });
+    return html;
+  }
+
+  function refreshExclusiveOptions() {
+    const table = byId[String(activeTableId)];
+    if (!table) return;
+    const headers = Array.isArray(table.headers) ? table.headers : [];
+    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+      const cur = parseInt(sel.value, 10);
+      const selected = isNaN(cur) ? -1 : cur;
+      const keep = selected;
+      sel.innerHTML = buildOptions(headers, keep >= 0 ? keep : -1, sel.dataset.field);
+      if (keep >= 0) sel.value = String(keep);
+      else sel.value = "-1";
+    });
+  }
+
   function renderMap() {
-    const dest = currentDest();
+    const level = currentLevel();
     const table = byId[String(activeTableId)];
     mapBody.innerHTML = "";
-    if (!dest || !table) return;
+    if (!level || !table) return;
     const headers = Array.isArray(table.headers) ? table.headers : [];
-    const opts = excelOptions(headers);
-    dest.fields.forEach(function (f) {
+    const fields = level.fields || [];
+    fields.forEach(function (f) {
       const tr = document.createElement("tr");
       const guessed = guessIndex(headers, f);
       tr.innerHTML =
@@ -126,13 +179,29 @@
         escapeHtml(f.type) +
         '</td><td><select class="input transfer-col-select" data-field="' +
         escapeHtml(f.key) +
-        '">' +
-        opts +
-        "</select></td>";
+        '"></select></td>';
       mapBody.appendChild(tr);
       const sel = tr.querySelector("select");
+      sel.innerHTML = buildOptions(headers, guessed >= 0 ? guessed : -1, f.key);
       if (guessed >= 0) sel.value = String(guessed);
+      sel.addEventListener("change", refreshExclusiveOptions);
     });
+    refreshExclusiveOptions();
+  }
+
+  function setTableTransferStatus(tableId, text, isDone) {
+    const pane = root.querySelector('.excel-pane[data-table-id="' + tableId + '"]');
+    if (!pane) return;
+    let badge = pane.querySelector(".excel-transfer-status");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "excel-transfer-status muted";
+      const meta = pane.querySelector(".excel-pane-meta");
+      if (meta) meta.appendChild(badge);
+    }
+    badge.textContent = text || "";
+    badge.classList.toggle("is-done", !!isDone);
+    badge.classList.toggle("is-busy", !!text && !isDone);
   }
 
   function openFor(tableId) {
@@ -141,12 +210,17 @@
     resultBox.innerHTML = "";
     submitBtn.disabled = false;
     if (!destSelect.value && destinations[0]) destSelect.value = destinations[0].id;
+    refreshLevels();
     renderMap();
     if (typeof dialog.showModal === "function") dialog.showModal();
     else dialog.setAttribute("open", "open");
   }
 
-  destSelect.addEventListener("change", renderMap);
+  destSelect.addEventListener("change", function () {
+    refreshLevels();
+    renderMap();
+  });
+  levelSelect.addEventListener("change", renderMap);
 
   dialog.querySelectorAll("[data-transfer-close]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -165,29 +239,25 @@
 
   submitBtn.addEventListener("click", async function () {
     const dest = currentDest();
+    const level = currentLevel();
     const table = byId[String(activeTableId)];
-    if (!dest || !table) return;
+    if (!dest || !level || !table) return;
     const mapping = {};
     mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
       mapping[sel.dataset.field] = parseInt(sel.value, 10);
     });
-    const requiredMissing = (dest.fields || []).some(function (f) {
+    const requiredMissing = (level.fields || []).some(function (f) {
       return f.required && (mapping[f.key] === undefined || mapping[f.key] < 0);
     });
     if (requiredMissing) {
       alert("ستون‌های الزامی مقصد را نگاشت کنید.");
       return;
     }
-    if (
-      !confirm(
-        "پس از انتقال، جدول «" +
-          (table.name || "") +
-          "» از بخش بارگذاری حذف می‌شود. ادامه؟"
-      )
-    ) {
-      return;
-    }
     submitBtn.disabled = true;
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+    setTableTransferStatus(activeTableId, "در حال انتقال دیتا…", false);
+
     const url = transferTpl.replace(/\/0\/transfer\/?$/, "/" + table.id + "/transfer/");
     try {
       const resp = await fetch(url, {
@@ -196,29 +266,21 @@
           "Content-Type": "application/json",
           "X-CSRFToken": csrf,
         },
-        body: JSON.stringify({ destination: dest.id, mapping: mapping }),
+        body: JSON.stringify({ destination: dest.id, level: level.id, mapping: mapping }),
       });
       const data = await resp.json();
       if (!data.ok) {
-        alert(data.error || "انتقال ناموفق بود.");
+        setTableTransferStatus(activeTableId, "", false);
+        alert(data.error || "انتقال ناموفق بود. جزئیات در آلارم‌های سیستم ثبت شد.");
         submitBtn.disabled = false;
         return;
       }
-      let html = "<p><strong>" + escapeHtml(data.message || "انجام شد") + "</strong></p>";
-      if (data.alarms && data.alarms.length) {
-        html += '<ul class="transfer-alarms">';
-        data.alarms.forEach(function (a) {
-          html += "<li>" + escapeHtml(a) + "</li>";
-        });
-        html += "</ul>";
-      }
-      resultBox.innerHTML = html;
-      resultBox.hidden = false;
-      setTimeout(function () {
-        window.location.href = data.redirect_url || "/data/excel/";
-      }, data.alarms && data.alarms.length ? 1800 : 600);
+      setTableTransferStatus(activeTableId, "✓ " + (data.message || "انتقال موفق"), true);
+      alert(data.message || "انتقال با موفقیت انجام شد.");
+      submitBtn.disabled = false;
     } catch (err) {
-      alert("خطا در ارتباط با سرور.");
+      setTableTransferStatus(activeTableId, "", false);
+      alert("خطا در ارتباط با سرور. در صورت تکرار، آلارم سیستم را بررسی کنید.");
       submitBtn.disabled = false;
     }
   });

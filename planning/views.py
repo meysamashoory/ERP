@@ -22,24 +22,31 @@ from catalog.models import Product
 def plan_list(request):
     from django.db.models import Count
 
+    from core.natsort import natural_key
+    from production.sync import sync_all_history_to_planning
     from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
 
     profile = get_profile(request.user)
+    # History → planning: ensure archive plan numbers appear as editable plans
+    sync_all_history_to_planning(user=request.user)
+
     sort = (request.GET.get("sort") or "date").strip()
     direction = (request.GET.get("dir") or "desc").strip().lower()
     if sort not in {"number", "date"}:
         sort = "date"
     if direction not in {"asc", "desc"}:
         direction = "desc"
-    order_field = "program_number" if sort == "number" else "date"
-    if direction == "desc":
-        order_field = f"-{order_field}"
 
     plans = list(
         WeeklyPlan.objects.select_related("created_by", "approved_by")
         .annotate(mold_count=Count("items", distinct=True))
-        .order_by(order_field, "-id")
     )
+    reverse = direction == "desc"
+    if sort == "number":
+        plans.sort(key=lambda p: natural_key(p.program_number), reverse=reverse)
+    else:
+        plans.sort(key=lambda p: (p.date, p.id), reverse=reverse)
+
     for plan in plans:
         plan.can_edit_by_user = _can_request_edit(request.user, profile, plan)
         plan.can_delete_by_user = _can_delete_plan(request.user, profile)

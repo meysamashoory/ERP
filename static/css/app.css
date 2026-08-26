@@ -124,6 +124,40 @@ a { color: var(--brand); }
 }
 .nav-group a.active { background: var(--brand); color: #fff; }
 
+.transfer-dest-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-bottom: 8px;
+}
+@media (max-width: 700px) {
+  .transfer-dest-row { grid-template-columns: 1fr; }
+}
+.excel-transfer-status {
+  display: inline-block;
+  margin-inline-start: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.excel-transfer-status.is-busy { color: #b45309; }
+.excel-transfer-status.is-done { color: #15803d; }
+.row-actions-ops {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 36px;
+}
+.row-actions-ops form.inline { display: inline-flex; margin: 0; }
+.table td.col-ops,
+.table th.col-ops {
+  text-align: start;
+  vertical-align: middle;
+  white-space: nowrap;
+  min-width: 180px;
+}
+
 .transfer-map-table { width: 100%; border-collapse: collapse; margin: 0; }
 .transfer-map-table th,
 .transfer-map-table td {

@@ -133,7 +133,7 @@ def program_list(request):
     programs. Finished programs appear only under «سوابق تولید».
     """
     profile = _profile(request)
-    programs = (
+    programs = list(
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
         )
@@ -144,8 +144,16 @@ def program_list(request):
                 ProductionProgram.Status.TEMP_STOP,
             ]
         )
-        .order_by("-item__plan__date", "item__machine__unit__number",
-                  "item__machine__number", "item__sequence")
+    )
+    from core.natsort import natural_key
+
+    programs.sort(
+        key=lambda p: (
+            -(p.item.plan.date.toordinal() if p.item.plan_id and p.item.plan.date else 0),
+            p.item.machine.unit.number if p.item.machine_id else 0,
+            natural_key(p.item.machine.number if p.item.machine_id else ""),
+            p.item.sequence or 0,
+        )
     )
     rows = [{"program": p, "totals": program_totals(p)} for p in programs]
 
@@ -173,10 +181,13 @@ def program_list(request):
 
 @login_required
 def production_history(request):
-    """Aggregate planned molds / programs sorted by change UID (شناسه تعویض)."""
+    """All planning/production programs + Excel archives, sorted naturally."""
     from .history import build_history_rows
+    from .sync import check_history_machine_conflicts, sync_all_history_to_planning
 
     profile = _profile(request)
+    sync_all_history_to_planning(user=request.user)
+    check_history_machine_conflicts()
     rows = build_history_rows()
     return render(
         request,

@@ -134,18 +134,16 @@ def _breadcrumb(filters: dict, level: int) -> list[dict]:
 
 @login_required
 def report_list(request: HttpRequest) -> HttpResponse:
-    reports = visible_reports(request.user)
+    from core.natsort import natural_key
+
+    reports = list(visible_reports(request.user))
     sort = request.GET.get("sort", "number")
     direction = request.GET.get("dir", "asc")
-
-    sort_map = {
-        "number": "number",
-        "title": "title",
-    }
-    order = sort_map.get(sort, "number")
-    if direction == "desc":
-        order = f"-{order}"
-    reports = reports.order_by(order, "id")
+    reverse = direction == "desc"
+    if sort == "title":
+        reports.sort(key=lambda r: (r.title or "").casefold(), reverse=reverse)
+    else:
+        reports.sort(key=lambda r: (natural_key(r.number), r.id), reverse=reverse)
 
     rows = []
     for report in reports:
@@ -526,20 +524,25 @@ def report_copy(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def form_list(request: HttpRequest) -> HttpResponse:
+    from core.natsort import natural_key
+
     forms_qs = visible_forms(request.user)
     sort = request.GET.get("sort", "number")
     direction = request.GET.get("dir", "asc")
     title_q = request.GET.get("title", "").strip()
     if title_q:
         forms_qs = forms_qs.filter(title__icontains=title_q)
-    sort_map = {"number": "number", "title": "title", "type": "is_standard"}
-    order = sort_map.get(sort, "number")
-    if direction == "desc":
-        order = f"-{order}"
-    forms_qs = forms_qs.order_by(order, "id")
+    forms_list = list(forms_qs)
+    reverse = direction == "desc"
+    if sort == "title":
+        forms_list.sort(key=lambda f: (f.title or "").casefold(), reverse=reverse)
+    elif sort == "type":
+        forms_list.sort(key=lambda f: (0 if f.is_standard else 1, natural_key(f.number), f.id), reverse=reverse)
+    else:
+        forms_list.sort(key=lambda f: (natural_key(f.number), f.id), reverse=reverse)
 
     rows = []
-    for form_obj in forms_qs:
+    for form_obj in forms_list:
         rows.append(
             {
                 "form": form_obj,

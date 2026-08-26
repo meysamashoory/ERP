@@ -5,8 +5,10 @@ from __future__ import annotations
 from django.db.models import Sum
 from django.urls import reverse
 
+from core.natsort import natural_key
 from planning.models import persian_weekday
 from planning.utils import format_jdate
+from production.sync import infer_history_status, status_label
 
 from .models import ProductionHistoryRecord, ProductionProgram
 from .views import program_totals
@@ -50,6 +52,18 @@ def history_row_from_program(program: ProductionProgram) -> dict:
         mold_label = str(program.mold)
     elif getattr(item, "mold_id", None):
         mold_label = str(item.mold)
+    inferred = infer_history_status(
+        actual_start=program.start_date,
+        actual_end=program.stop_date if program.status == ProductionProgram.Status.FINISHED else None,
+    )
+    # Prefer live status when temp_stop
+    status_code = program.status
+    if status_code == ProductionProgram.Status.TEMP_STOP:
+        pass
+    elif program.status == ProductionProgram.Status.FINISHED:
+        status_code = "finished"
+    else:
+        status_code = inferred if inferred != "awaiting" or not program.start_date else program.status
     return {
         "kind": "live",
         "pk": program.pk,
@@ -59,15 +73,23 @@ def history_row_from_program(program: ProductionProgram) -> dict:
         "plan_date": item.plan.date,
         "plan_date_display": _fmt(item.plan.date),
         "machine": program.machine_label,
+        "unit_number": item.machine.unit.number,
+        "machine_number": item.machine.number,
         "product_code": item.product.code,
         "product_name": item.product.name,
-        "mold_number": "—",  # announced later
-        "unique_code": "—",  # announced later
+        "mold_number": "—",
+        "unique_code": "—",
         "mold_label": mold_label or "—",
         "plan_start_date": item.mold_change_date,
         "plan_start_display": _fmt(item.mold_change_date),
         "actual_start_date": program.start_date,
         "actual_start_display": _fmt(program.start_date),
+        "actual_end_date": program.stop_date if program.status == ProductionProgram.Status.FINISHED else None,
+        "actual_end_display": (
+            _fmt(program.stop_date)
+            if program.status == ProductionProgram.Status.FINISHED
+            else "—"
+        ),
         "planned_qty": planned_qty,
         "actual_qty": int(totals["produced"] or 0),
         "planned_cycle": planned_cycle,
@@ -77,6 +99,8 @@ def history_row_from_program(program: ProductionProgram) -> dict:
         "active_cavities": active_cavities,
         "last_cavities": int(last_entry.active_cavities) if last_entry else 0,
         "scrap": int(scrap or 0),
+        "status_code": status_code,
+        "status_label": status_label(status_code),
         "program": program,
         "archive": None,
     }
@@ -90,6 +114,10 @@ def history_row_from_archive(rec: ProductionHistoryRecord) -> dict:
         machine_bits.append(f"واحد {rec.unit_number}")
     machine = " ".join(machine_bits) or "—"
     plan_start = rec.plan_start_date or rec.mold_change_date
+    status_code = infer_history_status(
+        actual_start=rec.actual_start_date,
+        actual_end=rec.actual_end_date,
+    )
     return {
         "kind": "archive",
         "pk": rec.pk,
@@ -99,6 +127,8 @@ def history_row_from_archive(rec: ProductionHistoryRecord) -> dict:
         "plan_date": rec.plan_date,
         "plan_date_display": _fmt(rec.plan_date),
         "machine": machine,
+        "unit_number": rec.unit_number,
+        "machine_number": rec.machine_number,
         "product_code": rec.product_code or "—",
         "product_name": rec.product_name or "—",
         "mold_number": rec.mold_number or "—",
@@ -107,6 +137,8 @@ def history_row_from_archive(rec: ProductionHistoryRecord) -> dict:
         "plan_start_display": _fmt(plan_start),
         "actual_start_date": rec.actual_start_date,
         "actual_start_display": _fmt(rec.actual_start_date),
+        "actual_end_date": rec.actual_end_date,
+        "actual_end_display": _fmt(rec.actual_end_date),
         "planned_qty": _num(rec.planned_qty, 0),
         "actual_qty": _num(rec.produced_qty, 0),
         "planned_cycle": _num(rec.planned_cycle, 0),
@@ -119,26 +151,24 @@ def history_row_from_archive(rec: ProductionHistoryRecord) -> dict:
         "last_cavities": _num(rec.last_cavities, 0),
         "scrap": _num(rec.scrap_qty, 0),
         "mold_label": rec.mold_name or "—",
+        "status_code": status_code,
+        "status_label": status_label(status_code),
         "program": None,
         "archive": rec,
     }
 
 
 def build_history_rows() -> list[dict]:
-    """Finished live programs + Excel archives (active programs stay on the hub)."""
+    """All live programs (any status) + Excel archives not covered by live UIDs."""
     rows: list[dict] = []
     live_uids: set[str] = set()
-    programs = (
-        ProductionProgram.objects.filter(status=ProductionProgram.Status.FINISHED)
-        .select_related(
-            "item__product",
-            "item__machine__unit",
-            "item__plan",
-            "item__mold",
-            "mold",
-        )
-        .prefetch_related("item__lines", "entries")
-    )
+    programs = ProductionProgram.objects.select_related(
+        "item__product",
+        "item__machine__unit",
+        "item__plan",
+        "item__mold",
+        "mold",
+    ).prefetch_related("item__lines", "entries")
     for program in programs:
         row = history_row_from_program(program)
         if row["change_uid"]:
@@ -151,7 +181,14 @@ def build_history_rows() -> list[dict]:
             continue
         rows.append(history_row_from_archive(rec))
 
-    rows.sort(key=lambda r: (r["change_uid"] or "", r["kind"], r.get("pk") or 0))
+    rows.sort(
+        key=lambda r: (
+            natural_key(r.get("plan_number") or ""),
+            natural_key(r.get("change_uid") or ""),
+            r.get("kind") or "",
+            r.get("pk") or 0,
+        )
+    )
     return rows
 
 
@@ -159,7 +196,7 @@ def entry_detail_rows(program: ProductionProgram) -> list[dict]:
     """Per-document rows for history detail, with calculated deviations."""
     out = []
     for entry in program.entries.select_related("deviation_reason").order_by("date", "id"):
-        qty_dev = entry.deviation  # planned - produced
+        qty_dev = entry.deviation
         planned_time = int(entry.planned_quantity or 0) * int(entry.cycle or 0)
         actual_time = int(entry.active_seconds or 0)
         time_dev = actual_time - planned_time
@@ -184,7 +221,6 @@ def entry_detail_rows(program: ProductionProgram) -> list[dict]:
 
 
 def program_summary_text(program: ProductionProgram) -> str:
-    """Header blurb for history detail."""
     item = program.item
     line = program.line
     name = item.product.name
@@ -211,7 +247,6 @@ def program_summary_text(program: ProductionProgram) -> str:
 
 
 def archive_summary_text(rec: ProductionHistoryRecord) -> str:
-    """Header blurb for archive history detail."""
     name = rec.product_name or "—"
     actual = rec.actual_start_date
     if actual:
@@ -235,7 +270,6 @@ def archive_summary_text(rec: ProductionHistoryRecord) -> str:
 
 
 def entry_detail_rows_from_archive(rec: ProductionHistoryRecord) -> list[dict]:
-    """Rebuild detail rows from archived extra JSON when present."""
     payload = rec.extra if isinstance(rec.extra, dict) else {}
     snaps = payload.get("day_entries") or []
     out = []

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}داده‌های سیستم{% endblock %}
+{% block heading %}داده‌های سیستم{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block content %}
+<div class="panel panel-compact">
+  <div class="panel-head panel-head-compact">
+    <h2>مدیریت داده‌های پایه سامانه</h2>
+    <span class="muted" style="font-size:13px">همان ساختار فهرست گزارش‌ها — برای ویرایش جزئیات وارد هر بخش شوید.</span>
+  </div>
+  {% if sections %}
+  <table class="table table-compact table-plan-list">
+    <thead>
+      <tr>
+        <th style="width:70px">ردیف</th>
+        <th>بخش</th>
+        <th style="width:120px">تعداد</th>
+        <th style="width:220px">عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sections %}
+      <tr>
+        <td class="num">{{ forloop.counter }}</td>
+        <td>
+          <span class="list-title">{{ s.title }}</span>
+          {% if s.description %}<div class="list-desc">{{ s.description }}</div>{% endif %}
+        </td>
+        <td class="num">{{ s.count }}</td>
+        <td class="col-ops">
+          <div class="ops-inline row-actions-ops">
+            <a class="btn btn-sm btn-ghost" href="{{ s.url }}">مشاهده / ویرایش</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">بخشی تعریف نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}

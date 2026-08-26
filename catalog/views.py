@@ -13,8 +13,9 @@ from django.views.decorators.http import require_POST
 
 from accounts.permissions import get_profile
 
+from .alarms import register_alarm
 from .excel_io import preview_workbook, read_table_data
-from .models import ExcelTable, ExcelUpload
+from .models import ExcelTable, ExcelUpload, SystemAlarm
 from .transfer import list_destinations, transfer_excel_table
 
 
@@ -35,6 +36,96 @@ def _can_edit_excel(user) -> bool:
 def _can_delete_excel(user) -> bool:
     profile = get_profile(user)
     return bool(profile and profile.is_manager)
+
+
+@login_required
+def system_data_hub(request: HttpRequest) -> HttpResponse:
+    """App-styled hub for master data (same look as گزارش‌ها), linking into admin."""
+    from django.urls import reverse
+
+    from .models import (
+        DeviationReason,
+        Machine,
+        MoldOption,
+        Product,
+        ProductGroup,
+        ProductionTypeOption,
+        ProductionUnit,
+        ProgramChangeReason,
+        ProgramUidScheme,
+        StoppageReason,
+        SystemAlarm,
+    )
+
+    sections = [
+        {
+            "title": "واحدهای تولیدی",
+            "description": "شماره و نام واحدها",
+            "count": ProductionUnit.objects.count(),
+            "url": reverse("admin:catalog_productionunit_changelist"),
+        },
+        {
+            "title": "دستگاه‌ها / خطوط",
+            "description": "دستگاه تزریق و خطوط تولید",
+            "count": Machine.objects.count(),
+            "url": reverse("admin:catalog_machine_changelist"),
+        },
+        {
+            "title": "گروه‌ها و زیرگروه‌های کالا",
+            "description": "ساختار گروه‌بندی محصولات",
+            "count": ProductGroup.objects.count(),
+            "url": reverse("admin:catalog_productgroup_changelist"),
+        },
+        {
+            "title": "کالاها",
+            "description": "کد، نام و مشخصات محصول",
+            "count": Product.objects.count(),
+            "url": reverse("admin:catalog_product_changelist"),
+        },
+        {
+            "title": "انواع قالب",
+            "description": "فهرست قالب‌های قابل انتخاب",
+            "count": MoldOption.objects.count(),
+            "url": reverse("admin:catalog_moldoption_changelist"),
+        },
+        {
+            "title": "انواع تولید",
+            "description": "گزینه‌های نوع تولید در برنامه",
+            "count": ProductionTypeOption.objects.count(),
+            "url": reverse("admin:catalog_productiontypeoption_changelist"),
+        },
+        {
+            "title": "دلایل انحراف",
+            "description": "علل انحراف آمار تولید",
+            "count": DeviationReason.objects.count(),
+            "url": reverse("admin:catalog_deviationreason_changelist"),
+        },
+        {
+            "title": "دلایل توقف",
+            "description": "علل توقف تولید",
+            "count": StoppageReason.objects.count(),
+            "url": reverse("admin:catalog_stoppagereason_changelist"),
+        },
+        {
+            "title": "دلایل تغییر برنامه",
+            "description": "علل تغییر / راه‌اندازی",
+            "count": ProgramChangeReason.objects.count(),
+            "url": reverse("admin:catalog_programchangereason_changelist"),
+        },
+        {
+            "title": "قانون شناسه برنامه",
+            "description": "الگوی ساخت شناسه تعویض",
+            "count": ProgramUidScheme.objects.count(),
+            "url": reverse("admin:catalog_programuidscheme_changelist"),
+        },
+        {
+            "title": "آلارم‌های سیستم",
+            "description": "تداخل تولید، انتقال اکسل، شناسه تکراری",
+            "count": SystemAlarm.objects.filter(status=SystemAlarm.Status.OPEN).count(),
+            "url": reverse("admin:catalog_systemalarm_changelist"),
+        },
+    ]
+    return render(request, "catalog/system_data.html", {"sections": sections})
 
 
 @login_required
@@ -293,6 +384,7 @@ def excel_table_save(request: HttpRequest, pk: int) -> JsonResponse:
         "row_count": table.row_count,
         "column_count": table.column_count,
         "name": table.name,
+        "redirect_url": reverse("excel_list"),
     })
 
 
@@ -307,6 +399,7 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
     destination_id = str(payload.get("destination") or "").strip()
+    level_id = str(payload.get("level") or "").strip()
     mapping = payload.get("mapping")
     if not isinstance(mapping, dict):
         return JsonResponse({"ok": False, "error": "نگاشت ستون‌ها الزامی است."}, status=400)
@@ -316,12 +409,31 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         result = transfer_excel_table(
             table=table,
             destination_id=destination_id,
+            level_id=level_id,
             mapping=mapping,
             user=request.user,
         )
     except ValueError as exc:
+        register_alarm(
+            title="شکست انتقال داده اکسل",
+            message=str(exc),
+            suggestion="نگاشت و سطح انتقال را بررسی کنید.",
+            severity=SystemAlarm.Severity.SERIOUS,
+            kind=SystemAlarm.Kind.DATA_TRANSFER,
+            details={"table_id": table.pk},
+            dedupe=False,
+        )
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     except Exception as exc:  # noqa: BLE001
+        register_alarm(
+            title="شکست انتقال داده اکسل",
+            message=f"انتقال ناموفق بود: {exc}",
+            suggestion="جزئیات خطا را بررسی و دوباره تلاش کنید.",
+            severity=SystemAlarm.Severity.SERIOUS,
+            kind=SystemAlarm.Kind.DATA_TRANSFER,
+            details={"table_id": table.pk},
+            dedupe=False,
+        )
         return JsonResponse(
             {"ok": False, "error": f"انتقال ناموفق بود: {exc}"},
             status=500,
@@ -331,12 +443,11 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         "transferred": result.transferred,
         "failed": result.failed,
         "alarms": result.alarms[:50],
-        "table_deleted": result.table_deleted,
+        "table_deleted": False,
         "redirect_url": result.redirect_url,
         "message": (
-            f"{result.transferred} ردیف منتقل شد"
+            f"انتقال با موفقیت انجام شد: {result.transferred} ردیف"
             + (f"، {result.failed} ردیف با خطا" if result.failed else "")
-            + ". جدول اکسل حذف شد."
         ),
     })
 

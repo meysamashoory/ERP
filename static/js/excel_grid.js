@@ -689,11 +689,10 @@
           });
           const data = await res.json();
           if (!res.ok || !data.ok) throw new Error(data.error || "خطا");
-          status.textContent = "ذخیره شد.";
+          status.textContent = "ذخیره شد. در حال بازگشت…";
           syncTabLabel(pane);
-          setTimeout(function () {
-            status.textContent = "";
-          }, 2500);
+          const listUrl = data.redirect_url || "/data/excel/";
+          window.location.href = listUrl;
         } catch (err) {
           status.textContent = err.message || "ذخیره ناموفق";
         }

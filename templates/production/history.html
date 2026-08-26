@@ -26,6 +26,8 @@
           <th>کد یکتا</th>
           <th>تاریخ شروع برنامه</th>
           <th>تاریخ شروع واقعی</th>
+          <th>تاریخ پایان تولید</th>
+          <th>وضعیت</th>
           <th>مقدار تولید برنامه (عدد)</th>
           <th>مقدار تولید واقعی (عدد)</th>
           <th>سیکل تولید برنامه (ثانیه)</th>
@@ -49,6 +51,8 @@
           <td class="cell-nav">{{ row.unique_code }}</td>
           <td class="num cell-nav">{{ row.plan_start_display }}</td>
           <td class="num cell-nav">{{ row.actual_start_display }}</td>
+          <td class="num cell-nav">{{ row.actual_end_display }}</td>
+          <td class="cell-nav"><span class="badge status-{{ row.status_code }}">{{ row.status_label }}</span></td>
           <td class="num cell-nav">{{ row.planned_qty }}</td>
           <td class="num cell-nav">{{ row.actual_qty }}</td>
           <td class="num cell-nav">{{ row.planned_cycle }}</td>

@@ -84,7 +84,7 @@
           {% endif %}
         </div>
       </div>
-      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است (یک‌بار انتخاب، بار دوم کلیک برای نوشتن یا F2). داده فقط‌خواندنی است. برای انتقال کامل جدول به بخش‌های سامانه از «انتقال داده» استفاده کنید؛ پس از انتقال موفق/ناقص، جدول از بخش اکسل حذف می‌شود.</p>
+      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است. برای ارسال به سامانه از «انتقال داده» استفاده کنید (جدول حذف نمی‌شود). پس از «ذخیره جدول» به فهرست بارگذاری بازمی‌گردید.</p>
       <div class="excel-grid-wrap" tabindex="0">
         <table class="excel-grid" aria-label="جدول {{ t.name }}">
           <colgroup></colgroup>
@@ -107,12 +107,18 @@
     </div>
     <div class="dialog-transfer-body">
       <p class="muted" style="margin:0 0 10px;font-size:13px">
-        مقصد را انتخاب کنید، سپس هر سرستون مقصد را با یک ستون از جدول اکسل متناظر کنید.
-        پس از تأیید، جدول از بخش بارگذاری حذف می‌شود؛ ردیف‌های ناموفق به‌صورت آلارم ثبت می‌شوند.
+        بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند.
+        هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.
       </p>
-      <div class="field">
-        <label for="transfer-destination">بخش مقصد</label>
-        <select id="transfer-destination" class="input"></select>
+      <div class="transfer-dest-row">
+        <div class="field">
+          <label for="transfer-destination">بخش مقصد</label>
+          <select id="transfer-destination" class="input"></select>
+        </div>
+        <div class="field">
+          <label for="transfer-level">انتخاب سطح</label>
+          <select id="transfer-level" class="input"></select>
+        </div>
       </div>
       <div class="transfer-map-scroll">
         <table class="transfer-map-table">
@@ -129,7 +135,7 @@
       <div id="transfer-result" hidden></div>
     </div>
     <div class="dialog-transfer-footer form-actions">
-      <button type="button" class="btn" id="transfer-submit">انتقال و حذف جدول</button>
+      <button type="button" class="btn" id="transfer-submit">انتقال</button>
       <button type="button" class="btn btn-ghost" data-transfer-close>انصراف</button>
     </div>
   </div>
@@ -137,6 +143,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/excel_grid.js' %}?v=5"></script>
-<script src="{% static 'js/excel_transfer.js' %}?v=2"></script>
+<script src="{% static 'js/excel_grid.js' %}?v=6"></script>
+<script src="{% static 'js/excel_transfer.js' %}?v=3"></script>
 {% endblock %}

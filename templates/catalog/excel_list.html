@@ -29,7 +29,7 @@
           <th>جداول</th>
           <th>بارگذارنده</th>
           <th>تاریخ</th>
-          <th>عملیات</th>
+          <th style="width:200px">عملیات</th>
         </tr>
       </thead>
       <tbody>
@@ -46,15 +46,17 @@
           <td class="muted" style="font-size:13px;max-width:280px">{{ row.table_names|default:"—" }}</td>
           <td>{{ row.upload.uploaded_by.username|default:"—" }}</td>
           <td class="num">{{ row.upload.created_at|date:"Y/m/d H:i" }}</td>
-          <td class="row-actions">
-            <a class="btn btn-sm btn-ghost" href="{% url 'excel_detail' row.upload.pk %}">مشاهده</a>
-            {% if can_delete %}
-            <form method="post" action="{% url 'excel_file_delete' row.upload.pk %}" class="inline"
-                  onsubmit="return confirm('کل فایل و جداول آن حذف شود؟');">
-              {% csrf_token %}
-              <button class="btn btn-sm btn-danger-soft" type="submit">حذف</button>
-            </form>
-            {% endif %}
+          <td class="col-ops">
+            <div class="ops-inline row-actions-ops">
+              <a class="btn btn-sm btn-ghost" href="{% url 'excel_detail' row.upload.pk %}">مشاهده</a>
+              {% if can_delete %}
+              <form method="post" action="{% url 'excel_file_delete' row.upload.pk %}" class="inline"
+                    onsubmit="return confirm('کل فایل و جداول آن حذف شود؟');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-danger-soft" type="submit">حذف</button>
+              </form>
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% endfor %}

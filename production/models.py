@@ -354,6 +354,7 @@ class ProductionHistoryRecord(models.Model):
     sequence = models.PositiveSmallIntegerField("ترتیب", null=True, blank=True)
     plan_start_date = models.DateField("تاریخ شروع برنامه", null=True, blank=True)
     actual_start_date = models.DateField("تاریخ شروع واقعی", null=True, blank=True)
+    actual_end_date = models.DateField("تاریخ پایان تولید", null=True, blank=True)
     planned_qty = models.IntegerField("مقدار تولید برنامه", null=True, blank=True)
     produced_qty = models.IntegerField("مقدار تولید واقعی", null=True, blank=True)
     planned_cycle = models.IntegerField("سیکل تولید برنامه", null=True, blank=True)
