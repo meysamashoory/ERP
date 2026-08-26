@@ -441,3 +441,34 @@ class ProductDataTests(TestCase):
         msg = transfer_result_message(result)
         self.assertIn("ناقص", msg)
         self.assertTrue(any("وزن هر واحد" in a for a in result.alarms))
+
+    def test_jalali_and_excel_serial_dates(self):
+        """Excel serial 46257 and شمسی 1405/06/01 both map to 2026-08-23."""
+        import jdatetime
+        from catalog.transfer import _parse_date
+        from datetime import date
+
+        expected = jdatetime.date(1405, 6, 1).togregorian()
+        self.assertEqual(expected, date(2026, 8, 23))
+
+        for raw in ("46257", "46257.0", "1405/06/01", "1405-06-01", "۱۴۰۵/۰۶/۰۱"):
+            parsed, err = _parse_date(raw, "تاریخ آزمایشی")
+            self.assertIsNone(err, msg=f"raw={raw!r} err={err}")
+            self.assertEqual(parsed, expected, msg=f"raw={raw!r}")
+
+        # Must NOT treat 1405 as Gregorian year 1405
+        parsed, err = _parse_date("1405/06/01", "تاریخ")
+        self.assertEqual(parsed.year, 2026)
+
+        # Datetime string from openpyxl
+        parsed, err = _parse_date("2026-08-23 00:00:00", "تاریخ")
+        self.assertIsNone(err)
+        self.assertEqual(parsed, expected)
+
+        from catalog.excel_io import _cell_str
+
+        self.assertEqual(
+            _cell_str(46257, number_format="[$-fa-IR,96]yyyy/mm/dd"),
+            "2026-08-23",
+        )
+        self.assertEqual(_cell_str(date(2026, 8, 23)), "2026-08-23")

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from openpyxl.utils import range_boundaries
@@ -16,12 +17,53 @@ MAX_PREVIEW_ROWS = 5
 MAX_IMPORT_ROWS = 5000
 MAX_COLS = 80
 
+# Excel's 1900-date system epoch (with the legacy leap-day quirk baked in).
+_EXCEL_EPOCH = date(1899, 12, 30)
 
-def _cell_str(value: Any) -> str:
+
+def _excel_serial_to_date(serial: float | int) -> date | None:
+    try:
+        n = int(float(serial))
+    except (TypeError, ValueError):
+        return None
+    if not (1 <= n <= 100000):
+        return None
+    try:
+        return _EXCEL_EPOCH + timedelta(days=n)
+    except OverflowError:
+        return None
+
+
+def _looks_like_excel_date_format(number_format: str) -> bool:
+    fmt = (number_format or "").strip().lower()
+    if not fmt or fmt in {"general", "@", "0", "0.00"}:
+        return False
+    if "fa-ir" in fmt or "fa_ir" in fmt:
+        return True
+    # y/m/d tokens (ignore quoted literals roughly)
+    return any(tok in fmt for tok in ("yy", "mm", "dd", "yyyy", "m/", "d/", "/m", "/d"))
+
+
+def _cell_str(value: Any, *, number_format: str = "") -> str:
+    """Normalize a worksheet cell to a transferable string.
+
+    Date/datetime values and Excel serials with a date (incl. fa-IR) number format
+    become ISO Gregorian ``YYYY-MM-DD`` so transfer parsing is unambiguous.
+    """
     if value is None:
         return ""
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if _looks_like_excel_date_format(number_format):
+            as_date = _excel_serial_to_date(value)
+            if as_date is not None:
+                return as_date.isoformat()
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value).strip()
     return str(value).strip()
 
 
@@ -85,9 +127,10 @@ def _matrix_from_table(ws, table) -> tuple[list[str], list[list[str]]]:
         totals = int(getattr(table, "totalsRowCount", None) or 0)
         if totals and r > max_row - totals:
             continue
-        row = [
-            _cell_str(ws.cell(row=r, column=min_col + i).value) for i in range(width)
-        ]
+        row = []
+        for i in range(width):
+            cell = ws.cell(row=r, column=min_col + i)
+            row.append(_cell_str(cell.value, number_format=str(cell.number_format or "")))
         if any(row):
             rows.append(row)
     return headers, rows

@@ -213,35 +213,109 @@ def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
         return None, f"فیلد «{label}»: مقدار «{raw}» عدد اعشاری معتبر نیست."
 
 
+def _normalize_digits(text: str) -> str:
+    """Convert Persian/Arabic-Indic digits to ASCII."""
+    table = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+        "01234567890123456789",
+    )
+    return text.translate(table)
+
+
 def _parse_date(raw: str, label: str) -> tuple[date | None, str | None]:
+    """Parse Excel/Jalali/Gregorian date strings into a Gregorian ``date``.
+
+    Supports:
+    - Excel serials (e.g. ``46257`` → 2026-08-23 / شمسی 1405/06/01)
+    - Jalali ``YYYY/MM/DD`` with years 1200–1500 (e.g. ``1405/06/01``)
+    - Gregorian ISO / slash / dash forms
+    - Datetime strings with a time component
+    """
     if raw == "":
         return None, None
-    text = raw.strip()
+    text = _normalize_digits(str(raw).strip())
+    # Drop time portion: "2026-08-23 00:00:00" / ISO
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    elif " " in text:
+        text = text.split(" ", 1)[0]
+    text = text.strip()
+
+    # Excel serial number (value behind formats like [$-fa-IR,96]yyyy/mm/dd)
     if re.fullmatch(r"\d+(\.\d+)?", text):
         try:
             serial = int(float(text))
-            if 20000 <= serial <= 80000:
+            if 20000 <= serial <= 100000:
                 from datetime import timedelta
 
                 return date(1899, 12, 30) + timedelta(days=serial), None
+            # Compact YYYYMMDD (Jalali or Gregorian)
+            if len(text) == 8 and text.isdigit():
+                y, m, d = int(text[:4]), int(text[4:6]), int(text[6:8])
+                if 1200 <= y <= 1500:
+                    import jdatetime
+
+                    return jdatetime.date(y, m, d).togregorian(), None
+                if 1600 <= y <= 2100:
+                    return date(y, m, d), None
         except (TypeError, ValueError, OverflowError):
             pass
+
+    parts = re.split(r"[/.\-]", text)
+    if len(parts) == 3:
+        try:
+            a, b, c = (int(p) for p in parts)
+        except ValueError:
+            a = b = c = -1
+        if a >= 0:
+            # Year-first: YYYY/MM/DD
+            if a >= 1000:
+                y, m, d = a, b, c
+                try:
+                    # Persian calendar years (e.g. 1405) must NOT be read as Gregorian
+                    if 1200 <= y <= 1500:
+                        import jdatetime
+
+                        return jdatetime.date(y, m, d).togregorian(), None
+                    if 1600 <= y <= 2100:
+                        return date(y, m, d), None
+                except Exception as exc:  # noqa: BLE001
+                    return None, (
+                        f"فیلد «{label}»: تاریخ «{raw}» نامعتبر است "
+                        f"(سال {y} به‌عنوان شمسی/میلادی قابل تبدیل نیست: {exc})."
+                    )
+            # Day-first: DD/MM/YYYY
+            if c >= 1000:
+                d, m, y = a, b, c
+                try:
+                    if 1200 <= y <= 1500:
+                        import jdatetime
+
+                        return jdatetime.date(y, m, d).togregorian(), None
+                    if 1600 <= y <= 2100:
+                        return date(y, m, d), None
+                except Exception as exc:  # noqa: BLE001
+                    return None, (
+                        f"فیلد «{label}»: تاریخ «{raw}» نامعتبر است ({exc})."
+                    )
+
     for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%Y.%m.%d", "%d/%m/%Y", "%Y%m%d"):
         try:
-            return datetime.strptime(text, fmt).date(), None
+            parsed = datetime.strptime(text, fmt).date()
+            # Guard: year in Jalali range must go through jdatetime (already handled);
+            # if we reach here with 1200–1500 it slipped through — convert.
+            if 1200 <= parsed.year <= 1500:
+                import jdatetime
+
+                return jdatetime.date(parsed.year, parsed.month, parsed.day).togregorian(), None
+            return parsed, None
         except ValueError:
             continue
-    try:
-        import jdatetime
 
-        parts = re.split(r"[/.\-]", text)
-        if len(parts) == 3:
-            y, m, d = (int(p) for p in parts)
-            if y > 1500:
-                return jdatetime.date(y, m, d).togregorian(), None
-    except Exception:  # noqa: BLE001
-        pass
-    return None, f"فیلد «{label}»: مقدار «{raw}» تاریخ معتبر نیست."
+    return None, (
+        f"فیلد «{label}»: مقدار «{raw}» تاریخ معتبر نیست "
+        f"(سریال اکسل مثل 46257، شمسی مثل 1405/06/01 یا میلادی مثل 2026-08-23)."
+    )
 
 
 def _parse_string(raw: str, label: str) -> tuple[str, str | None]:
