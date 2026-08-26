@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.permissions import get_profile
@@ -144,6 +145,11 @@ def program_list(request):
                 ProductionProgram.Status.TEMP_STOP,
             ]
         )
+        .annotate(
+            agg_produced=Coalesce(Sum("entries__produced_quantity"), 0),
+            agg_planned=Coalesce(Sum("entries__planned_quantity"), 0),
+            agg_seconds=Coalesce(Sum("entries__active_seconds"), 0),
+        )
     )
     from core.natsort import natural_key
 
@@ -155,7 +161,19 @@ def program_list(request):
             p.item.sequence or 0,
         )
     )
-    rows = [{"program": p, "totals": program_totals(p)} for p in programs]
+
+    def _totals_from_prog(p):
+        produced = int(getattr(p, "agg_produced", 0) or 0)
+        planned = int(getattr(p, "agg_planned", 0) or 0)
+        seconds = int(getattr(p, "agg_seconds", 0) or 0)
+        return {
+            "produced": produced,
+            "planned": planned,
+            "deviation": planned - produced,
+            "hours": round(seconds / 3600, 1),
+        }
+
+    rows = [{"program": p, "totals": _totals_from_prog(p)} for p in programs]
 
     pipes = PipeProduction.objects.select_related("unit", "line", "product", "created_by")[:50]
     for rec in pipes:
@@ -181,13 +199,13 @@ def program_list(request):
 
 @login_required
 def production_history(request):
-    """All planning/production programs + Excel archives, sorted naturally."""
+    """All planning/production programs + Excel archives, sorted naturally.
+
+    Sync/conflict checks run during Excel transfer/update — not on every page load.
+    """
     from .history import build_history_rows
-    from .sync import check_history_machine_conflicts, sync_all_history_to_planning
 
     profile = _profile(request)
-    sync_all_history_to_planning(user=request.user)
-    check_history_machine_conflicts()
     rows = build_history_rows()
     return render(
         request,

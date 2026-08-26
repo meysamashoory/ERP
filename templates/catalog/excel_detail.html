@@ -71,7 +71,8 @@
         </div>
         <div class="actions excel-pane-actions">
           {% if can_transfer %}
-          <button type="button" class="btn btn-sm btn-primary-soft btn-transfer-table">انتقال داده</button>
+          <button type="button" class="btn btn-sm btn-primary-soft btn-transfer-table" data-transfer-mode="transfer">انتقال داده</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-transfer-table" data-transfer-mode="update">بروزرسانی</button>
           {% endif %}
           {% if can_edit %}
           <button type="button" class="btn btn-sm btn-ghost btn-add-row">افزودن ردیف</button>
@@ -84,7 +85,7 @@
           {% endif %}
         </div>
       </div>
-      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است. برای ارسال به سامانه از «انتقال داده» استفاده کنید (جدول حذف نمی‌شود). پس از «ذخیره جدول» به فهرست بارگذاری بازمی‌گردید.</p>
+      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است. «انتقال داده» ردیف جدید می‌سازد؛ «بروزرسانی» فقط موجودها را اصلاح می‌کند (جدول حذف نمی‌شود). پس از «ذخیره جدول» به فهرست بارگذاری بازمی‌گردید.</p>
       <div class="excel-grid-wrap" tabindex="0">
         <table class="excel-grid" aria-label="جدول {{ t.name }}">
           <colgroup></colgroup>
@@ -102,11 +103,11 @@
 <dialog id="excel-transfer-dialog" class="dialog dialog-wide dialog-transfer">
   <div class="dialog-transfer-layout">
     <div class="dialog-head">
-      <h3>انتقال داده جدول</h3>
+      <h3 id="transfer-dialog-title">انتقال داده جدول</h3>
       <button type="button" class="btn btn-sm btn-ghost" data-transfer-close>بستن</button>
     </div>
     <div class="dialog-transfer-body">
-      <p class="muted" style="margin:0 0 10px;font-size:13px">
+      <p class="muted" id="transfer-dialog-hint" style="margin:0 0 10px;font-size:13px">
         بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند.
         هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.
       </p>
@@ -144,5 +145,5 @@
 
 {% block scripts %}
 <script src="{% static 'js/excel_grid.js' %}?v=6"></script>
-<script src="{% static 'js/excel_transfer.js' %}?v=5"></script>
+<script src="{% static 'js/excel_transfer.js' %}?v=6"></script>
 {% endblock %}

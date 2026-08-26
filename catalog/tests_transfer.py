@@ -528,3 +528,125 @@ class ProductDataTests(TestCase):
         rec = ProductionHistoryRecord.objects.get(program_uid="36001999001001")
         self.assertEqual(rec.produced_qty, 1000)
         self.assertEqual(rec.product_name, "زانو جنرال 45-110")
+
+    def test_update_mode_does_not_create_new_history_rows(self):
+        from catalog.transfer import MODE_UPDATE, transfer_excel_table
+        from production.models import ProductionHistoryRecord
+
+        ProductionHistoryRecord.objects.create(
+            program_uid="36001888001001",
+            plan_number="BP-U1",
+            product_name="قدیمی",
+            produced_qty=10,
+        )
+        before = ProductionHistoryRecord.objects.count()
+        upload = ExcelUpload.objects.create(title="upd", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="سوابق",
+            headers=["شناسه", "برنامه", "نام", "مقدار"],
+            rows=[
+                ["36001888001001", "BP-U1", "جدید", "55"],
+                ["36001888001999", "BP-NEW", "ایجاد نشود", "1"],
+            ],
+        )
+        result = transfer_excel_table(
+            table=table,
+            destination_id="production_history",
+            level_id="history_list",
+            mapping={
+                "program_uid": 0,
+                "plan_number": 1,
+                "product_name": 2,
+                "produced_qty": 3,
+            },
+            user=self.expert,
+            mode=MODE_UPDATE,
+        )
+        self.assertEqual(result.mode, MODE_UPDATE)
+        self.assertEqual(result.transferred, 1)
+        self.assertGreaterEqual(result.skipped, 1)
+        self.assertEqual(ProductionHistoryRecord.objects.count(), before)
+        rec = ProductionHistoryRecord.objects.get(program_uid="36001888001001")
+        self.assertEqual(rec.product_name, "جدید")
+        self.assertEqual(rec.produced_qty, 55)
+        self.assertFalse(
+            ProductionHistoryRecord.objects.filter(program_uid="36001888001999").exists()
+        )
+
+    def test_update_mode_product_skips_missing_codes(self):
+        from catalog.models import Product
+        from catalog.transfer import MODE_UPDATE, transfer_excel_table
+
+        product = Product.objects.filter(is_active=True).first()
+        self.assertIsNotNone(product)
+        old_name = product.name
+        upload = ExcelUpload.objects.create(title="pupd", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="محصولات",
+            headers=["کد", "نام"],
+            rows=[
+                [product.code, "نام اصلاح‌شده تست"],
+                ["NO-SUCH-CODE-XYZ", "نباید ساخته شود"],
+            ],
+        )
+        before = Product.objects.count()
+        result = transfer_excel_table(
+            table=table,
+            destination_id="product_data",
+            level_id="product_info",
+            mapping={"code": 0, "name": 1},
+            user=self.expert,
+            mode=MODE_UPDATE,
+        )
+        self.assertEqual(result.transferred, 1)
+        self.assertGreaterEqual(result.skipped, 1)
+        self.assertEqual(Product.objects.count(), before)
+        product.refresh_from_db()
+        self.assertEqual(product.name, "نام اصلاح‌شده تست")
+        self.assertNotEqual(product.name, old_name)
+        self.assertFalse(Product.objects.filter(code="NO-SUCH-CODE-XYZ").exists())
+
+    def test_history_page_stays_fast_with_many_archives(self):
+        import time
+        from unittest.mock import patch
+
+        from production.models import ProductionHistoryRecord
+
+        ProductionHistoryRecord.objects.bulk_create(
+            [
+                ProductionHistoryRecord(
+                    program_uid=f"36001777{i:06d}",
+                    plan_number=f"BP-{i}",
+                    product_code=f"C-{i}",
+                    product_name=f"قطعه {i}",
+                    produced_qty=i,
+                )
+                for i in range(400)
+            ]
+        )
+        self.client.login(username="admin", password="erp12345")
+        with patch("production.sync.sync_all_history_to_planning") as sync_mock:
+            with patch("production.sync.check_history_machine_conflicts") as conflict_mock:
+                t0 = time.perf_counter()
+                resp = self.client.get(reverse("production_history"))
+                elapsed = time.perf_counter() - t0
+        self.assertEqual(resp.status_code, 200)
+        sync_mock.assert_not_called()
+        conflict_mock.assert_not_called()
+        self.assertLess(elapsed, 5.0, msg=f"history page took {elapsed:.2f}s")
+        plans = self.client.get(reverse("plan_list"))
+        self.assertEqual(plans.status_code, 200)
+
+    def test_excel_detail_shows_update_button(self):
+        self.client.login(username="admin", password="erp12345")
+        upload = ExcelUpload.objects.create(title="ui", uploaded_by=self.admin)
+        ExcelTable.objects.create(
+            upload=upload, name="t1", headers=["a"], rows=[["1"]]
+        )
+        resp = self.client.get(reverse("excel_detail", args=[upload.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "بروزرسانی")
+        self.assertContains(resp, 'data-transfer-mode="update"')
+        self.assertContains(resp, 'data-transfer-mode="transfer"')

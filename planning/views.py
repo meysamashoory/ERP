@@ -23,12 +23,10 @@ def plan_list(request):
     from django.db.models import Count
 
     from core.natsort import natural_key
-    from production.sync import sync_all_history_to_planning
     from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
 
     profile = get_profile(request.user)
-    # History → planning: ensure archive plan numbers appear as editable plans
-    sync_all_history_to_planning(user=request.user)
+    # History → planning sync runs on Excel transfer/update, not on every list load.
 
     sort = (request.GET.get("sort") or "date").strip()
     direction = (request.GET.get("dir") or "desc").strip().lower()

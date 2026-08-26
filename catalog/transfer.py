@@ -30,10 +30,15 @@ class DestField:
     required: bool = False
 
 
+MODE_TRANSFER = "transfer"
+MODE_UPDATE = "update"
+
+
 @dataclass
 class TransferResult:
     destination_id: str
     level_id: str = ""
+    mode: str = MODE_TRANSFER
     transferred: int = 0
     failed: int = 0
     skipped: int = 0
@@ -438,29 +443,41 @@ def _format_row_errors(row_i: int, table_name: str, errors: list[str]) -> str:
 
 def transfer_result_message(result: TransferResult) -> str:
     """Human message: never claim full success when failures exist."""
+    is_update = result.mode == MODE_UPDATE
+    verb_done = "بروزرسانی شد" if is_update else "منتقل شد"
+    verb_noun = "بروزرسانی" if is_update else "انتقال"
     parts = []
     if result.transferred:
-        parts.append(f"{result.transferred} ردیف منتقل شد")
+        parts.append(f"{result.transferred} ردیف {verb_done}")
     if result.failed:
         parts.append(f"{result.failed} ردیف با خطا")
     if result.skipped:
-        parts.append(f"{result.skipped} ردیف خالی/بدون شناسه رد شد")
+        if is_update:
+            parts.append(f"{result.skipped} ردیف بدون سابقه موجود / خالی رد شد")
+        else:
+            parts.append(f"{result.skipped} ردیف خالی/بدون شناسه رد شد")
     if not parts:
-        return "هیچ ردیفی برای انتقال یافت نشد."
+        return f"هیچ ردیفی برای {verb_noun} یافت نشد."
     if result.failed and not result.transferred:
-        return "انتقال ناموفق بود: " + "؛ ".join(parts) + "."
+        return f"{verb_noun} ناموفق بود: " + "؛ ".join(parts) + "."
     if result.failed:
-        return "انتقال ناقص انجام شد: " + "؛ ".join(parts) + "."
+        return f"{verb_noun} ناقص انجام شد: " + "؛ ".join(parts) + "."
     if result.skipped and result.transferred:
-        return "انتقال انجام شد: " + "؛ ".join(parts) + "."
-    return "انتقال با موفقیت انجام شد: " + "؛ ".join(parts) + "."
+        return f"{verb_noun} انجام شد: " + "؛ ".join(parts) + "."
+    return f"{verb_noun} با موفقیت انجام شد: " + "؛ ".join(parts) + "."
 
 
-def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+def _transfer_history_list(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
     from production.models import ProductionHistoryRecord, ProductionProgram
     from production.sync import check_history_machine_conflicts, sync_history_record_to_planning
 
-    result = TransferResult(destination_id=DESTINATION_PRODUCTION_HISTORY, level_id=LEVEL_HISTORY_LIST)
+    result = TransferResult(
+        destination_id=DESTINATION_PRODUCTION_HISTORY,
+        level_id=LEVEL_HISTORY_LIST,
+        mode=mode,
+    )
     headers = table.headers if isinstance(table.headers, list) else []
     rows = table.rows if isinstance(table.rows, list) else []
 
@@ -523,6 +540,10 @@ def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None],
             rec.source_table_name = table.name
             rec.transferred_by = user
             rec.save()
+        elif mode == MODE_UPDATE:
+            # بروزرسانی: فقط ردیف‌های موجود؛ بدون افزودن جدید
+            result.skipped += 1
+            continue
         else:
             rec = ProductionHistoryRecord.objects.create(
                 program_uid=uid,
@@ -556,10 +577,16 @@ def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None],
     return result
 
 
-def _transfer_history_daily(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+def _transfer_history_daily(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
     from production.models import ProductionHistoryRecord
 
-    result = TransferResult(destination_id=DESTINATION_PRODUCTION_HISTORY, level_id=LEVEL_HISTORY_DAILY)
+    result = TransferResult(
+        destination_id=DESTINATION_PRODUCTION_HISTORY,
+        level_id=LEVEL_HISTORY_DAILY,
+        mode=mode,
+    )
     rows = table.rows if isinstance(table.rows, list) else []
 
     for row_i, row in enumerate(rows, start=1):
@@ -630,10 +657,15 @@ def _transfer_history_daily(*, table: ExcelTable, col_map: dict[str, int | None]
     return result
 
 
-def _transfer_product_info(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+def _transfer_product_info(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
     from catalog.product_data import upsert_product_from_values
 
-    result = TransferResult(destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_INFO)
+    result = TransferResult(
+        destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_INFO, mode=mode
+    )
+    update_only = mode == MODE_UPDATE
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
@@ -657,7 +689,10 @@ def _transfer_product_info(*, table: ExcelTable, col_map: dict[str, int | None],
         if not str(values.get("name") or "").strip():
             values["name"] = values["code"]
         try:
-            upsert_product_from_values(values)
+            product = upsert_product_from_values(values, update_only=update_only)
+            if product is None:
+                result.skipped += 1
+                continue
             result.transferred += 1
         except Exception as exc:  # noqa: BLE001
             _row_alarm(
@@ -670,10 +705,15 @@ def _transfer_product_info(*, table: ExcelTable, col_map: dict[str, int | None],
     return result
 
 
-def _transfer_product_bom(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+def _transfer_product_bom(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
     from catalog.product_data import upsert_bom_from_values
 
-    result = TransferResult(destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_BOM)
+    result = TransferResult(
+        destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_BOM, mode=mode
+    )
+    update_only = mode == MODE_UPDATE
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
@@ -698,7 +738,10 @@ def _transfer_product_bom(*, table: ExcelTable, col_map: dict[str, int | None], 
             result.skipped += 1
             continue
         try:
-            upsert_bom_from_values(values)
+            line = upsert_bom_from_values(values, update_only=update_only)
+            if line is None:
+                result.skipped += 1
+                continue
             result.transferred += 1
         except Exception as exc:  # noqa: BLE001
             _row_alarm(
@@ -711,12 +754,17 @@ def _transfer_product_bom(*, table: ExcelTable, col_map: dict[str, int | None], 
     return result
 
 
-def _transfer_product_consumables(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+def _transfer_product_consumables(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
     from catalog.product_data import upsert_consumable_from_values
 
     result = TransferResult(
-        destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_CONSUMABLES
+        destination_id=DESTINATION_PRODUCT_DATA,
+        level_id=LEVEL_PRODUCT_CONSUMABLES,
+        mode=mode,
     )
+    update_only = mode == MODE_UPDATE
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
@@ -741,7 +789,10 @@ def _transfer_product_consumables(*, table: ExcelTable, col_map: dict[str, int |
             result.skipped += 1
             continue
         try:
-            upsert_consumable_from_values(values)
+            row_obj = upsert_consumable_from_values(values, update_only=update_only)
+            if row_obj is None:
+                result.skipped += 1
+                continue
             result.transferred += 1
         except Exception as exc:  # noqa: BLE001
             _row_alarm(
@@ -770,8 +821,16 @@ def transfer_excel_table(
     mapping: dict[str, Any],
     user,
     level_id: str = LEVEL_HISTORY_LIST,
+    mode: str = MODE_TRANSFER,
 ) -> TransferResult:
-    """Transfer table rows into destination. Does NOT delete the Excel table."""
+    """Transfer or update table rows into destination. Does NOT delete the Excel table.
+
+    mode=transfer: create missing records and update existing ones.
+    mode=update: only patch existing records; never insert new ones.
+    """
+    if mode not in (MODE_TRANSFER, MODE_UPDATE):
+        raise ValueError("حالت عملیات نامعتبر است (انتقال یا بروزرسانی).")
+
     destinations = {d["id"]: d for d in list_destinations()}
     if destination_id not in destinations:
         raise ValueError("مقصد انتقال نامعتبر است.")
@@ -793,15 +852,17 @@ def transfer_excel_table(
     if not handler:
         raise ValueError("هندلر انتقال یافت نشد.")
 
-    result = handler(table=table, col_map=col_map, user=user)
+    result = handler(table=table, col_map=col_map, user=user, mode=mode)
+    result.mode = mode
     result.redirect_url = reverse("excel_detail", args=[table.upload_id]) if table.upload_id else reverse("excel_list")
     result.table_deleted = False
 
+    action_label = "بروزرسانی" if mode == MODE_UPDATE else "انتقال"
     if result.failed:
         register_alarm(
-            title=f"خلاصه انتقال جدول «{table.name}»",
+            title=f"خلاصه {action_label} جدول «{table.name}»",
             message=(
-                f"انتقال به «{dest['label']} / {levels[level_id]['label']}»: "
+                f"{action_label} به «{dest['label']} / {levels[level_id]['label']}»: "
                 f"{result.transferred} موفق، {result.failed} ناموفق."
             ),
             suggestion="جزئیات ردیف‌های ناموفق را در آلارم‌های سیستم ببینید.",
@@ -812,6 +873,7 @@ def transfer_excel_table(
                 "transferred": result.transferred,
                 "failed": result.failed,
                 "level": level_id,
+                "mode": mode,
             },
             dedupe=False,
         )

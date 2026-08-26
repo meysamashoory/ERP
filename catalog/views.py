@@ -400,6 +400,9 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
     destination_id = str(payload.get("destination") or "").strip()
     level_id = str(payload.get("level") or "").strip()
+    mode = str(payload.get("mode") or "transfer").strip().lower()
+    if mode not in ("transfer", "update"):
+        mode = "transfer"
     mapping = payload.get("mapping")
     if not isinstance(mapping, dict):
         return JsonResponse({"ok": False, "error": "نگاشت ستون‌ها الزامی است."}, status=400)
@@ -412,6 +415,7 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
             level_id=level_id,
             mapping=mapping,
             user=request.user,
+            mode=mode,
         )
     except ValueError as exc:
         register_alarm(
@@ -444,6 +448,7 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         "transferred": result.transferred,
         "failed": result.failed,
         "skipped": result.skipped,
+        "mode": result.mode,
         "alarms": result.alarms[:50],
         "table_deleted": False,
         "redirect_url": result.redirect_url,

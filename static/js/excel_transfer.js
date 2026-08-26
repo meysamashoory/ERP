@@ -1,5 +1,5 @@
 /**
- * Excel table → system destination transfer dialog (column mapping + levels).
+ * Excel table → system destination transfer / update dialog (column mapping + levels).
  */
 (function () {
   const root = document.getElementById("excel-editor");
@@ -26,7 +26,10 @@
   const mapBody = document.getElementById("transfer-map-body");
   const resultBox = document.getElementById("transfer-result");
   const submitBtn = document.getElementById("transfer-submit");
+  const dialogTitle = document.getElementById("transfer-dialog-title");
+  const dialogHint = document.getElementById("transfer-dialog-hint");
   let activeTableId = null;
+  let activeMode = "transfer";
 
   destinations.forEach(function (d) {
     const opt = document.createElement("option");
@@ -44,9 +47,13 @@
   function currentLevel() {
     const dest = currentDest();
     if (!dest || !dest.levels) return null;
-    return dest.levels.find(function (l) {
-      return l.id === levelSelect.value;
-    }) || dest.levels[0] || null;
+    return (
+      dest.levels.find(function (l) {
+        return l.id === levelSelect.value;
+      }) ||
+      dest.levels[0] ||
+      null
+    );
   }
 
   function refreshLevels() {
@@ -88,7 +95,10 @@
       const h = String(headers[i] || "").toLowerCase();
       if (!h) continue;
       for (let j = 0; j < labels.length; j++) {
-        if (labels[j] && (h === labels[j] || h.indexOf(labels[j]) !== -1 || labels[j].indexOf(h) !== -1)) {
+        if (
+          labels[j] &&
+          (h === labels[j] || h.indexOf(labels[j]) !== -1 || labels[j].indexOf(h) !== -1)
+        ) {
           return i;
         }
       }
@@ -118,7 +128,6 @@
       material_code: ["کد ماده", "کد مواد"],
       material_name: ["نام ماده", "نام مواد"],
       quantity_per_unit: ["مقدار به ازای", "مقدار مصرف"],
-      product_code: ["کد محصول", "کد کالا"],
     };
     const list = aliases[field.key] || [];
     for (let i = 0; i < headers.length; i++) {
@@ -215,8 +224,26 @@
     badge.classList.toggle("is-busy", !!text && !isDone);
   }
 
-  function openFor(tableId) {
+  function applyModeUi(mode) {
+    activeMode = mode === "update" ? "update" : "transfer";
+    if (dialogTitle) {
+      dialogTitle.textContent =
+        activeMode === "update" ? "بروزرسانی داده جدول" : "انتقال داده جدول";
+    }
+    if (dialogHint) {
+      dialogHint.textContent =
+        activeMode === "update"
+          ? "فقط ردیف‌های از قبل موجود در سامانه اصلاح می‌شوند؛ ردیف جدید اضافه نمی‌شود. نگاشت ستون‌ها مانند انتقال است و جدول اکسل حذف نمی‌شود."
+          : "بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند. هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.";
+    }
+    if (submitBtn) {
+      submitBtn.textContent = activeMode === "update" ? "بروزرسانی" : "انتقال";
+    }
+  }
+
+  function openFor(tableId, mode) {
     activeTableId = tableId;
+    applyModeUi(mode || "transfer");
     resultBox.hidden = true;
     resultBox.innerHTML = "";
     submitBtn.disabled = false;
@@ -244,7 +271,7 @@
     btn.addEventListener("click", function () {
       const pane = btn.closest(".excel-pane");
       if (!pane) return;
-      openFor(pane.dataset.tableId);
+      openFor(pane.dataset.tableId, btn.dataset.transferMode || "transfer");
     });
   });
 
@@ -257,7 +284,6 @@
     mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
       mapping[sel.dataset.field] = parseInt(sel.value, 10);
     });
-    // Empty / unmapped fields are allowed — transfer uses whatever is mapped.
     const anyMapped = Object.keys(mapping).some(function (k) {
       return mapping[k] >= 0;
     });
@@ -265,10 +291,12 @@
       alert("حداقل یک ستون اکسل را به یک فیلد مقصد نگاشت کنید.");
       return;
     }
+    const isUpdate = activeMode === "update";
+    const busyLabel = isUpdate ? "در حال بروزرسانی…" : "در حال انتقال دیتا…";
     submitBtn.disabled = true;
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
-    setTableTransferStatus(activeTableId, "در حال انتقال دیتا…", false);
+    setTableTransferStatus(activeTableId, busyLabel, false);
 
     const url = transferTpl.replace(/\/0\/transfer\/?$/, "/" + table.id + "/transfer/");
     try {
@@ -278,7 +306,12 @@
           "Content-Type": "application/json",
           "X-CSRFToken": csrf,
         },
-        body: JSON.stringify({ destination: dest.id, level: level.id, mapping: mapping }),
+        body: JSON.stringify({
+          destination: dest.id,
+          level: level.id,
+          mapping: mapping,
+          mode: activeMode,
+        }),
       });
       const data = await resp.json();
       const alarms = Array.isArray(data.alarms) ? data.alarms : [];
@@ -286,24 +319,29 @@
         alarms.length > 0
           ? "\n\nجزئیات خطا:\n• " + alarms.slice(0, 8).join("\n• ")
           : "";
+      const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
+      const partialLabel = isUpdate ? "بروزرسانی ناقص" : "انتقال ناقص";
 
       if (!data.ok && !(data.transferred > 0)) {
-        setTableTransferStatus(activeTableId, "✕ انتقال ناموفق", false);
-        alert((data.error || data.message || "انتقال ناموفق بود.") + detail);
+        setTableTransferStatus(activeTableId, failLabel, false);
+        alert((data.error || data.message || failLabel) + detail);
         submitBtn.disabled = false;
         return;
       }
 
       if (data.failed > 0) {
+        setTableTransferStatus(activeTableId, "⚠ " + (data.message || partialLabel), false);
+        alert((data.message || partialLabel + " انجام شد.") + detail);
+      } else {
         setTableTransferStatus(
           activeTableId,
-          "⚠ " + (data.message || "انتقال ناقص"),
-          false
+          "✓ " + (data.message || (isUpdate ? "بروزرسانی موفق" : "انتقال موفق")),
+          true
         );
-        alert((data.message || "انتقال ناقص انجام شد.") + detail);
-      } else {
-        setTableTransferStatus(activeTableId, "✓ " + (data.message || "انتقال موفق"), true);
-        alert(data.message || "انتقال با موفقیت انجام شد.");
+        alert(
+          data.message ||
+            (isUpdate ? "بروزرسانی با موفقیت انجام شد." : "انتقال با موفقیت انجام شد.")
+        );
       }
       submitBtn.disabled = false;
     } catch (err) {

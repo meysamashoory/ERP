@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from django.db.models import Sum
+from django.db.models import OuterRef, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 
 from core.natsort import natural_key
@@ -10,8 +11,7 @@ from planning.models import persian_weekday
 from planning.utils import format_jdate
 from production.sync import infer_history_status, status_label
 
-from .models import ProductionHistoryRecord, ProductionProgram
-from .views import program_totals
+from .models import ProductionDayEntry, ProductionHistoryRecord, ProductionProgram
 
 
 def _fmt(value) -> str:
@@ -31,14 +31,43 @@ def _num(value, default=0):
         return default
 
 
+def _program_totals_from_annotated(program) -> dict:
+    """Use list-query annotations when present; otherwise aggregate once."""
+    produced = getattr(program, "agg_produced", None)
+    planned = getattr(program, "agg_planned", None)
+    seconds = getattr(program, "agg_seconds", None)
+    if produced is None or planned is None or seconds is None:
+        from .views import program_totals
+
+        return program_totals(program)
+    produced_i = int(produced or 0)
+    planned_i = int(planned or 0)
+    seconds_i = int(seconds or 0)
+    return {
+        "produced": produced_i,
+        "planned": planned_i,
+        "deviation": planned_i - produced_i,
+        "hours": round(seconds_i / 3600, 1),
+    }
+
+
 def history_row_from_program(program: ProductionProgram) -> dict:
     item = program.item
     line = program.line
-    totals = program_totals(program)
-    scrap = program.entries.aggregate(s=Sum("scrap_quantity"))["s"]
+    totals = _program_totals_from_annotated(program)
+    scrap = getattr(program, "agg_scrap", None)
+    if scrap is None:
+        scrap = program.entries.aggregate(s=Sum("scrap_quantity"))["s"]
     if scrap is None:
         scrap = 0
-    last_entry = program.entries.order_by("-date", "-id").first()
+    last_cycle = getattr(program, "agg_last_cycle", None)
+    last_cavities = getattr(program, "agg_last_cavities", None)
+    if last_cycle is None or last_cavities is None:
+        last_entry = program.entries.order_by("-date", "-id").first()
+        if last_cycle is None:
+            last_cycle = int(last_entry.cycle) if last_entry else 0
+        if last_cavities is None:
+            last_cavities = int(last_entry.active_cavities) if last_entry else 0
     planned_qty = int(line.quantity) if line else 0
     planned_cycle = int(line.cycle) if line and line.cycle else int(program.default_cycle or 0)
     active_cavities = (
@@ -89,11 +118,11 @@ def history_row_from_program(program: ProductionProgram) -> dict:
         "planned_qty": planned_qty,
         "actual_qty": int(totals["produced"] or 0),
         "planned_cycle": planned_cycle,
-        "last_cycle": int(last_entry.cycle) if last_entry else 0,
+        "last_cycle": int(last_cycle or 0),
         "planned_hours": planned_hours,
         "planned_hours_display": f"{planned_hours:g}" if planned_hours else "0",
         "active_cavities": active_cavities,
-        "last_cavities": int(last_entry.active_cavities) if last_entry else 0,
+        "last_cavities": int(last_cavities or 0),
         "scrap": int(scrap or 0),
         "status_code": status_code,
         "status_label": status_label(status_code),
@@ -155,23 +184,41 @@ def history_row_from_archive(rec: ProductionHistoryRecord) -> dict:
 
 
 def build_history_rows() -> list[dict]:
-    """All live programs (any status) + Excel archives not covered by live UIDs."""
+    """All live programs (any status) + Excel archives not covered by live UIDs.
+
+    Uses annotated aggregates (one query) instead of per-program N+1 aggregates.
+    Does not sync planning or scan conflicts — those run on Excel transfer/update.
+    """
     rows: list[dict] = []
     live_uids: set[str] = set()
-    programs = ProductionProgram.objects.select_related(
-        "item__product",
-        "item__machine__unit",
-        "item__plan",
-        "item__mold",
-        "mold",
-    ).prefetch_related("item__lines", "entries")
+    latest_entry = ProductionDayEntry.objects.filter(program_id=OuterRef("pk")).order_by(
+        "-date", "-id"
+    )
+    programs = (
+        ProductionProgram.objects.select_related(
+            "item__product",
+            "item__machine__unit",
+            "item__plan",
+            "item__mold",
+            "mold",
+        )
+        .prefetch_related("item__lines")
+        .annotate(
+            agg_produced=Coalesce(Sum("entries__produced_quantity"), 0),
+            agg_planned=Coalesce(Sum("entries__planned_quantity"), 0),
+            agg_seconds=Coalesce(Sum("entries__active_seconds"), 0),
+            agg_scrap=Coalesce(Sum("entries__scrap_quantity"), 0),
+            agg_last_cycle=Subquery(latest_entry.values("cycle")[:1]),
+            agg_last_cavities=Subquery(latest_entry.values("active_cavities")[:1]),
+        )
+    )
     for program in programs:
         row = history_row_from_program(program)
         if row["change_uid"]:
             live_uids.add(row["change_uid"])
         rows.append(row)
 
-    for rec in ProductionHistoryRecord.objects.all():
+    for rec in ProductionHistoryRecord.objects.all().iterator(chunk_size=500):
         uid = (rec.program_uid or "").strip()
         if uid and uid in live_uids:
             continue

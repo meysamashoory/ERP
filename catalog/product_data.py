@@ -198,7 +198,9 @@ def consumable_rows() -> list[dict[str, Any]]:
 
 
 @transaction.atomic
-def upsert_product_from_values(values: dict[str, Any]) -> Product:
+def upsert_product_from_values(
+    values: dict[str, Any], *, update_only: bool = False
+) -> Product | None:
     code = str(values.get("code") or "").strip()
     if not code:
         raise ValueError("کد کالا الزامی است.")
@@ -232,12 +234,21 @@ def upsert_product_from_values(values: dict[str, Any]) -> Product:
         "needs_facing": _bool(values.get("needs_facing")),
         "is_active": True,
     }
-    product, _ = Product.objects.update_or_create(code=code, defaults=defaults)
-    return product
+    existing = Product.objects.filter(code=code).first()
+    if existing is None:
+        if update_only:
+            return None
+        return Product.objects.create(code=code, **defaults)
+    for key, val in defaults.items():
+        setattr(existing, key, val)
+    existing.save()
+    return existing
 
 
 @transaction.atomic
-def upsert_bom_from_values(values: dict[str, Any]) -> ProductBomLine:
+def upsert_bom_from_values(
+    values: dict[str, Any], *, update_only: bool = False
+) -> ProductBomLine | None:
     parent_code = str(values.get("parent_code") or "").strip()
     if not parent_code:
         raise ValueError("کد محصول والد الزامی است.")
@@ -270,6 +281,8 @@ def upsert_bom_from_values(values: dict[str, Any]) -> ProductBomLine:
         line.order = order
         line.save()
         return line
+    if update_only:
+        return None
     return ProductBomLine.objects.create(
         parent=parent,
         component_code=component_code,
@@ -282,7 +295,9 @@ def upsert_bom_from_values(values: dict[str, Any]) -> ProductBomLine:
 
 
 @transaction.atomic
-def upsert_consumable_from_values(values: dict[str, Any]) -> ProductConsumable:
+def upsert_consumable_from_values(
+    values: dict[str, Any], *, update_only: bool = False
+) -> ProductConsumable | None:
     product_code = str(values.get("product_code") or "").strip()
     if not product_code:
         raise ValueError("کد محصول الزامی است.")
@@ -314,6 +329,8 @@ def upsert_consumable_from_values(values: dict[str, Any]) -> ProductConsumable:
         row.order = order
         row.save()
         return row
+    if update_only:
+        return None
     return ProductConsumable.objects.create(
         product=product,
         material_code=material_code,
