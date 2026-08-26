@@ -128,6 +128,7 @@
       material_code: ["کد ماده", "کد مواد"],
       material_name: ["نام ماده", "نام مواد"],
       quantity_per_unit: ["مقدار به ازای", "مقدار مصرف"],
+      status: ["وضعیت", "وضعیت تولید"],
     };
     const list = aliases[field.key] || [];
     for (let i = 0; i < headers.length; i++) {

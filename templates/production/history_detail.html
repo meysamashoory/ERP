@@ -16,10 +16,7 @@
     <p class="history-summary">{{ summary }}</p>
     <dl class="detail-meta">
       <div><dt>نام کامل محصول</dt><dd>{{ row.product_name }}</dd></div>
-      <div><dt>کد کالا</dt><dd>{{ row.product_code }}</dd></div>
-      <div><dt>شناسه تعویض</dt><dd>{{ row.change_uid }}</dd></div>
       <div><dt>شماره برنامه</dt><dd>{{ row.plan_number }}</dd></div>
-      <div><dt>وضعیت</dt><dd>{{ row.status_label }}</dd></div>
     </dl>
   </div>
 </div>
@@ -33,6 +30,9 @@
     <table class="table table-compact">
       <thead>
         <tr>
+          <th>شناسه تعویض</th>
+          <th>کد کالا</th>
+          <th>وضعیت</th>
           <th>تاریخ سند</th>
           <th>مقدار تولید شده</th>
           <th>ضایعات</th>
@@ -46,6 +46,9 @@
       <tbody>
         {% for e in entries %}
         <tr>
+          <td class="num">{{ e.program_uid }}</td>
+          <td>{{ e.product_code }}</td>
+          <td><span class="badge status-{{ e.status_code }}">{{ e.status_label }}</span></td>
           <td class="num">{{ e.date_display }}</td>
           <td class="num">{{ e.produced }}</td>
           <td class="num">{{ e.scrap }}</td>

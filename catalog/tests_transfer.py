@@ -103,7 +103,6 @@ class ExcelTransferTests(TestCase):
         return {
             "program_uid": 0,
             "plan_number": 1,
-            "product_code": 2,
             "product_name": 3,
             "produced_qty": 4,
             "plan_date": 5,
@@ -135,7 +134,7 @@ class ExcelTransferTests(TestCase):
         self.assertTrue(ExcelTable.objects.filter(pk=table_id).exists())
 
         rec = ProductionHistoryRecord.objects.get(program_uid="36001010101001")
-        self.assertEqual(rec.product_code, "P-1")
+        self.assertEqual(rec.product_name, "قطعه الف")
         self.assertEqual(rec.produced_qty, 120)
         self.assertEqual(rec.plan_number, "BP-9001")
 
@@ -391,7 +390,6 @@ class ExcelTransferTests(TestCase):
                 "program_uid": 0,
                 "plan_number": 1,
                 "plan_date": 2,
-                "product_code": 3,
                 "product_name": 4,
                 "unit_number": 5,
                 "machine_number": 6,
@@ -401,6 +399,32 @@ class ExcelTransferTests(TestCase):
         self.assertEqual(result.failed, 0)
         stored = ProductionHistoryRecord.objects.get(program_uid="36006666001003")
         self.assertEqual(stored.plan_date, date(1405, 6, 1))
+        # کد کالا از سطح روزانه می‌آید
+        from catalog.transfer import transfer_excel_table as _xfer
+
+        daily = ExcelTable.objects.create(
+            upload=upload,
+            name="روزانه",
+            headers=["شناسه", "کد", "وضعیت", "تاریخ", "تولید"],
+            rows=[["36006666001003", product.code, "در حال تولید", "1405/06/03", "40"]],
+        )
+        daily_result = _xfer(
+            table=daily,
+            destination_id="production_history",
+            level_id="history_daily",
+            mapping={
+                "program_uid": 0,
+                "product_code": 1,
+                "status": 2,
+                "work_date": 3,
+                "produced_qty": 4,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(daily_result.failed, 0)
+        stored.refresh_from_db()
+        self.assertEqual(stored.product_code, product.code)
+        self.assertIn("در حال تولید", stored.status)
         plan2 = WeeklyPlan.objects.filter(program_number="BP-JALALI-2").first()
         self.assertIsNotNone(plan2)
         # Plan.date is unique — may bump one day if 1405/06/01 already taken by BP-JALALI-1
@@ -750,3 +774,66 @@ class ProductDataTests(TestCase):
         self.assertContains(resp, "بروزرسانی")
         self.assertContains(resp, 'data-transfer-mode="update"')
         self.assertContains(resp, 'data-transfer-mode="transfer"')
+
+    def test_running_history_appears_in_production_hub_with_quantities(self):
+        from datetime import date
+
+        from catalog.models import Machine, Product
+        from production.models import ProductionDayEntry, ProductionProgram
+        from production.sync import ensure_running_history_in_production
+
+        product = Product.objects.first()
+        machine = Machine.objects.select_related("unit").first()
+        rec = ProductionHistoryRecord.objects.create(
+            program_uid="36008888001001",
+            plan_number="BP-RUN-HUB",
+            plan_date=date(1405, 6, 10),
+            actual_start_date=date(1405, 6, 11),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            planned_qty=200,
+            produced_qty=55,
+            status="در حال تولید",
+            extra={
+                "day_entries": [
+                    {
+                        "date": "1405-06-11",
+                        "produced": 55,
+                        "scrap": 2,
+                        "program_uid": "36008888001001",
+                        "product_code": product.code,
+                        "status": "در حال تولید",
+                    }
+                ]
+            },
+        )
+        stats = ensure_running_history_in_production(user=self.admin)
+        self.assertGreaterEqual(stats["ok"] + stats["refreshed"], 1)
+        prog = ProductionProgram.objects.filter(item__lines__uid=rec.program_uid).first()
+        self.assertIsNotNone(prog)
+        self.assertEqual(prog.status, ProductionProgram.Status.RUNNING)
+        self.assertTrue(
+            ProductionDayEntry.objects.filter(program=prog, produced_quantity=55).exists()
+        )
+
+        self.client.login(username="admin", password="erp12345")
+        hub = self.client.get(reverse("program_list"))
+        self.assertEqual(hub.status_code, 200)
+        self.assertContains(hub, "36008888001001")
+        self.assertContains(hub, product.code)
+
+        detail = self.client.get(reverse("production_history_archive_detail", args=[rec.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "شناسه تعویض")
+        self.assertContains(detail, "کد کالا")
+        self.assertContains(detail, "وضعیت")
+        self.assertContains(detail, product.code)
+        self.assertContains(detail, "36008888001001")
+
+        listing = self.client.get(reverse("production_history"))
+        self.assertEqual(listing.status_code, 200)
+        # سطح اول دیگر ستون کد کالا / وضعیت ندارد
+        self.assertNotContains(listing, 'data-col="product_code"')
+        self.assertNotContains(listing, 'data-col="status"')

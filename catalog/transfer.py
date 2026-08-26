@@ -54,7 +54,7 @@ HISTORY_LIST_FIELDS: list[DestField] = [
     DestField("plan_date", "تاریخ برنامه‌ریزی", "date"),
     DestField("unit_number", "شماره واحد", "integer"),
     DestField("machine_number", "شماره دستگاه", "string"),
-    DestField("product_code", "کد کالا", "string"),
+    # کد کالا / وضعیت در سطح روزانه نگاشت می‌شوند؛ نام جنس در لیست می‌ماند
     DestField("product_name", "نام جنس", "string"),
     DestField("mold_number", "شماره قالب", "string"),
     DestField("unique_code", "کد یکتا", "string"),
@@ -73,6 +73,8 @@ HISTORY_LIST_FIELDS: list[DestField] = [
 
 HISTORY_DAILY_FIELDS: list[DestField] = [
     DestField("program_uid", "شناسه تعویض", "string", required=True),
+    DestField("product_code", "کد کالا", "string"),
+    DestField("status", "وضعیت", "string"),
     DestField("work_date", "تاریخ سند", "date", required=True),
     DestField("produced_qty", "مقدار تولید شده", "quantity"),
     DestField("scrap_qty", "ضایعات", "integer"),
@@ -586,6 +588,10 @@ def _transfer_history_daily(
     *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
 ) -> TransferResult:
     from production.models import ProductionHistoryRecord
+    from production.sync import (
+        _normalize_status_label,
+        sync_history_record_to_planning,
+    )
 
     result = TransferResult(
         destination_id=DESTINATION_PRODUCTION_HISTORY,
@@ -620,6 +626,9 @@ def _transfer_history_daily(
             continue
         rec = ProductionHistoryRecord.objects.filter(program_uid=uid).first()
         if not rec:
+            if mode == MODE_UPDATE:
+                result.skipped += 1
+                continue
             _row_alarm(
                 result,
                 table=table,
@@ -631,6 +640,21 @@ def _transfer_history_daily(
                 field_label="شناسه تعویض",
             )
             continue
+
+        # سطح دوم: کد کالا و وضعیت روی خود سابقه هم به‌روز می‌شود
+        code = str(values.get("product_code") or "").strip()
+        if code:
+            rec.product_code = code
+        status_raw = str(values.get("status") or "").strip()
+        if status_raw:
+            rec.status = status_raw
+            normalized = _normalize_status_label(status_raw)
+            # Keep date-based inference consistent when status says finished/running
+            if normalized == "finished" and not rec.actual_end_date and work:
+                rec.actual_end_date = work
+            if normalized == "running" and not rec.actual_start_date and work:
+                rec.actual_start_date = work
+
         extra = rec.extra if isinstance(rec.extra, dict) else {}
         entries = list(extra.get("day_entries") or [])
         work_s = work.isoformat() if hasattr(work, "isoformat") else str(work or "")
@@ -646,6 +670,9 @@ def _transfer_history_daily(
             "time_deviation": int(values.get("time_deviation") or 0),
             "time_reason": values.get("time_reason") or "—",
             "description": values.get("notes") or "—",
+            "program_uid": uid,
+            "product_code": rec.product_code or code or "",
+            "status": rec.status or status_raw or "",
         }
         entries = [e for e in entries if not (isinstance(e, dict) and e.get("date") == work_s)]
         entries.append(snap)
@@ -657,6 +684,9 @@ def _transfer_history_daily(
         rec.transferred_by = user
         rec.source_table_name = table.name
         rec.save()
+
+        # Push running quantities into ثبت و کنترل تولید
+        sync_history_record_to_planning(rec, user=user)
         result.transferred += 1
 
     return result

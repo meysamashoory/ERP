@@ -243,6 +243,19 @@ def build_history_rows() -> list[dict]:
 def entry_detail_rows(program: ProductionProgram) -> list[dict]:
     """Per-document rows for history detail, with calculated deviations."""
     out = []
+    item = program.item
+    uid = (program.resolved_uid or "").strip()
+    code = item.product.code if item and item.product_id else "—"
+    end_for_status = None
+    if program.status == ProductionProgram.Status.FINISHED or program.stop_date:
+        end_for_status = program.stop_date
+    if program.status == ProductionProgram.Status.TEMP_STOP:
+        status_code = ProductionProgram.Status.TEMP_STOP
+    else:
+        status_code = infer_history_status(
+            actual_start=program.start_date,
+            actual_end=end_for_status,
+        )
     for entry in program.entries.select_related("deviation_reason").order_by("date", "id"):
         qty_dev = entry.deviation
         planned_time = int(entry.planned_quantity or 0) * int(entry.cycle or 0)
@@ -251,6 +264,10 @@ def entry_detail_rows(program: ProductionProgram) -> list[dict]:
         reason = entry.deviation_reason.label if entry.deviation_reason_id else "—"
         out.append(
             {
+                "program_uid": uid or "—",
+                "product_code": code or "—",
+                "status_code": status_code,
+                "status_label": status_label(status_code),
                 "date": entry.date,
                 "date_display": _fmt(entry.date),
                 "produced": entry.produced_quantity or 0,
@@ -320,12 +337,32 @@ def archive_summary_text(rec: ProductionHistoryRecord) -> str:
 def entry_detail_rows_from_archive(rec: ProductionHistoryRecord) -> list[dict]:
     payload = rec.extra if isinstance(rec.extra, dict) else {}
     snaps = payload.get("day_entries") or []
+    status_code = infer_history_status(
+        actual_start=rec.actual_start_date,
+        actual_end=rec.actual_end_date,
+    )
+    # Explicit status text from Excel daily level overrides inference for display
+    from production.sync import _normalize_status_label
+
+    hinted = _normalize_status_label(rec.status or "")
+    if hinted in ("finished", "running", "awaiting", "temp_stop"):
+        status_code = hinted
+    uid = (rec.program_uid or "").strip() or "—"
+    code = (rec.product_code or "").strip() or "—"
     out = []
     for snap in snaps:
         if not isinstance(snap, dict):
             continue
+        snap_status = _normalize_status_label(str(snap.get("status") or ""))
+        row_status = snap_status if snap_status in (
+            "finished", "running", "awaiting", "temp_stop"
+        ) else status_code
         out.append(
             {
+                "program_uid": str(snap.get("program_uid") or uid),
+                "product_code": str(snap.get("product_code") or code),
+                "status_code": row_status,
+                "status_label": status_label(row_status),
                 "date": snap.get("date"),
                 "date_display": snap.get("date_display") or _fmt(snap.get("date")) or "—",
                 "produced": _num(snap.get("produced"), 0),

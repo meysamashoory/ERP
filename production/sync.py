@@ -105,6 +105,165 @@ def _planning_line_uids() -> set[str]:
     }
 
 
+def _normalize_status_label(raw: str) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    low = text.replace("ي", "ی").replace("ك", "ک").lower()
+    mapping = {
+        "finished": "finished",
+        "اتمام": "finished",
+        "اتمام تولید": "finished",
+        "پایان": "finished",
+        "running": "running",
+        "در حال تولید": "running",
+        "درحال تولید": "running",
+        "awaiting": "awaiting",
+        "در انتظار": "awaiting",
+        "در انتظار تولید": "awaiting",
+        "temp_stop": "temp_stop",
+        "توقف موقت": "temp_stop",
+    }
+    if low in mapping:
+        return mapping[low]
+    for key, code in mapping.items():
+        if key in low:
+            return code
+    return text
+
+
+def _apply_program_state_from_history(rec, program) -> None:
+    """Update live ProductionProgram status/dates from archive history row."""
+    from production.models import ProductionProgram
+
+    status_hint = _normalize_status_label(getattr(rec, "status", "") or "")
+    if status_hint in {
+        ProductionProgram.Status.FINISHED,
+        ProductionProgram.Status.RUNNING,
+        ProductionProgram.Status.AWAITING,
+        ProductionProgram.Status.TEMP_STOP,
+    }:
+        inferred = status_hint
+    else:
+        inferred = infer_history_status(
+            actual_start=rec.actual_start_date,
+            actual_end=rec.actual_end_date,
+        )
+    if inferred == "finished":
+        program.status = ProductionProgram.Status.FINISHED
+    elif inferred == "running":
+        program.status = ProductionProgram.Status.RUNNING
+    elif inferred == "temp_stop":
+        program.status = ProductionProgram.Status.TEMP_STOP
+    else:
+        program.status = ProductionProgram.Status.AWAITING
+
+    start_j = _to_jdate(rec.actual_start_date)
+    end_j = _to_jdate(rec.actual_end_date)
+    if start_j:
+        program.start_date = start_j
+        if not program.start_time:
+            from datetime import time as dtime
+
+            program.start_time = dtime(8, 0)
+    if end_j:
+        program.stop_date = end_j
+        if not program.stop_time:
+            from datetime import time as dtime
+
+            program.stop_time = dtime(20, 0)
+    program.save()
+
+
+def _sync_history_quantities_to_program(rec, program, *, user=None) -> int:
+    """Mirror archive day_entries / produced totals into ProductionDayEntry rows.
+
+    Returns number of day entries written/updated.
+    """
+    from catalog.jalali_dates import coerce_to_jalali_storage, storage_to_jalali
+    from production.models import ProductionDayEntry
+
+    extra = rec.extra if isinstance(rec.extra, dict) else {}
+    snaps = list(extra.get("day_entries") or [])
+    written = 0
+
+    def _upsert(work_j, produced: int, scrap: int, description: str = "") -> None:
+        nonlocal written
+        if work_j is None:
+            return
+        entry, _created = ProductionDayEntry.objects.get_or_create(
+            program=program,
+            date=work_j,
+            defaults={
+                "produced_quantity": max(0, int(produced or 0)),
+                "scrap_quantity": max(0, int(scrap or 0)),
+                "description": (description or "").strip(),
+                "created_by": user,
+            },
+        )
+        if not _created:
+            entry.produced_quantity = max(0, int(produced or 0))
+            entry.scrap_quantity = max(0, int(scrap or 0))
+            if description:
+                entry.description = description.strip()
+            entry.save()
+        try:
+            entry.recompute()
+            entry.save()
+        except Exception:  # noqa: BLE001
+            pass
+        written += 1
+
+    if snaps:
+        for snap in snaps:
+            if not isinstance(snap, dict):
+                continue
+            raw_date = snap.get("date") or snap.get("date_display")
+            work_j = storage_to_jalali(coerce_to_jalali_storage(raw_date) or raw_date)
+            if work_j is None and isinstance(raw_date, str) and raw_date:
+                # try jalali slash already-encoded ISO-like 1405-06-01
+                try:
+                    parts = raw_date.replace("/", "-").split("-")
+                    if len(parts) == 3:
+                        work_j = storage_to_jalali(
+                            __import__("datetime").date(
+                                int(parts[0]), int(parts[1]), int(parts[2])
+                            )
+                        )
+                except Exception:  # noqa: BLE001
+                    work_j = None
+            _upsert(
+                work_j,
+                int(snap.get("produced") or 0),
+                int(snap.get("scrap") or 0),
+                str(snap.get("description") or ""),
+            )
+    elif rec.produced_qty or rec.scrap_qty:
+        work_j = _to_jdate(rec.actual_start_date) or _to_jdate(rec.plan_date) or program.start_date
+        _upsert(work_j, int(rec.produced_qty or 0), int(rec.scrap_qty or 0))
+
+    return written
+
+
+def _find_program_by_uid(uid: str):
+    from production.models import ProductionProgram
+
+    if not uid:
+        return None
+    prog = (
+        ProductionProgram.objects.select_related("item")
+        .filter(item__lines__uid=uid)
+        .distinct()
+        .first()
+    )
+    if prog is not None:
+        return prog
+    for p in ProductionProgram.objects.select_related("item").prefetch_related("item__lines"):
+        if (p.resolved_uid or "").strip() == uid:
+            return p
+    return None
+
+
 @transaction.atomic
 def sync_history_record_to_planning(
     rec, *, user=None, live_uids: set[str] | None = None
@@ -148,18 +307,10 @@ def sync_history_record_to_planning(
     if live_uids is None:
         live_uids = _live_program_uids()
     if uid and uid in live_uids:
-        prog = (
-            ProductionProgram.objects.select_related("item")
-            .filter(item__lines__uid=uid)
-            .distinct()
-            .first()
-        )
-        if prog is None:
-            for p in ProductionProgram.objects.select_related("item"):
-                if (p.resolved_uid or "").strip() == uid:
-                    prog = p
-                    break
+        prog = _find_program_by_uid(uid)
         if prog is not None:
+            _apply_program_state_from_history(rec, prog)
+            _sync_history_quantities_to_program(rec, prog, user=user)
             result["ok"] = True
             result["program_id"] = prog.pk
             result["plan_id"] = prog.item.plan_id
@@ -258,31 +409,8 @@ def sync_history_record_to_planning(
             line.save()
 
     program, created_prog = ProductionProgram.objects.get_or_create(item=item)
-    inferred = infer_history_status(
-        actual_start=rec.actual_start_date,
-        actual_end=rec.actual_end_date,
-    )
-    if inferred == "finished":
-        program.status = ProductionProgram.Status.FINISHED
-    elif inferred == "running":
-        program.status = ProductionProgram.Status.RUNNING
-    else:
-        program.status = ProductionProgram.Status.AWAITING
-    start_j = _to_jdate(rec.actual_start_date)
-    end_j = _to_jdate(rec.actual_end_date)
-    if start_j:
-        program.start_date = start_j
-        if not program.start_time:
-            from datetime import time as dtime
-
-            program.start_time = dtime(8, 0)
-    if end_j:
-        program.stop_date = end_j
-        if not program.stop_time:
-            from datetime import time as dtime
-
-            program.stop_time = dtime(20, 0)
-    program.save()
+    _apply_program_state_from_history(rec, program)
+    _sync_history_quantities_to_program(rec, program, user=user)
     if created_prog:
         result["created"] = True
 
@@ -325,10 +453,12 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
     """Sync only archive rows not yet present in planning (fast when already synced).
 
     Groups into WeeklyPlan by ``plan_number``. Safe to call from plan list.
+    Also refreshes status/quantities for rows already linked when they are
+    «در حال تولید».
     """
-    from production.models import ProductionHistoryRecord
+    from production.models import ProductionHistoryRecord, ProductionProgram
 
-    stats = {"ok": 0, "failed": 0, "skipped": 0}
+    stats = {"ok": 0, "failed": 0, "skipped": 0, "refreshed": 0}
     live_uids = _live_program_uids()
     planned_uids = _planning_line_uids()
     known = live_uids | planned_uids
@@ -339,7 +469,25 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
         .iterator(chunk_size=200)
     ):
         uid = (rec.program_uid or "").strip()
+        inferred = infer_history_status(
+            actual_start=rec.actual_start_date, actual_end=rec.actual_end_date
+        )
+        status_hint = _normalize_status_label(rec.status or "")
+        is_active = inferred in ("running", "awaiting") or status_hint in (
+            "running",
+            "awaiting",
+            "temp_stop",
+        )
+
         if uid and uid in known:
+            # Refresh live/running programs so ثبت و کنترل stays up to date
+            if is_active:
+                prog = _find_program_by_uid(uid)
+                if prog is not None:
+                    _apply_program_state_from_history(rec, prog)
+                    _sync_history_quantities_to_program(rec, prog, user=user)
+                    stats["refreshed"] += 1
+                    continue
             stats["skipped"] += 1
             continue
         # Incomplete Excel rows cannot become planning items — skip quietly
@@ -356,6 +504,7 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
                 known.add(uid)
                 if out.get("error") != "live":
                     planned_uids.add(uid)
+                    live_uids.add(uid)
         else:
             stats["failed"] += 1
             # Avoid flooding alarms on every plan_list visit for the same bad row
@@ -368,6 +517,48 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
                 details={"program_uid": rec.program_uid, "plan_number": rec.plan_number},
                 dedupe=True,
             )
+    return stats
+
+
+def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
+    """Push «در حال تولید» / awaiting archive rows into ثبت و کنترل تولید."""
+    from production.models import ProductionHistoryRecord, ProductionProgram
+
+    stats = {"ok": 0, "failed": 0, "skipped": 0, "refreshed": 0}
+    live_uids = _live_program_uids()
+    for rec in ProductionHistoryRecord.objects.exclude(plan_number="").iterator(
+        chunk_size=200
+    ):
+        inferred = infer_history_status(
+            actual_start=rec.actual_start_date, actual_end=rec.actual_end_date
+        )
+        status_hint = _normalize_status_label(rec.status or "")
+        if inferred == "finished" or status_hint == "finished":
+            stats["skipped"] += 1
+            continue
+        if not (rec.product_code or rec.product_name):
+            stats["skipped"] += 1
+            continue
+        if rec.unit_number is None or not str(rec.machine_number or "").strip():
+            stats["skipped"] += 1
+            continue
+        uid = (rec.program_uid or "").strip()
+        if uid and uid in live_uids:
+            prog = _find_program_by_uid(uid)
+            if prog is not None and prog.status != ProductionProgram.Status.FINISHED:
+                _apply_program_state_from_history(rec, prog)
+                _sync_history_quantities_to_program(rec, prog, user=user)
+                stats["refreshed"] += 1
+            else:
+                stats["skipped"] += 1
+            continue
+        out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
+        if out.get("ok"):
+            stats["ok"] += 1
+            if uid:
+                live_uids.add(uid)
+        else:
+            stats["failed"] += 1
     return stats
 
 

@@ -35,14 +35,12 @@
           <th data-col="plan_number">شماره برنامه</th>
           <th data-col="plan_date">تاریخ برنامه‌ریزی</th>
           <th data-col="machine">شناسه دستگاه</th>
-          <th data-col="product_code">کد کالا</th>
           <th data-col="product_name">نام جنس</th>
           <th data-col="mold_number">شماره قالب</th>
           <th data-col="unique_code">کد یکتا</th>
           <th data-col="plan_start">تاریخ شروع برنامه</th>
           <th data-col="actual_start">تاریخ شروع واقعی</th>
           <th data-col="actual_end">تاریخ پایان تولید</th>
-          <th data-col="status">وضعیت</th>
           <th data-col="planned_qty">مقدار تولید برنامه (عدد)</th>
           <th data-col="actual_qty">مقدار تولید واقعی (عدد)</th>
           <th data-col="planned_cycle">سیکل تولید برنامه (ثانیه)</th>
@@ -60,14 +58,12 @@
           <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}">{{ row.plan_number }}</td>
           <td class="num cell-nav" data-col="plan_date" data-value="{{ row.plan_date_display }}">{{ row.plan_date_display }}</td>
           <td class="cell-nav" data-col="machine" data-value="{{ row.machine }}">{{ row.machine }}</td>
-          <td class="cell-nav" data-col="product_code" data-value="{{ row.product_code }}">{{ row.product_code }}</td>
           <td class="cell-nav" data-col="product_name" data-value="{{ row.product_name }}" title="{{ row.product_name }}">{{ row.product_name }}</td>
           <td class="cell-nav" data-col="mold_number" data-value="{{ row.mold_number }}">{{ row.mold_number }}</td>
           <td class="cell-nav" data-col="unique_code" data-value="{{ row.unique_code }}">{{ row.unique_code }}</td>
           <td class="num cell-nav" data-col="plan_start" data-value="{{ row.plan_start_display }}">{{ row.plan_start_display }}</td>
           <td class="num cell-nav" data-col="actual_start" data-value="{{ row.actual_start_display }}">{{ row.actual_start_display }}</td>
           <td class="num cell-nav" data-col="actual_end" data-value="{{ row.actual_end_display }}">{{ row.actual_end_display }}</td>
-          <td class="cell-nav" data-col="status" data-value="{{ row.status_label }}"><span class="badge status-{{ row.status_code }}">{{ row.status_label }}</span></td>
           <td class="num cell-nav" data-col="planned_qty" data-value="{{ row.planned_qty }}">{{ row.planned_qty }}</td>
           <td class="num cell-nav" data-col="actual_qty" data-value="{{ row.actual_qty }}">{{ row.actual_qty }}</td>
           <td class="num cell-nav" data-col="planned_cycle" data-value="{{ row.planned_cycle }}">{{ row.planned_cycle }}</td>

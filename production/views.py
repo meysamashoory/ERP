@@ -132,8 +132,12 @@ def program_list(request):
 
     Injection tab shows awaiting (to start), running, and temporarily stopped
     programs. Finished programs appear only under «سوابق تولید».
+    Running/awaiting archive history is pulled into this hub.
     """
+    from .sync import ensure_running_history_in_production
+
     profile = _profile(request)
+    ensure_running_history_in_production(user=request.user)
     programs = list(
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
