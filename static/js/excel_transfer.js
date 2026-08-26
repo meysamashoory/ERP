@@ -257,11 +257,12 @@
     mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
       mapping[sel.dataset.field] = parseInt(sel.value, 10);
     });
-    const requiredMissing = (level.fields || []).some(function (f) {
-      return f.required && (mapping[f.key] === undefined || mapping[f.key] < 0);
+    // Empty / unmapped fields are allowed — transfer uses whatever is mapped.
+    const anyMapped = Object.keys(mapping).some(function (k) {
+      return mapping[k] >= 0;
     });
-    if (requiredMissing) {
-      alert("ستون‌های الزامی مقصد را نگاشت کنید.");
+    if (!anyMapped) {
+      alert("حداقل یک ستون اکسل را به یک فیلد مقصد نگاشت کنید.");
       return;
     }
     submitBtn.disabled = true;
@@ -280,14 +281,30 @@
         body: JSON.stringify({ destination: dest.id, level: level.id, mapping: mapping }),
       });
       const data = await resp.json();
-      if (!data.ok) {
-        setTableTransferStatus(activeTableId, "", false);
-        alert(data.error || "انتقال ناموفق بود. جزئیات در آلارم‌های سیستم ثبت شد.");
+      const alarms = Array.isArray(data.alarms) ? data.alarms : [];
+      const detail =
+        alarms.length > 0
+          ? "\n\nجزئیات خطا:\n• " + alarms.slice(0, 8).join("\n• ")
+          : "";
+
+      if (!data.ok && !(data.transferred > 0)) {
+        setTableTransferStatus(activeTableId, "✕ انتقال ناموفق", false);
+        alert((data.error || data.message || "انتقال ناموفق بود.") + detail);
         submitBtn.disabled = false;
         return;
       }
-      setTableTransferStatus(activeTableId, "✓ " + (data.message || "انتقال موفق"), true);
-      alert(data.message || "انتقال با موفقیت انجام شد.");
+
+      if (data.failed > 0) {
+        setTableTransferStatus(
+          activeTableId,
+          "⚠ " + (data.message || "انتقال ناقص"),
+          false
+        );
+        alert((data.message || "انتقال ناقص انجام شد.") + detail);
+      } else {
+        setTableTransferStatus(activeTableId, "✓ " + (data.message || "انتقال موفق"), true);
+        alert(data.message || "انتقال با موفقیت انجام شد.");
+      }
       submitBtn.disabled = false;
     } catch (err) {
       setTableTransferStatus(activeTableId, "", false);

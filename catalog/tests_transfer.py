@@ -121,10 +121,13 @@ class ExcelTransferTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
-        self.assertTrue(payload["ok"])
+        # 1 ok row, 1 invalid integer (failed), 1 empty uid (skipped — not failed)
         self.assertEqual(payload["transferred"], 1)
-        self.assertEqual(payload["failed"], 2)
+        self.assertEqual(payload["failed"], 1)
+        self.assertEqual(payload["skipped"], 1)
         self.assertFalse(payload["table_deleted"])
+        self.assertIn("ناقص", payload["message"])
+        self.assertNotIn("با موفقیت انجام شد", payload["message"])
         self.assertTrue(ExcelTable.objects.filter(pk=table_id).exists())
 
         rec = ProductionHistoryRecord.objects.get(program_uid="36001010101001")
@@ -134,6 +137,9 @@ class ExcelTransferTests(TestCase):
 
         alarms = SystemAlarm.objects.filter(kind=SystemAlarm.Kind.DATA_TRANSFER)
         self.assertTrue(alarms.exists())
+        alarm_text = " ".join(alarms.values_list("message", flat=True))
+        self.assertIn("مقدار تولید واقعی", alarm_text)
+        self.assertIn("عدد صحیح", alarm_text)
 
         history = self.client.get(reverse("production_history"))
         self.assertContains(history, "36001010101001")
@@ -407,3 +413,31 @@ class ProductDataTests(TestCase):
         self.assertTrue(save.json()["ok"])
         product.refresh_from_db()
         self.assertEqual(product.name, "قطعه تست ویرایش")
+
+    def test_empty_optional_fields_do_not_fail_transfer(self):
+        from catalog.transfer import transfer_excel_table, transfer_result_message
+        from catalog.models import Product
+
+        upload = ExcelUpload.objects.create(title="خالی‌ها", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="اطلاعات",
+            headers=["کد", "نام", "وزن", "موجودی"],
+            rows=[
+                ["PD-EMPTY-1", "فقط کد و نام", "", ""],  # empty weight/stock OK
+                ["PD-EMPTY-2", "", "not-a-number", ""],  # invalid weight → fail
+            ],
+        )
+        result = transfer_excel_table(
+            table=table,
+            destination_id="product_data",
+            level_id="product_info",
+            mapping={"code": 0, "name": 1, "unit_weight_grams": 2, "stock_finished": 3},
+            user=self.expert,
+        )
+        self.assertEqual(result.transferred, 1)
+        self.assertEqual(result.failed, 1)
+        self.assertTrue(Product.objects.filter(code="PD-EMPTY-1").exists())
+        msg = transfer_result_message(result)
+        self.assertIn("ناقص", msg)
+        self.assertTrue(any("وزن هر واحد" in a for a in result.alarms))

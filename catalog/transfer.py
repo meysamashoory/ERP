@@ -36,6 +36,7 @@ class TransferResult:
     level_id: str = ""
     transferred: int = 0
     failed: int = 0
+    skipped: int = 0
     alarms: list[str] = field(default_factory=list)
     table_deleted: bool = False
     redirect_url: str = ""
@@ -199,7 +200,7 @@ def _parse_integer(raw: str, label: str) -> tuple[int | None, str | None]:
     try:
         return int(float(cleaned)), None
     except (TypeError, ValueError):
-        return None, f"مقدار «{raw}» برای «{label}» عدد صحیح نیست."
+        return None, f"فیلد «{label}»: مقدار «{raw}» عدد صحیح معتبر نیست."
 
 
 def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
@@ -209,7 +210,7 @@ def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
     try:
         return Decimal(cleaned), None
     except Exception:  # noqa: BLE001
-        return None, f"مقدار «{raw}» برای «{label}» عدد اعشاری نیست."
+        return None, f"فیلد «{label}»: مقدار «{raw}» عدد اعشاری معتبر نیست."
 
 
 def _parse_date(raw: str, label: str) -> tuple[date | None, str | None]:
@@ -240,7 +241,7 @@ def _parse_date(raw: str, label: str) -> tuple[date | None, str | None]:
                 return jdatetime.date(y, m, d).togregorian(), None
     except Exception:  # noqa: BLE001
         pass
-    return None, f"مقدار «{raw}» برای «{label}» تاریخ معتبر نیست."
+    return None, f"فیلد «{label}»: مقدار «{raw}» تاریخ معتبر نیست."
 
 
 def _parse_string(raw: str, label: str) -> tuple[str, str | None]:
@@ -260,39 +261,56 @@ def _normalize_mapping(
     fields: list[DestField],
     header_count: int,
 ) -> tuple[dict[str, int | None], list[str]]:
+    """Map destination fields to Excel columns.
+
+    Unmapped / empty mapping is allowed (including formerly-required fields);
+    those fields simply stay empty during transfer.
+    """
     out: dict[str, int | None] = {}
     errors: list[str] = []
     for f in fields:
         raw = mapping.get(f.key)
         if raw is None or raw == "" or raw == -1 or raw == "-1":
             out[f.key] = None
-            if f.required:
-                errors.append(f"ستون مقصد «{f.label}» الزامی است و باید به یک ستون اکسل نگاشت شود.")
             continue
         try:
             idx = int(raw)
         except (TypeError, ValueError):
-            errors.append(f"نگاشت ستون «{f.label}» نامعتبر است.")
+            errors.append(f"فیلد «{f.label}»: نگاشت ستون اکسل نامعتبر است.")
             out[f.key] = None
             continue
         if idx < 0 or idx >= header_count:
-            errors.append(f"شاخص ستون اکسل برای «{f.label}» خارج از محدوده است.")
+            errors.append(
+                f"فیلد «{f.label}»: ستون اکسل انتخاب‌شده خارج از محدوده جدول است "
+                f"(شاخص {idx}، تعداد ستون‌ها {header_count})."
+            )
             out[f.key] = None
             continue
         out[f.key] = idx
     return out, errors
 
 
-def _row_alarm(result: TransferResult, *, table: ExcelTable, row_i: int, msg: str) -> None:
+def _row_alarm(
+    result: TransferResult,
+    *,
+    table: ExcelTable,
+    row_i: int,
+    msg: str,
+    field_label: str = "",
+) -> None:
     result.failed += 1
     result.alarms.append(msg)
     register_alarm(
         title="خطا در انتقال داده اکسل",
         message=msg,
-        suggestion="نگاشت ستون‌ها و قالب داده را بررسی کنید.",
+        suggestion=(
+            f"مقدار فیلد «{field_label}» را در ردیف {row_i} جدول «{table.name}» اصلاح کنید."
+            if field_label
+            else f"ردیف {row_i} جدول «{table.name}» و نگاشت ستون‌ها را بررسی کنید."
+        ),
         severity=SystemAlarm.Severity.SERIOUS,
         kind=SystemAlarm.Kind.DATA_TRANSFER,
-        details={"table_id": table.pk, "row": row_i},
+        details={"table_id": table.pk, "row": row_i, "field": field_label},
         dedupe=False,
     )
 
@@ -302,13 +320,16 @@ def _parse_row(
     col_map: dict[str, int | None],
     fields: list[DestField],
 ) -> tuple[dict[str, Any], list[str]]:
+    """Parse mapped cells. Empty cells are skipped (not errors)."""
     values: dict[str, Any] = {}
     errors: list[str] = []
     for f in fields:
+        # Unmapped destination field → leave empty, no error
+        if col_map.get(f.key) is None:
+            continue
         raw = _cell(row, col_map.get(f.key))
+        # Empty Excel cell → leave empty, no error
         if raw == "":
-            if f.required:
-                errors.append(f"«{f.label}» خالی است.")
             continue
         parsed, err = _PARSERS[f.type](raw, f.label)
         if err:
@@ -316,6 +337,30 @@ def _parse_row(
         else:
             values[f.key] = parsed
     return values, errors
+
+
+def _format_row_errors(row_i: int, table_name: str, errors: list[str]) -> str:
+    return f"ردیف {row_i} جدول «{table_name}» — " + " | ".join(errors)
+
+
+def transfer_result_message(result: TransferResult) -> str:
+    """Human message: never claim full success when failures exist."""
+    parts = []
+    if result.transferred:
+        parts.append(f"{result.transferred} ردیف منتقل شد")
+    if result.failed:
+        parts.append(f"{result.failed} ردیف با خطا")
+    if result.skipped:
+        parts.append(f"{result.skipped} ردیف خالی/بدون شناسه رد شد")
+    if not parts:
+        return "هیچ ردیفی برای انتقال یافت نشد."
+    if result.failed and not result.transferred:
+        return "انتقال ناموفق بود: " + "؛ ".join(parts) + "."
+    if result.failed:
+        return "انتقال ناقص انجام شد: " + "؛ ".join(parts) + "."
+    if result.skipped and result.transferred:
+        return "انتقال انجام شد: " + "؛ ".join(parts) + "."
+    return "انتقال با موفقیت انجام شد: " + "؛ ".join(parts) + "."
 
 
 def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
@@ -335,7 +380,11 @@ def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None],
 
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        # Completely blank row → skip silently
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
             continue
         values, row_errors = _parse_row(row, col_map, HISTORY_LIST_FIELDS)
         if row_errors:
@@ -343,12 +392,14 @@ def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None],
                 result,
                 table=table,
                 row_i=row_i,
-                msg=f"ردیف {row_i} جدول «{table.name}»: " + "؛ ".join(row_errors),
+                msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=row_errors[0].split("»")[0].replace("فیلد «", "") if "فیلد «" in row_errors[0] else "",
             )
             continue
         uid = str(values.get("program_uid") or "").strip()
         if not uid:
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: شناسه تعویض الزامی است.")
+            # Empty identity: skip without treating as hard error
+            result.skipped += 1
             continue
 
         if uid in live_uids:
@@ -379,10 +430,15 @@ def _transfer_history_list(*, table: ExcelTable, col_map: dict[str, int | None],
 
         sync_out = sync_history_record_to_planning(rec, user=user)
         if not sync_out.get("ok") and sync_out.get("error") not in ("", "live"):
-            result.alarms.append(f"ردیف {row_i}: همگام‌سازی برنامه‌ریزی — {sync_out.get('error')}")
+            # Sync warning — row data was still stored in history
+            warn = (
+                f"ردیف {row_i} جدول «{table.name}» — فیلد همگام‌سازی برنامه‌ریزی: "
+                f"{sync_out.get('error')}"
+            )
+            result.alarms.append(warn)
             register_alarm(
                 title="همگام‌سازی سابقه با برنامه‌ریزی",
-                message=f"ردیف {row_i}: {sync_out.get('error')}",
+                message=warn,
                 suggestion="کالا و دستگاه را در داده‌های سیستم بررسی کنید.",
                 severity=SystemAlarm.Severity.SERIOUS,
                 kind=SystemAlarm.Kind.DATA_TRANSFER,
@@ -403,7 +459,10 @@ def _transfer_history_daily(*, table: ExcelTable, col_map: dict[str, int | None]
 
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
             continue
         values, row_errors = _parse_row(row, col_map, HISTORY_DAILY_FIELDS)
         if row_errors:
@@ -411,22 +470,32 @@ def _transfer_history_daily(*, table: ExcelTable, col_map: dict[str, int | None]
                 result,
                 table=table,
                 row_i=row_i,
-                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+                msg=_format_row_errors(row_i, table.name, row_errors),
             )
             continue
         uid = str(values.get("program_uid") or "").strip()
+        if not uid:
+            result.skipped += 1
+            continue
+        work = values.get("work_date")
+        if not work:
+            result.skipped += 1
+            continue
         rec = ProductionHistoryRecord.objects.filter(program_uid=uid).first()
         if not rec:
             _row_alarm(
                 result,
                 table=table,
                 row_i=row_i,
-                msg=f"ردیف {row_i}: شناسه «{uid}» در سوابق یافت نشد (ابتدا سطح لیست را منتقل کنید).",
+                msg=(
+                    f"ردیف {row_i} جدول «{table.name}» — فیلد «شناسه تعویض»: "
+                    f"مقدار «{uid}» در سوابق یافت نشد (ابتدا سطح لیست سوابق را منتقل کنید)."
+                ),
+                field_label="شناسه تعویض",
             )
             continue
         extra = rec.extra if isinstance(rec.extra, dict) else {}
         entries = list(extra.get("day_entries") or [])
-        work = values.get("work_date")
         work_s = work.isoformat() if hasattr(work, "isoformat") else str(work or "")
         produced = int(values.get("produced_qty") or 0)
         scrap = int(values.get("scrap_qty") or 0)
@@ -441,13 +510,11 @@ def _transfer_history_daily(*, table: ExcelTable, col_map: dict[str, int | None]
             "time_reason": values.get("time_reason") or "—",
             "description": values.get("notes") or "—",
         }
-        # replace same date if present
         entries = [e for e in entries if not (isinstance(e, dict) and e.get("date") == work_s)]
         entries.append(snap)
         entries.sort(key=lambda e: str((e or {}).get("date") or ""))
         extra["day_entries"] = entries
         rec.extra = extra
-        # refresh aggregates
         rec.produced_qty = sum(int(e.get("produced") or 0) for e in entries if isinstance(e, dict))
         rec.scrap_qty = sum(int(e.get("scrap") or 0) for e in entries if isinstance(e, dict))
         rec.transferred_by = user
@@ -465,7 +532,10 @@ def _transfer_product_info(*, table: ExcelTable, col_map: dict[str, int | None],
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
             continue
         values, row_errors = _parse_row(row, col_map, PRODUCT_INFO_FIELDS)
         if row_errors:
@@ -473,14 +543,25 @@ def _transfer_product_info(*, table: ExcelTable, col_map: dict[str, int | None],
                 result,
                 table=table,
                 row_i=row_i,
-                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+                msg=_format_row_errors(row_i, table.name, row_errors),
             )
             continue
+        if not str(values.get("code") or "").strip():
+            result.skipped += 1
+            continue
+        if not str(values.get("name") or "").strip():
+            values["name"] = values["code"]
         try:
             upsert_product_from_values(values)
             result.transferred += 1
         except Exception as exc:  # noqa: BLE001
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: {exc}")
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i} جدول «{table.name}» — فیلد «کد کالا»: {exc}",
+                field_label="کد کالا",
+            )
     return result
 
 
@@ -491,7 +572,10 @@ def _transfer_product_bom(*, table: ExcelTable, col_map: dict[str, int | None], 
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
             continue
         values, row_errors = _parse_row(row, col_map, PRODUCT_BOM_FIELDS)
         if row_errors:
@@ -499,14 +583,26 @@ def _transfer_product_bom(*, table: ExcelTable, col_map: dict[str, int | None], 
                 result,
                 table=table,
                 row_i=row_i,
-                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+                msg=_format_row_errors(row_i, table.name, row_errors),
             )
+            continue
+        if not str(values.get("parent_code") or "").strip():
+            result.skipped += 1
+            continue
+        if not str(values.get("component_name") or values.get("component_code") or "").strip():
+            result.skipped += 1
             continue
         try:
             upsert_bom_from_values(values)
             result.transferred += 1
         except Exception as exc:  # noqa: BLE001
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: {exc}")
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i} جدول «{table.name}» — فیلد «کد محصول والد»: {exc}",
+                field_label="کد محصول والد",
+            )
     return result
 
 
@@ -519,7 +615,10 @@ def _transfer_product_consumables(*, table: ExcelTable, col_map: dict[str, int |
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
             continue
         values, row_errors = _parse_row(row, col_map, PRODUCT_CONSUMABLE_FIELDS)
         if row_errors:
@@ -527,14 +626,26 @@ def _transfer_product_consumables(*, table: ExcelTable, col_map: dict[str, int |
                 result,
                 table=table,
                 row_i=row_i,
-                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+                msg=_format_row_errors(row_i, table.name, row_errors),
             )
+            continue
+        if not str(values.get("product_code") or "").strip():
+            result.skipped += 1
+            continue
+        if not str(values.get("material_name") or values.get("material_code") or "").strip():
+            result.skipped += 1
             continue
         try:
             upsert_consumable_from_values(values)
             result.transferred += 1
         except Exception as exc:  # noqa: BLE001
-            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: {exc}")
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i} جدول «{table.name}» — فیلد «کد محصول»: {exc}",
+                field_label="کد محصول",
+            )
     return result
 
 

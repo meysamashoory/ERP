@@ -16,7 +16,7 @@ from accounts.permissions import get_profile
 from .alarms import register_alarm
 from .excel_io import preview_workbook, read_table_data
 from .models import ExcelTable, ExcelUpload, SystemAlarm
-from .transfer import list_destinations, transfer_excel_table
+from .transfer import list_destinations, transfer_excel_table, transfer_result_message
 
 
 def _can_view_excel(user) -> bool:
@@ -439,16 +439,15 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
             status=500,
         )
     return JsonResponse({
-        "ok": True,
+        "ok": result.failed == 0 or result.transferred > 0,
+        "partial": bool(result.failed and result.transferred),
         "transferred": result.transferred,
         "failed": result.failed,
+        "skipped": result.skipped,
         "alarms": result.alarms[:50],
         "table_deleted": False,
         "redirect_url": result.redirect_url,
-        "message": (
-            f"انتقال با موفقیت انجام شد: {result.transferred} ردیف"
-            + (f"، {result.failed} ردیف با خطا" if result.failed else "")
-        ),
+        "message": transfer_result_message(result),
     })
 
 

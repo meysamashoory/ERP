@@ -141,6 +141,7 @@ a { color: var(--brand); }
 }
 .excel-transfer-status.is-busy { color: #b45309; }
 .excel-transfer-status.is-done { color: #15803d; }
+.excel-transfer-status:not(.is-done):not(.is-busy) { color: #b91c1c; }
 .row-actions-ops {
   display: flex;
   flex-wrap: nowrap;
