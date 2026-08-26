@@ -330,6 +330,51 @@ class ProductionDayEntry(models.Model):
         super().save(*args, **kwargs)
 
 
+class ProductionHistoryRecord(models.Model):
+    """Archived / Excel-imported production history row, sorted by program UID.
+
+    Live planning programs also appear in «سوابق تولید»; this model holds rows
+    transferred from Excel (or other imports) that are not yet linked to a
+    WeeklyPlanItem / ProductionProgram.
+    """
+
+    program_uid = models.CharField("شناسه برنامه", max_length=32, db_index=True)
+    plan_date = models.DateField("تاریخ برنامه", null=True, blank=True)
+    mold_change_date = models.DateField("تاریخ تعویض قالب", null=True, blank=True)
+    unit_number = models.PositiveSmallIntegerField("شماره واحد", null=True, blank=True)
+    machine_number = models.CharField("شماره دستگاه", max_length=40, blank=True)
+    product_code = models.CharField("کد کالا", max_length=80, blank=True)
+    product_name = models.CharField("نام محصول", max_length=200, blank=True)
+    mold_name = models.CharField("نام قالب", max_length=200, blank=True)
+    material = models.CharField("مواد", max_length=120, blank=True)
+    color = models.CharField("رنگ", max_length=80, blank=True)
+    sequence = models.PositiveSmallIntegerField("ترتیب", null=True, blank=True)
+    planned_qty = models.IntegerField("مقدار برنامه", null=True, blank=True)
+    produced_qty = models.IntegerField("مقدار تولید", null=True, blank=True)
+    status = models.CharField("وضعیت", max_length=80, blank=True)
+    notes = models.TextField("توضیحات", blank=True)
+    source_table_name = models.CharField("نام جدول مبدأ", max_length=200, blank=True)
+    transferred_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="انتقال‌دهنده",
+    )
+    extra = models.JSONField("اطلاعات تکمیلی", default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["program_uid", "id"]
+        verbose_name = "سابقه تولید"
+        verbose_name_plural = "سوابق تولید (آرشیو)"
+
+    def __str__(self) -> str:
+        return f"{self.program_uid} — {self.product_name or self.product_code or '—'}"
+
+
 class ProductionStoppage(models.Model):
     """A stoppage attached to a fitting or pipe production record."""
 

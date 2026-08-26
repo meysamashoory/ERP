@@ -430,6 +430,7 @@ class SystemAlarm(models.Model):
 
     class Kind(models.TextChoices):
         UID_DUPLICATE = "uid_duplicate", "تکرار شناسه برنامه"
+        DATA_TRANSFER = "data_transfer", "انتقال داده اکسل"
         OTHER = "other", "سایر"
 
     severity = models.CharField(

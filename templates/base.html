@@ -7,7 +7,7 @@
   <title>{% block title %}سامانه برنامه‌ریزی و کنترل تولید{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=9">
   <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=9">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=31">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=32">
 </head>
 <body>
 <div class="layout">
@@ -19,35 +19,38 @@
     {% if user.is_authenticated %}
     <div class="sidebar-user">({{ user.username }})</div>
     <nav class="nav">
-      <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">داشبورد</a>
-      <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">برنامه‌ها و ثبت تولید</a>
-      <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
-      <div class="nav-group {% block nav_reports %}{% endblock %}">
-        <div class="nav-group-title">گزارش‌ها</div>
-        <a href="{% url 'report_list' %}" class="{% block nav_report_list %}{% endblock %}">مشاهده گزارش‌ها</a>
-        {% if profile.can_create_reports %}
-        <a href="{% url 'report_create' %}" class="{% block nav_report_create %}{% endblock %}">ایجاد گزارش</a>
+      <div class="nav-section nav-section-solo">
+        <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">داشبورد</a>
+      </div>
+
+      <div class="nav-section {% block nav_production %}{% endblock %}">
+        <div class="nav-section-title">برنامه‌های تولید</div>
+        <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
+        <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">ثبت و کنترل تولید</a>
+        <a href="{% url 'production_history' %}" class="{% block nav_history %}{% endblock %}">سوابق تولید</a>
+      </div>
+
+      <div class="nav-section {% block nav_reports %}{% endblock %}">
+        <div class="nav-section-title">گزارشات</div>
+        <a href="{% url 'report_list' %}" class="{% block nav_report_list %}{% endblock %}">گزارش‌ها</a>
+        <a href="{% url 'print_form_list' %}" class="{% block nav_form_list %}{% endblock %}">فرم‌ها</a>
+      </div>
+
+      <div class="nav-section {% block nav_data %}{% endblock %}">
+        <div class="nav-section-title">مدیریت داده‌ها</div>
+        <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">بارگذاری</a>
+        <a href="/admin/">داده‌های سیستم</a>
+      </div>
+
+      <div class="nav-section {% block nav_account %}{% endblock %}">
+        <div class="nav-section-title">کاربری سامانه</div>
+        {% if profile.can_manage_users or user.is_superuser %}
+        <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
         {% endif %}
+        <form method="post" action="{% url 'logout' %}" class="nav-logout" id="logout-form">{% csrf_token %}
+          <button class="nav-logout-btn" type="submit">خروج از سامانه</button>
+        </form>
       </div>
-      <div class="nav-group {% block nav_forms %}{% endblock %}">
-        <div class="nav-group-title">فرم‌ها</div>
-        <a href="{% url 'print_form_list' %}" class="{% block nav_form_list %}{% endblock %}">مشاهده فرم‌ها</a>
-        {% if profile.can_create_reports %}
-        <a href="{% url 'print_form_create' %}" class="{% block nav_form_create %}{% endblock %}"
-           data-designer-open="{% url 'print_form_create' %}">ایجاد فرم</a>
-        {% endif %}
-      </div>
-      {% if profile.can_manage_users or user.is_superuser %}
-      <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
-      {% endif %}
-      <div class="nav-group {% block nav_data %}{% endblock %}">
-        <div class="nav-group-title">مدیریت داده‌ها</div>
-        <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">فایل‌های اکسل</a>
-        <a href="/admin/">سایر داده‌ها (ادمین)</a>
-      </div>
-      <form method="post" action="{% url 'logout' %}" class="nav-logout" id="logout-form">{% csrf_token %}
-        <button class="nav-logout-btn" type="submit">خروج از سامانه</button>
-      </form>
     </nav>
     {% endif %}
   </aside>

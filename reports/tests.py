@@ -48,7 +48,7 @@ class ReportFlowTests(TestCase):
         self.assertContains(list_resp, "مدل گزارش")
         self.assertContains(list_resp, "نوع گزارش")
         self.assertContains(list_resp, "تعداد فرم")
-        self.assertNotContains(list_resp, "+ ایجاد گزارش")
+        self.assertContains(list_resp, "+ ایجاد گزارش")
         self.assertNotContains(list_resp, "th-filter-btn")
 
         detail = self.client.get(reverse("report_detail", args=[report.pk]))
@@ -417,7 +417,7 @@ class PrintFormFlowTests(TestCase):
         self.assertEqual(len(form_obj.frames), 1)
         list_resp = self.client.get(reverse("print_form_list"))
         self.assertContains(list_resp, "فرم کنترل")
-        self.assertNotContains(list_resp, "+ ایجاد فرم")
+        self.assertContains(list_resp, "+ ایجاد فرم")
 
     def test_viewer_cannot_create_form(self):
         self.client.login(username="viewer", password="erp12345")
@@ -546,12 +546,19 @@ class PrintFormFlowTests(TestCase):
     def test_sidebar_labels(self):
         self.client.login(username="admin", password="erp12345")
         resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "گزارشات")
         self.assertContains(resp, "گزارش‌ها")
-        self.assertContains(resp, "مشاهده گزارش‌ها")
-        self.assertContains(resp, "ایجاد گزارش")
         self.assertContains(resp, "فرم‌ها")
-        self.assertContains(resp, "مشاهده فرم‌ها")
-        self.assertContains(resp, "ایجاد فرم")
+        self.assertContains(resp, "برنامه‌های تولید")
+        self.assertContains(resp, "ثبت و کنترل تولید")
+        self.assertContains(resp, "سوابق تولید")
+        self.assertContains(resp, "بارگذاری")
+        self.assertContains(resp, "کاربری سامانه")
+        # Create actions moved off the sidebar onto list page tops
+        self.assertNotContains(resp, "ایجاد گزارش")
+        self.assertNotContains(resp, "ایجاد فرم")
+        self.assertNotContains(resp, "مشاهده گزارش‌ها")
+        self.assertNotContains(resp, "مشاهده فرم‌ها")
 
     def test_entry_sheets_save_and_flatten_in_view(self):
         from reports.columns import entry_sheet_count

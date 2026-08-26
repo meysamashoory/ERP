@@ -172,6 +172,7 @@ def report_list(request: HttpRequest) -> HttpResponse:
             "sort": sort,
             "dir": direction,
             "users": User.objects.filter(is_active=True).exclude(pk=request.user.pk).order_by("username"),
+            "can_create": can_create_report(request.user),
         },
     )
 
@@ -558,6 +559,7 @@ def form_list(request: HttpRequest) -> HttpResponse:
             "dir": direction,
             "title_q": title_q,
             "users": User.objects.filter(is_active=True).exclude(pk=request.user.pk).order_by("username"),
+            "can_create": can_create_form(request.user),
         },
     )
 

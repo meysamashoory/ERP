@@ -15,6 +15,7 @@ from accounts.permissions import get_profile
 
 from .excel_io import preview_workbook, read_table_data
 from .models import ExcelTable, ExcelUpload
+from .transfer import list_destinations, transfer_excel_table
 
 
 def _can_view_excel(user) -> bool:
@@ -232,6 +233,8 @@ def excel_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "tables_json": tables_payload,
             "can_edit": _can_edit_excel(request.user),
             "can_delete": _can_delete_excel(request.user),
+            "can_transfer": _can_edit_excel(request.user),
+            "transfer_destinations": list_destinations(),
         },
     )
 
@@ -290,6 +293,51 @@ def excel_table_save(request: HttpRequest, pk: int) -> JsonResponse:
         "row_count": table.row_count,
         "column_count": table.column_count,
         "name": table.name,
+    })
+
+
+@login_required
+@require_POST
+def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
+    if not _can_edit_excel(request.user):
+        return JsonResponse({"ok": False, "error": "مجاز به انتقال داده نیستید."}, status=403)
+    table = get_object_or_404(ExcelTable.objects.select_related("upload"), pk=pk)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+    destination_id = str(payload.get("destination") or "").strip()
+    mapping = payload.get("mapping")
+    if not isinstance(mapping, dict):
+        return JsonResponse({"ok": False, "error": "نگاشت ستون‌ها الزامی است."}, status=400)
+    if not destination_id:
+        return JsonResponse({"ok": False, "error": "مقصد انتقال را انتخاب کنید."}, status=400)
+    try:
+        result = transfer_excel_table(
+            table=table,
+            destination_id=destination_id,
+            mapping=mapping,
+            user=request.user,
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse(
+            {"ok": False, "error": f"انتقال ناموفق بود: {exc}"},
+            status=500,
+        )
+    return JsonResponse({
+        "ok": True,
+        "transferred": result.transferred,
+        "failed": result.failed,
+        "alarms": result.alarms[:50],
+        "table_deleted": result.table_deleted,
+        "redirect_url": result.redirect_url,
+        "message": (
+            f"{result.transferred} ردیف منتقل شد"
+            + (f"، {result.failed} ردیف با خطا" if result.failed else "")
+            + ". جدول اکسل حذف شد."
+        ),
     })
 
 

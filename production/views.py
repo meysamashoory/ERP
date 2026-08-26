@@ -16,7 +16,12 @@ from .forms import (
     StoppageFormSetPipe,
     pipe_field_map,
 )
-from .models import PipeProduction, ProductionDayEntry, ProductionProgram
+from .models import (
+    PipeProduction,
+    ProductionDayEntry,
+    ProductionHistoryRecord,
+    ProductionProgram,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +158,93 @@ def program_list(request):
                       "forms_production": forms_production,
                       "forms_production_json": _json.dumps(forms_production, ensure_ascii=False),
                   })
+
+
+@login_required
+def production_history(request):
+    """Aggregate all planned molds / programs sorted by program UID.
+
+    Combines live ProductionProgram rows (from weekly planning + production
+    entry) with Excel-transferred ProductionHistoryRecord rows. Sort key is
+    the 14-digit program UID used across planning.
+    """
+    profile = _profile(request)
+    live_uids: set[str] = set()
+    rows: list[dict] = []
+
+    programs = ProductionProgram.objects.select_related(
+        "item__product",
+        "item__machine__unit",
+        "item__plan",
+        "item__mold",
+        "mold",
+    )
+    for p in programs:
+        uid = (p.resolved_uid or p.item.uid or "").strip()
+        live_uids.add(uid)
+        totals = program_totals(p)
+        mold_label = ""
+        if p.mold_id:
+            mold_label = str(p.mold)
+        elif p.item.mold_id:
+            mold_label = str(p.item.mold)
+        rows.append(
+            {
+                "uid": uid,
+                "source": "live",
+                "plan_number": p.item.plan.program_number,
+                "plan_date": p.item.plan.date,
+                "machine": p.machine_label,
+                "product_code": p.item.product.code,
+                "product_name": p.item.product.name,
+                "mold": mold_label,
+                "sequence": p.item.sequence,
+                "status": p.get_status_display(),
+                "status_code": p.status,
+                "planned": totals["planned"],
+                "produced": totals["produced"],
+                "program": p,
+                "archive": None,
+            }
+        )
+
+    archives = ProductionHistoryRecord.objects.all()
+    for rec in archives:
+        uid = (rec.program_uid or "").strip()
+        if uid and uid in live_uids:
+            # Live row already represents this UID.
+            continue
+        machine_bits = []
+        if rec.unit_number:
+            machine_bits.append(f"واحد {rec.unit_number}")
+        if rec.machine_number:
+            machine_bits.append(f"دستگاه {rec.machine_number}")
+        rows.append(
+            {
+                "uid": uid,
+                "source": "archive",
+                "plan_number": "—",
+                "plan_date": rec.plan_date,
+                "machine": " ".join(machine_bits) or "—",
+                "product_code": rec.product_code or "—",
+                "product_name": rec.product_name or "—",
+                "mold": rec.mold_name or "—",
+                "sequence": rec.sequence,
+                "status": rec.status or "آرشیو اکسل",
+                "status_code": "archive",
+                "planned": rec.planned_qty,
+                "produced": rec.produced_qty,
+                "program": None,
+                "archive": rec,
+            }
+        )
+
+    rows.sort(key=lambda r: (r["uid"] or "", r["source"], r.get("sequence") or 0))
+    return render(
+        request,
+        "production/history.html",
+        {"rows": rows, "profile": profile},
+    )
 
 
 ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]

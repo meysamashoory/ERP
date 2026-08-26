@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}سوابق تولید{% endblock %}
+{% block heading %}سوابق تولید{% endblock %}
+{% block nav_production %}{% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2>تجمیع برنامه‌ها بر اساس شناسه</h2>
+    <span class="muted" style="font-size:13px">
+      شامل برنامه‌های هفتگی تأییدشده و داده‌های منتقل‌شده از اکسل — مرتب‌سازی با شناسه برنامه
+    </span>
+  </div>
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>شناسه برنامه</th>
+          <th>منبع</th>
+          <th>شماره برنامه</th>
+          <th>تاریخ</th>
+          <th>دستگاه / واحد</th>
+          <th>کد کالا</th>
+          <th>نام محصول</th>
+          <th>قالب</th>
+          <th>ترتیب</th>
+          <th>وضعیت</th>
+          <th>تولید / برنامه</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="num"><strong>{{ row.uid|default:"—" }}</strong></td>
+          <td>
+            {% if row.source == "live" %}
+            <span class="history-source">برنامه‌ریزی</span>
+            {% else %}
+            <span class="history-source">آرشیو اکسل</span>
+            {% endif %}
+          </td>
+          <td>{{ row.plan_number }}</td>
+          <td class="num">{{ row.plan_date|default:"—" }}</td>
+          <td>{{ row.machine }}</td>
+          <td>{{ row.product_code }}</td>
+          <td>{{ row.product_name }}</td>
+          <td>{{ row.mold|default:"—" }}</td>
+          <td class="num">{{ row.sequence|default:"—" }}</td>
+          <td>
+            {% if row.source == "live" %}
+            <span class="badge status-{{ row.status_code }}">{{ row.status }}</span>
+            {% else %}
+            {{ row.status }}
+            {% endif %}
+          </td>
+          <td class="num">
+            {% if row.produced is not None or row.planned is not None %}
+              {{ row.produced|default:"—" }} / {{ row.planned|default:"—" }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="row-actions">
+            {% if row.program %}
+              <a class="btn btn-sm btn-ghost" href="{% url 'program_list' %}">ثبت تولید</a>
+              {% if profile.can_enter_data and row.program.status != 'finished' %}
+              <a class="btn btn-sm" href="{% url 'program_status' row.program.pk %}">وضعیت</a>
+              {% endif %}
+            {% else %}
+              <span class="muted">آرشیو</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">سابقه‌ای ثبت نشده است. پس از تأیید برنامه‌ریزی هفتگی یا انتقال از اکسل، ردیف‌ها اینجا ظاهر می‌شوند.</p>
+  {% endif %}
+</div>
+{% endblock %}

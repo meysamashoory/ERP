@@ -1,8 +1,17 @@
 {% extends "base.html" %}
 {% block title %}فرم‌ها{% endblock %}
 {% block heading %}فرم‌ها{% endblock %}
-{% block nav_forms %}open{% endblock %}
+{% block nav_reports %}{% endblock %}
 {% block nav_form_list %}active{% endblock %}
+
+{% block topbar_actions %}
+{% if can_create %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-primary-soft" href="{% url 'print_form_create' %}"
+     data-designer-open="{% url 'print_form_create' %}">+ ایجاد فرم</a>
+</div>
+{% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="panel panel-compact">

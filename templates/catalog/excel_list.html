@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}فایل‌های اکسل{% endblock %}
-{% block heading %}فایل‌های اکسل{% endblock %}
-{% block nav_data %}open{% endblock %}
+{% block title %}بارگذاری{% endblock %}
+{% block heading %}بارگذاری فایل اکسل{% endblock %}
+{% block nav_data %}{% endblock %}
 {% block nav_excel %}active{% endblock %}
 
 {% block topbar_actions %}
@@ -16,6 +16,7 @@
 <div class="panel">
   <div class="panel-head panel-head-compact">
     <h2>فایل‌های واردشده</h2>
+    <span class="muted" style="font-size:13px">پس از ورود Table، از «انتقال داده» برای ارسال ستون‌ها به بخش‌های سامانه استفاده کنید.</span>
   </div>
   {% if rows %}
   <div class="table-scroll">
