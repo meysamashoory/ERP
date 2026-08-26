@@ -9,6 +9,8 @@ from .models import (
     PlanningDisplaySettings,
     PlanningInsightField,
     Product,
+    ProductBomLine,
+    ProductConsumable,
     ProductGroup,
     ProductSubGroup,
     ProductionTypeOption,
@@ -88,6 +90,28 @@ class ProductAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="سفارش مجدد؟")
     def needs_reorder(self, obj: Product) -> bool:
         return obj.needs_reorder
+
+
+@admin.register(ProductBomLine)
+class ProductBomLineAdmin(admin.ModelAdmin):
+    list_display = ("parent", "component_code", "component_name", "quantity", "unit", "order")
+    list_filter = ("parent__subgroup__group",)
+    search_fields = ("parent__code", "component_code", "component_name")
+    list_editable = ("quantity", "unit", "order")
+
+
+@admin.register(ProductConsumable)
+class ProductConsumableAdmin(admin.ModelAdmin):
+    list_display = (
+        "product",
+        "material_code",
+        "material_name",
+        "quantity_per_unit",
+        "unit",
+        "order",
+    )
+    search_fields = ("product__code", "material_code", "material_name")
+    list_editable = ("quantity_per_unit", "unit", "order")
 
 
 @admin.register(ProductionTypeOption)

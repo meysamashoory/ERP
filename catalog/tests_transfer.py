@@ -32,6 +32,8 @@ class MenuAndHistoryTests(TestCase):
         self.assertContains(dash, "سوابق تولید")
         self.assertContains(dash, "گزارشات")
         self.assertContains(dash, "بارگذاری")
+        self.assertContains(dash, "دیتای محصولات")
+        self.assertContains(dash, reverse("product_data"))
         self.assertContains(dash, "داده‌های سیستم")
         self.assertContains(dash, reverse("system_data"))
         self.assertContains(dash, "کاربری سامانه")
@@ -46,6 +48,14 @@ class MenuAndHistoryTests(TestCase):
         self.assertEqual(system.status_code, 200)
         self.assertContains(system, "واحدهای تولیدی")
         self.assertContains(system, "آلارم‌های سیستم")
+
+        products = self.client.get(reverse("product_data"))
+        self.assertEqual(products.status_code, 200)
+        self.assertContains(products, "اطلاعات محصول")
+        self.assertContains(products, "ساختار BOM")
+        self.assertContains(products, "مواد مصرفی")
+        self.assertContains(products, "بسته‌بندی")
+        self.assertContains(products, "مشخصات فنی")
 
     def test_report_and_form_create_on_list_pages(self):
         self.client.login(username="admin", password="erp12345")
@@ -288,3 +298,112 @@ class ExcelTransferTests(TestCase):
             SystemAlarm.objects.filter(kind=SystemAlarm.Kind.PRODUCTION_CONFLICT).exists()
             or WeeklyPlan.objects.filter(program_number="BP-SYNC-1").exists()
         )
+
+
+class ProductDataTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+        cls.expert = User.objects.get(username="expert")
+        cls.admin = User.objects.get(username="admin")
+
+    def test_product_info_transfer_and_bom(self):
+        from catalog.models import Product, ProductBomLine, ProductConsumable
+        from catalog.transfer import transfer_excel_table
+
+        upload = ExcelUpload.objects.create(title="محصولات", uploaded_by=self.expert)
+        info_table = ExcelTable.objects.create(
+            upload=upload,
+            name="اطلاعات",
+            headers=["کد", "نام", "گروه", "زیرگروه", "وزن"],
+            rows=[["PD-100", "قطعه تست", "اتصالات", "تست", "12.5"]],
+        )
+        result = transfer_excel_table(
+            table=info_table,
+            destination_id="product_data",
+            level_id="product_info",
+            mapping={
+                "code": 0,
+                "name": 1,
+                "group_name": 2,
+                "subgroup_name": 3,
+                "unit_weight_grams": 4,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(result.transferred, 1)
+        self.assertEqual(result.failed, 0)
+        product = Product.objects.get(code="PD-100")
+        self.assertEqual(product.name, "قطعه تست")
+        self.assertEqual(float(product.unit_weight_grams), 12.5)
+
+        bom_table = ExcelTable.objects.create(
+            upload=upload,
+            name="BOM",
+            headers=["والد", "کد جزء", "نام جزء", "مقدار"],
+            rows=[["PD-100", "C-1", "پیچ", "4"]],
+        )
+        bom_result = transfer_excel_table(
+            table=bom_table,
+            destination_id="product_data",
+            level_id="product_bom",
+            mapping={
+                "parent_code": 0,
+                "component_code": 1,
+                "component_name": 2,
+                "quantity": 3,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(bom_result.transferred, 1)
+        self.assertEqual(ProductBomLine.objects.filter(parent=product).count(), 1)
+
+        cons_table = ExcelTable.objects.create(
+            upload=upload,
+            name="مواد",
+            headers=["کد محصول", "کد ماده", "نام ماده", "مقدار"],
+            rows=[["PD-100", "M-PVC", "گرانول PVC", "85.2"]],
+        )
+        cons_result = transfer_excel_table(
+            table=cons_table,
+            destination_id="product_data",
+            level_id="product_consumables",
+            mapping={
+                "product_code": 0,
+                "material_code": 1,
+                "material_name": 2,
+                "quantity_per_unit": 3,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(cons_result.transferred, 1)
+        self.assertEqual(ProductConsumable.objects.filter(product=product).count(), 1)
+
+        self.client.login(username="expert", password="erp12345")
+        page = self.client.get(reverse("product_data") + "?tab=bom")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "PD-100")
+        self.assertContains(page, "پیچ")
+
+        save = self.client.post(
+            reverse("product_data_save"),
+            data=json.dumps({
+                "tab": "info",
+                "rows": [{
+                    "id": product.pk,
+                    "code": "PD-100",
+                    "name": "قطعه تست ویرایش",
+                    "group_name": "اتصالات",
+                    "subgroup_name": "تست",
+                    "counting_unit": "count",
+                    "unit_weight_grams": "13",
+                    "stock_finished": 10,
+                    "needs_assembly": False,
+                }],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(save.status_code, 200)
+        self.assertTrue(save.json()["ok"])
+        product.refresh_from_db()
+        self.assertEqual(product.name, "قطعه تست ویرایش")

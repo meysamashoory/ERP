@@ -7,7 +7,7 @@
   <title>{% block title %}سامانه برنامه‌ریزی و کنترل تولید{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=9">
   <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=9">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=33">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=34">
 </head>
 <body>
 <div class="layout">
@@ -39,6 +39,7 @@
       <div class="nav-section {% block nav_data %}{% endblock %}">
         <div class="nav-section-title">مدیریت داده‌ها</div>
         <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">بارگذاری</a>
+        <a href="{% url 'product_data' %}" class="{% block nav_product_data %}{% endblock %}">دیتای محصولات</a>
         <a href="{% url 'system_data' %}" class="{% block nav_system_data %}{% endblock %}">داده‌های سیستم</a>
       </div>
 

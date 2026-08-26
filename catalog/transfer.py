@@ -13,9 +13,13 @@ from catalog.models import ExcelTable, SystemAlarm
 from django.urls import reverse
 
 DESTINATION_PRODUCTION_HISTORY = "production_history"
+DESTINATION_PRODUCT_DATA = "product_data"
 
 LEVEL_HISTORY_LIST = "history_list"
 LEVEL_HISTORY_DAILY = "history_daily"
+LEVEL_PRODUCT_INFO = "product_info"
+LEVEL_PRODUCT_BOM = "product_bom"
+LEVEL_PRODUCT_CONSUMABLES = "product_consumables"
 
 
 @dataclass
@@ -73,6 +77,46 @@ HISTORY_DAILY_FIELDS: list[DestField] = [
     DestField("notes", "توضیحات", "string"),
 ]
 
+PRODUCT_INFO_FIELDS: list[DestField] = [
+    DestField("code", "کد کالا", "string", required=True),
+    DestField("name", "نام قطعه", "string", required=True),
+    DestField("group_name", "گروه", "string"),
+    DestField("subgroup_name", "زیرگروه", "string"),
+    DestField("counting_unit", "واحد شمارش", "string"),
+    DestField("unit_weight_grams", "وزن هر واحد (گرم)", "decimal"),
+    DestField("per_carton", "تعداد در کارتن", "integer"),
+    DestField("per_bag", "تعداد در کیسه", "integer"),
+    DestField("depot_ceiling", "سقف دپو", "integer"),
+    DestField("main_cavities", "حفره اصلی", "integer"),
+    DestField("last_cycle", "آخرین سیکل", "integer"),
+    DestField("stock_finished", "موجودی محصول", "integer"),
+    DestField("stock_unassembled", "موجودی مونتاژ‌نشده", "integer"),
+    DestField("reorder_level", "سطح سفارش مجدد", "integer"),
+    DestField("needs_assembly", "نیاز به مونتاژ", "string"),
+    DestField("needs_machining", "نیاز به تراشکاری", "string"),
+    DestField("needs_facing", "نیاز به کفتراشی", "string"),
+]
+
+PRODUCT_BOM_FIELDS: list[DestField] = [
+    DestField("parent_code", "کد محصول والد", "string", required=True),
+    DestField("component_code", "کد جزء", "string"),
+    DestField("component_name", "نام جزء", "string", required=True),
+    DestField("quantity", "مقدار", "decimal"),
+    DestField("unit", "واحد", "string"),
+    DestField("notes", "توضیحات", "string"),
+    DestField("order", "ترتیب", "integer"),
+]
+
+PRODUCT_CONSUMABLE_FIELDS: list[DestField] = [
+    DestField("product_code", "کد محصول", "string", required=True),
+    DestField("material_code", "کد ماده", "string"),
+    DestField("material_name", "نام ماده", "string", required=True),
+    DestField("quantity_per_unit", "مقدار به ازای واحد محصول", "decimal"),
+    DestField("unit", "واحد", "string"),
+    DestField("notes", "توضیحات", "string"),
+    DestField("order", "ترتیب", "integer"),
+]
+
 
 def _fields_payload(fields: list[DestField]) -> list[dict[str, Any]]:
     return [
@@ -98,16 +142,43 @@ def list_destinations() -> list[dict[str, Any]]:
                     "fields": _fields_payload(HISTORY_DAILY_FIELDS),
                 },
             ],
-        }
+        },
+        {
+            "id": DESTINATION_PRODUCT_DATA,
+            "label": "دیتای محصولات",
+            "levels": [
+                {
+                    "id": LEVEL_PRODUCT_INFO,
+                    "label": "اطلاعات محصول",
+                    "fields": _fields_payload(PRODUCT_INFO_FIELDS),
+                },
+                {
+                    "id": LEVEL_PRODUCT_BOM,
+                    "label": "ساختار BOM",
+                    "fields": _fields_payload(PRODUCT_BOM_FIELDS),
+                },
+                {
+                    "id": LEVEL_PRODUCT_CONSUMABLES,
+                    "label": "مواد مصرفی",
+                    "fields": _fields_payload(PRODUCT_CONSUMABLE_FIELDS),
+                },
+            ],
+        },
     ]
 
 
 def _fields_for(destination_id: str, level_id: str) -> list[DestField]:
-    if destination_id != DESTINATION_PRODUCTION_HISTORY:
-        return []
-    if level_id == LEVEL_HISTORY_DAILY:
-        return HISTORY_DAILY_FIELDS
-    return HISTORY_LIST_FIELDS
+    if destination_id == DESTINATION_PRODUCTION_HISTORY:
+        if level_id == LEVEL_HISTORY_DAILY:
+            return HISTORY_DAILY_FIELDS
+        return HISTORY_LIST_FIELDS
+    if destination_id == DESTINATION_PRODUCT_DATA:
+        if level_id == LEVEL_PRODUCT_BOM:
+            return PRODUCT_BOM_FIELDS
+        if level_id == LEVEL_PRODUCT_CONSUMABLES:
+            return PRODUCT_CONSUMABLE_FIELDS
+        return PRODUCT_INFO_FIELDS
+    return []
 
 
 def _cell(row: list, index: int | None) -> str:
@@ -387,9 +458,92 @@ def _transfer_history_daily(*, table: ExcelTable, col_map: dict[str, int | None]
     return result
 
 
+def _transfer_product_info(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+    from catalog.product_data import upsert_product_from_values
+
+    result = TransferResult(destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_INFO)
+    rows = table.rows if isinstance(table.rows, list) else []
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            continue
+        values, row_errors = _parse_row(row, col_map, PRODUCT_INFO_FIELDS)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+            )
+            continue
+        try:
+            upsert_product_from_values(values)
+            result.transferred += 1
+        except Exception as exc:  # noqa: BLE001
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: {exc}")
+    return result
+
+
+def _transfer_product_bom(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+    from catalog.product_data import upsert_bom_from_values
+
+    result = TransferResult(destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_BOM)
+    rows = table.rows if isinstance(table.rows, list) else []
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            continue
+        values, row_errors = _parse_row(row, col_map, PRODUCT_BOM_FIELDS)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+            )
+            continue
+        try:
+            upsert_bom_from_values(values)
+            result.transferred += 1
+        except Exception as exc:  # noqa: BLE001
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: {exc}")
+    return result
+
+
+def _transfer_product_consumables(*, table: ExcelTable, col_map: dict[str, int | None], user) -> TransferResult:
+    from catalog.product_data import upsert_consumable_from_values
+
+    result = TransferResult(
+        destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_CONSUMABLES
+    )
+    rows = table.rows if isinstance(table.rows, list) else []
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار نامعتبر.")
+            continue
+        values, row_errors = _parse_row(row, col_map, PRODUCT_CONSUMABLE_FIELDS)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i}: " + "؛ ".join(row_errors),
+            )
+            continue
+        try:
+            upsert_consumable_from_values(values)
+            result.transferred += 1
+        except Exception as exc:  # noqa: BLE001
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: {exc}")
+    return result
+
+
 _HANDLERS = {
     (DESTINATION_PRODUCTION_HISTORY, LEVEL_HISTORY_LIST): _transfer_history_list,
     (DESTINATION_PRODUCTION_HISTORY, LEVEL_HISTORY_DAILY): _transfer_history_daily,
+    (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_INFO): _transfer_product_info,
+    (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_BOM): _transfer_product_bom,
+    (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_CONSUMABLES): _transfer_product_consumables,
 }
 
 

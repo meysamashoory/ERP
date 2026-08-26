@@ -482,3 +482,100 @@ def excel_file_delete(request: HttpRequest, pk: int) -> HttpResponse:
     upload.delete()
     messages.success(request, f"فایل «{title}» و تمام جداول آن حذف شد.")
     return redirect("excel_list")
+
+
+@login_required
+def product_data_hub(request: HttpRequest) -> HttpResponse:
+    """Tabbed product master data — editable and Excel-transfer targets."""
+    from .product_data import (
+        PRODUCT_DATA_TABS,
+        TAB_BOM,
+        TAB_CONSUMABLES,
+        TAB_INFO,
+        bom_rows,
+        consumable_rows,
+        product_info_rows,
+        resolve_tab,
+    )
+
+    profile = get_profile(request.user)
+    can_edit = bool(profile and profile.can_enter_data)
+    tab = resolve_tab(request.GET.get("tab"))
+    context = {
+        "tabs": PRODUCT_DATA_TABS,
+        "active_tab": tab,
+        "can_edit": can_edit,
+        "counting_units": [
+            {"value": "count", "label": "عدد"},
+            {"value": "branch", "label": "شاخه"},
+            {"value": "coil", "label": "کلاف"},
+            {"value": "meter", "label": "متر"},
+        ],
+        "info_rows": product_info_rows() if tab == TAB_INFO else [],
+        "bom_rows": bom_rows() if tab == TAB_BOM else [],
+        "consumable_rows": consumable_rows() if tab == TAB_CONSUMABLES else [],
+        "save_url": reverse("product_data_save"),
+        "delete_url": reverse("product_data_delete"),
+    }
+    return render(request, "catalog/product_data.html", context)
+
+
+@login_required
+@require_POST
+def product_data_save(request: HttpRequest) -> JsonResponse:
+    profile = get_profile(request.user)
+    if not (profile and profile.can_enter_data):
+        return JsonResponse({"ok": False, "error": "مجاز به ویرایش نیستید."}, status=403)
+    from .product_data import save_tab_rows
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "JSON نامعتبر است."}, status=400)
+    tab = str(payload.get("tab") or "info")
+    rows = payload.get("rows") or []
+    if not isinstance(rows, list):
+        return JsonResponse({"ok": False, "error": "ردیف‌ها نامعتبر است."}, status=400)
+    stats = save_tab_rows(tab, rows)
+    if stats["failed"] and not stats["saved"]:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "ذخیره ناموفق بود. کدها و فیلدهای الزامی را بررسی کنید.",
+                **stats,
+            },
+            status=400,
+        )
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": f"{stats['saved']} ردیف ذخیره شد"
+            + (f"؛ {stats['failed']} ناموفق" if stats["failed"] else "")
+            + ".",
+            **stats,
+        }
+    )
+
+
+@login_required
+@require_POST
+def product_data_delete(request: HttpRequest) -> JsonResponse:
+    profile = get_profile(request.user)
+    if not (profile and profile.can_enter_data):
+        return JsonResponse({"ok": False, "error": "مجاز به حذف نیستید."}, status=403)
+    from .product_data import delete_tab_row
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "JSON نامعتبر است."}, status=400)
+    tab = str(payload.get("tab") or "")
+    try:
+        row_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "شناسه ردیف نامعتبر است."}, status=400)
+    try:
+        delete_tab_row(tab, row_id)
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True})

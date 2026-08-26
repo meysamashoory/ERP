@@ -108,6 +108,17 @@
       actual_start_date: ["تاریخ شروع واقعی", "راه‌اندازی"],
       actual_end_date: ["تاریخ پایان", "پایان تولید"],
       work_date: ["تاریخ سند", "تاریخ"],
+      code: ["کد کالا", "کد محصول", "کد"],
+      name: ["نام قطعه", "نام جنس", "نام محصول", "نام"],
+      group_name: ["گروه"],
+      subgroup_name: ["زیرگروه"],
+      parent_code: ["کد محصول والد", "کد والد"],
+      component_code: ["کد جزء", "کد قطعه"],
+      component_name: ["نام جزء", "نام قطعه"],
+      material_code: ["کد ماده", "کد مواد"],
+      material_name: ["نام ماده", "نام مواد"],
+      quantity_per_unit: ["مقدار به ازای", "مقدار مصرف"],
+      product_code: ["کد محصول", "کد کالا"],
     };
     const list = aliases[field.key] || [];
     for (let i = 0; i < headers.length; i++) {

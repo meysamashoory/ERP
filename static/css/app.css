@@ -647,6 +647,28 @@ jdp-overlay, .jdp-overlay { z-index: 99999 !important; }
 /* Tabs (folder-option style) */
 .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
 .tab { padding: 10px 20px; border: none; background: transparent; cursor: pointer; font-family: inherit; font-size: 14px; color: var(--muted); border-bottom: 3px solid transparent; }
+a.tab { text-decoration: none; display: inline-block; }
+.product-data-tabs { flex-wrap: wrap; }
+.product-data-table .input-sm {
+  width: 100%;
+  min-width: 72px;
+  height: 32px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+.product-data-table td { vertical-align: middle; }
+.product-data-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+  padding: 12px 4px 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+.coming-soon-panel {
+  padding: 28px 16px;
+  text-align: center;
+}
 .tab:hover { color: var(--ink); }
 .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
 

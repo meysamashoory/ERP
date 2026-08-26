@@ -153,6 +153,58 @@ class Product(models.Model):
         return self.reorder_level > 0 and self.stock_finished <= self.reorder_level
 
 
+class ProductBomLine(models.Model):
+    """One BOM component line for a finished/parent product (ساختار BOM)."""
+
+    parent = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="bom_lines",
+        verbose_name="محصول والد",
+    )
+    component_code = models.CharField("کد جزء", max_length=40, blank=True)
+    component_name = models.CharField("نام جزء", max_length=200)
+    quantity = models.DecimalField("مقدار", max_digits=14, decimal_places=4, default=Decimal("1"))
+    unit = models.CharField("واحد", max_length=40, blank=True, default="عدد")
+    notes = models.CharField("توضیحات", max_length=255, blank=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+
+    class Meta:
+        ordering = ["parent__code", "order", "id"]
+        verbose_name = "سطر BOM"
+        verbose_name_plural = "ساختار BOM"
+
+    def __str__(self) -> str:
+        return f"{self.parent.code} ← {self.component_code or self.component_name}"
+
+
+class ProductConsumable(models.Model):
+    """Consumable / raw material usage per product unit (مواد مصرفی)."""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="consumables",
+        verbose_name="محصول",
+    )
+    material_code = models.CharField("کد ماده", max_length=40, blank=True)
+    material_name = models.CharField("نام ماده", max_length=200)
+    quantity_per_unit = models.DecimalField(
+        "مقدار به ازای واحد محصول", max_digits=14, decimal_places=4, default=Decimal("0")
+    )
+    unit = models.CharField("واحد", max_length=40, blank=True, default="گرم")
+    notes = models.CharField("توضیحات", max_length=255, blank=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+
+    class Meta:
+        ordering = ["product__code", "order", "id"]
+        verbose_name = "ماده مصرفی"
+        verbose_name_plural = "مواد مصرفی"
+
+    def __str__(self) -> str:
+        return f"{self.product.code} / {self.material_name}"
+
+
 class ProductionTypeOption(models.Model):
     """Editable list backing the «نوع تولید» dropdowns."""
 
