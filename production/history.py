@@ -52,18 +52,18 @@ def history_row_from_program(program: ProductionProgram) -> dict:
         mold_label = str(program.mold)
     elif getattr(item, "mold_id", None):
         mold_label = str(item.mold)
-    inferred = infer_history_status(
-        actual_start=program.start_date,
-        actual_end=program.stop_date if program.status == ProductionProgram.Status.FINISHED else None,
-    )
-    # Prefer live status when temp_stop
-    status_code = program.status
-    if status_code == ProductionProgram.Status.TEMP_STOP:
-        pass
-    elif program.status == ProductionProgram.Status.FINISHED:
-        status_code = "finished"
+    # Status for history list: date-based (end → finished; start → running; else awaiting).
+    # Keep temp_stop from live program when that is the operational state.
+    end_for_status = None
+    if program.status == ProductionProgram.Status.FINISHED or program.stop_date:
+        end_for_status = program.stop_date
+    if program.status == ProductionProgram.Status.TEMP_STOP:
+        status_code = ProductionProgram.Status.TEMP_STOP
     else:
-        status_code = inferred if inferred != "awaiting" or not program.start_date else program.status
+        status_code = infer_history_status(
+            actual_start=program.start_date,
+            actual_end=end_for_status,
+        )
     return {
         "kind": "live",
         "pk": program.pk,
@@ -84,12 +84,8 @@ def history_row_from_program(program: ProductionProgram) -> dict:
         "plan_start_display": _fmt(item.mold_change_date),
         "actual_start_date": program.start_date,
         "actual_start_display": _fmt(program.start_date),
-        "actual_end_date": program.stop_date if program.status == ProductionProgram.Status.FINISHED else None,
-        "actual_end_display": (
-            _fmt(program.stop_date)
-            if program.status == ProductionProgram.Status.FINISHED
-            else "—"
-        ),
+        "actual_end_date": end_for_status,
+        "actual_end_display": _fmt(end_for_status) if end_for_status else "—",
         "planned_qty": planned_qty,
         "actual_qty": int(totals["produced"] or 0),
         "planned_cycle": planned_cycle,

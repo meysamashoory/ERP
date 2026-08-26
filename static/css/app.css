@@ -1111,6 +1111,11 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
 }
 
 .ops-inline { display: flex; gap: 8px; align-items: center; justify-content: flex-start; padding-inline-end: 4px; }
+.table td.col-ops .ops-inline,
+.table td.col-ops .row-actions-ops {
+  justify-content: flex-start;
+  width: 100%;
+}
 .ops-select {
   min-width: 132px;
   max-width: 160px;
