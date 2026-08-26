@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block title %}{{ report.heading_label }}{% endblock %}
+{% block heading %}
+<div class="entity-heading entity-heading-stack" id="entity-heading">
+  <div class="entity-heading-view" id="heading-view">
+    <span class="entity-heading-text" id="heading-text">{{ report.heading_label }}</span>
+    {% if can_edit_meta %}
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-title-btn">ویرایش</button>
+    {% endif %}
+  </div>
+  {% if can_edit_meta %}
+  <form method="post" class="entity-heading-form" id="heading-form" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_meta">
+    <input class="input input-sm" type="number" name="number" min="1" max="999" value="{{ report.number }}" title="شماره" required>
+    <input class="input input-sm" type="text" name="title" value="{{ report.title }}" title="عنوان" required>
+    <input class="input input-sm" type="text" name="description" value="{{ report.description }}" title="توضیحات" placeholder="توضیحات">
+    <button class="btn btn-sm" type="submit">ذخیره</button>
+    <button class="btn btn-sm btn-ghost" type="button" id="cancel-title-btn">انصراف</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+{% block nav_reports %}{% endblock %}
+{% block nav_report_list %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  {% if report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
+  {% if can_go_back %}
+  <a class="btn btn-sm btn-ghost" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
+  {% endif %}
+  <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">لیست گزارش‌ها</a>
+  {% if can_edit_entry %}
+  <button type="button" class="btn btn-sm" id="report-edit-toggle">اصلاح گزارش</button>
+  {% endif %}
+  <div class="menu-drop">
+    <button type="button" class="btn btn-sm btn-primary-soft" data-menu-toggle>خروجی گزارش ▾</button>
+    <div class="menu-panel" hidden>
+      <a href="?export=excel&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی Excel</a>
+      <a href="?export=pdf&level={{ level }}{% for k,v in filters.items %}&f_{{ k }}={{ v|urlencode }}{% endfor %}">خروجی PDF</a>
+      <button type="button" data-print-report>چاپ گزارش</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if can_edit_entry %}
+<form method="post" id="entry-save-form" class="no-print" hidden>
+  {% csrf_token %}
+  <input type="hidden" name="action" value="save_entry">
+  <input type="hidden" name="entry_payload" id="entry-payload" value="{}">
+</form>
+{% endif %}
+<div class="panel" id="report-print-area">
+  <div class="panel-head panel-head-compact no-print panel-head-row">
+    <div class="panel-head-start">
+      <h2 id="results-heading">نتایج (<span id="row-count">{{ rows|length }}</span> ردیف){% if deeper %} — برای ورود به سطح بعد روی ردیف دوبار کلیک کنید{% endif %}</h2>
+      <span class="level-chip position-chip" title="موقعیت">موقعیت: {{ path_label }}</span>
+    </div>
+    {% if can_edit_entry %}
+    <div class="entry-edit-actions" id="entry-edit-actions" hidden>
+      <label class="entry-sheet-pick" title="برگه برای افزودن ردیف">
+        <span>برگه</span>
+        <select id="entry-target-sheet" class="input input-sm"></select>
+      </label>
+      <button type="button" class="btn btn-sm btn-ghost" id="add-entry-row">+ افزودن ردیف</button>
+    </div>
+    {% endif %}
+  </div>
+  {% if headers %}
+  <div class="table-scroll">
+    <table class="table table-nav-cells {% if deeper %}table-drill{% endif %}" id="report-data-table" tabindex="0"
+           data-editing="0">
+      <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="data-row {% if deeper %}drill-row{% endif %}"
+            {% if deeper %}data-drill-index="{{ forloop.counter0 }}"{% endif %}
+            data-row-index="{{ forloop.counter0 }}"
+            data-sheet="1">
+          {% for cell in row %}<td class="num" data-col="{{ forloop.counter0 }}">{{ cell }}</td>{% endfor %}
+        </tr>
+        {% empty %}
+        <tr class="data-row" data-row-index="0" data-sheet="1">
+          {% for h in headers %}<td class="num" data-col="{{ forloop.counter0 }}"></td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if can_edit_entry %}
+  <div class="entry-sheet-toolbar no-print" id="entry-sheet-toolbar" hidden>
+    <button type="button" class="btn btn-sm btn-ghost" id="add-entry-sheet">برگه جدید</button>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="empty">داده‌ای برای این سطح یافت نشد.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ payloads|json_script:"report-payloads" }}
+{{ filters|json_script:"report-filters" }}
+{{ entry_meta_json|json_script:"entry-meta" }}
+{{ entry_row_sheets|json_script:"entry-row-sheets" }}
+<script>
+(function () {
+  var editTitleBtn = document.getElementById("edit-title-btn");
+  var headingForm = document.getElementById("heading-form");
+  var cancelTitleBtn = document.getElementById("cancel-title-btn");
+  if (editTitleBtn && headingForm) {
+    editTitleBtn.addEventListener("click", function () {
+      headingForm.hidden = false;
+      editTitleBtn.hidden = true;
+    });
+  }
+  if (cancelTitleBtn && headingForm) {
+    cancelTitleBtn.addEventListener("click", function () {
+      headingForm.hidden = true;
+      if (editTitleBtn) editTitleBtn.hidden = false;
+    });
+  }
+
+  document.querySelectorAll("[data-menu-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var panel = btn.parentElement.querySelector(".menu-panel");
+      panel.hidden = !panel.hidden;
+    });
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".menu-drop")) {
+      document.querySelectorAll(".menu-panel").forEach(function (p) { p.hidden = true; });
+    }
+  });
+  var printBtn = document.querySelector("[data-print-report]");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+
+  var table = document.getElementById("report-data-table");
+  if (!table) return;
+  var tbody = table.querySelector("tbody");
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr.data-row"));
+  var selRow = 0;
+  var selCol = 0;
+  var editing = false;
+  var editToggle = document.getElementById("report-edit-toggle");
+  var addRowBtn = document.getElementById("add-entry-row");
+  var addSheetBtn = document.getElementById("add-entry-sheet");
+  var sheetSel = document.getElementById("entry-target-sheet");
+  var editActions = document.getElementById("entry-edit-actions");
+  var sheetToolbar = document.getElementById("entry-sheet-toolbar");
+  var rowCountEl = document.getElementById("row-count");
+  var entryMeta = [];
+  var rowSheetsInit = [];
+  try { entryMeta = JSON.parse(document.getElementById("entry-meta").textContent || "[]") || []; } catch (e) { entryMeta = []; }
+  try { rowSheetsInit = JSON.parse(document.getElementById("entry-row-sheets").textContent || "[]") || []; } catch (e) { rowSheetsInit = []; }
+  var sheetCount = Math.max(1, parseInt("{{ entry_sheet_count|default:1 }}", 10) || 1);
+  var entryByCol = {};
+  var colCount = table.querySelectorAll("thead th").length;
+  entryMeta.forEach(function (m) {
+    if (m && m.col_index != null && m.col_index >= 0) entryByCol[m.col_index] = m;
+  });
+
+  Array.prototype.forEach.call(tbody.querySelectorAll("tr.data-row"), function (tr, i) {
+    var s = rowSheetsInit[i] != null ? parseInt(rowSheetsInit[i], 10) : parseInt(tr.getAttribute("data-sheet") || "1", 10);
+    if (isNaN(s) || s < 1) s = 1;
+    tr.setAttribute("data-sheet", String(s));
+    sheetCount = Math.max(sheetCount, s);
+  });
+
+  if (editActions) editActions.hidden = true;
+  if (sheetToolbar) sheetToolbar.hidden = true;
+
+  function dataRows() {
+    return Array.prototype.slice.call(tbody.querySelectorAll("tr.data-row"));
+  }
+
+  function refreshRows() {
+    rows = dataRows();
+    if (rowCountEl) rowCountEl.textContent = String(rows.length);
+  }
+
+  function sheetLabel(n) {
+    return "برگه " + n;
+  }
+
+  function populateSheetSelect() {
+    if (!sheetSel) return;
+    var prev = parseInt(sheetSel.value || "1", 10) || 1;
+    sheetSel.innerHTML = "";
+    for (var i = 1; i <= sheetCount; i++) {
+      var o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = sheetLabel(i);
+      sheetSel.appendChild(o);
+    }
+    if (prev > sheetCount) prev = 1;
+    sheetSel.value = String(prev);
+  }
+
+  function targetSheet() {
+    if (!sheetSel) return 1;
+    var n = parseInt(sheetSel.value || "1", 10);
+    return isNaN(n) || n < 1 ? 1 : n;
+  }
+
+  function paintSeparators() {
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr.sheet-sep-row"), function (tr) {
+      tr.remove();
+    });
+    if (!editing) return;
+    var list = dataRows();
+    var lastSheet = null;
+    list.forEach(function (tr) {
+      var s = parseInt(tr.getAttribute("data-sheet") || "1", 10) || 1;
+      if (lastSheet !== null && s !== lastSheet) {
+        var sep = document.createElement("tr");
+        sep.className = "sheet-sep-row";
+        sep.setAttribute("aria-hidden", "true");
+        var td = document.createElement("td");
+        td.colSpan = Math.max(1, colCount);
+        td.innerHTML = '<div class="sheet-sep-line"><span>' + sheetLabel(s) + "</span></div>";
+        sep.appendChild(td);
+        tbody.insertBefore(sep, tr);
+      } else if (lastSheet === null && sheetCount > 1) {
+        var sep0 = document.createElement("tr");
+        sep0.className = "sheet-sep-row";
+        sep0.setAttribute("aria-hidden", "true");
+        var td0 = document.createElement("td");
+        td0.colSpan = Math.max(1, colCount);
+        td0.innerHTML = '<div class="sheet-sep-line"><span>' + sheetLabel(s) + "</span></div>";
+        sep0.appendChild(td0);
+        tbody.insertBefore(sep0, tr);
+      }
+      lastSheet = s;
+    });
+  }
+
+  function sortRowsBySheet() {
+    var list = dataRows();
+    list.sort(function (a, b) {
+      var sa = parseInt(a.getAttribute("data-sheet") || "1", 10) || 1;
+      var sb = parseInt(b.getAttribute("data-sheet") || "1", 10) || 1;
+      if (sa !== sb) return sa - sb;
+      return 0;
+    });
+    list.forEach(function (tr) { tbody.appendChild(tr); });
+    paintSeparators();
+    refreshRows();
+  }
+
+  function paint() {
+    if (editing) return;
+    rows.forEach(function (tr, ri) {
+      tr.classList.toggle("is-row-selected", ri === selRow);
+      Array.prototype.forEach.call(tr.children, function (td, ci) {
+        td.classList.toggle("is-cell-focus", ri === selRow && ci === selCol);
+      });
+    });
+    if (rows[selRow]) {
+      var cell = rows[selRow].children[selCol];
+      if (cell && cell.scrollIntoView) cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }
+
+  function selectAt(ri, ci) {
+    if (!rows.length || editing) return;
+    selRow = Math.max(0, Math.min(rows.length - 1, ri));
+    var cols = rows[selRow].children.length;
+    selCol = Math.max(0, Math.min(cols - 1, ci));
+    paint();
+  }
+
+  function cellText(td) {
+    var sel = td.querySelector("select.entry-cell-input");
+    if (sel) return sel.value;
+    var inp = td.querySelector("input.entry-cell-input, textarea.entry-cell-input");
+    if (inp) return inp.value;
+    return (td.textContent || "").trim();
+  }
+
+  function bindRowEvents(tr) {
+    tr.addEventListener("click", function (e) {
+      if (editing) return;
+      refreshRows();
+      var ri = rows.indexOf(tr);
+      var td = e.target.closest("td");
+      var ci = td ? Array.prototype.indexOf.call(tr.children, td) : 0;
+      selectAt(ri, ci);
+      table.focus();
+    });
+    tr.addEventListener("dblclick", function () {
+      if (editing) return;
+      if (!tr.hasAttribute("data-drill-index")) return;
+      var deeper = {{ deeper|yesno:"true,false" }};
+      if (!deeper) return;
+      var payloads = JSON.parse(document.getElementById("report-payloads").textContent);
+      var filters = JSON.parse(document.getElementById("report-filters").textContent || "{}");
+      var level = {{ level }};
+      var idx = parseInt(tr.getAttribute("data-drill-index"), 10);
+      var payload = payloads[idx] || {};
+      var params = new URLSearchParams();
+      params.set("level", String(level + 1));
+      Object.keys(filters).forEach(function (k) { params.set("f_" + k, filters[k]); });
+      Object.keys(payload).forEach(function (k) {
+        if (k === "_entry_sig" || k === "_row_index" || k === "_sheet") return;
+        params.set("f_" + k, payload[k]);
+      });
+      window.location = "?" + params.toString();
+    });
+  }
+
+  function makeEditableCell(td, meta, val) {
+    td.setAttribute("data-orig", val);
+    td.classList.add("is-entry-edit");
+    td.textContent = "";
+    if (meta.type === "product_select") {
+      var options = meta.options || [];
+      var sel = document.createElement("select");
+      sel.className = "input entry-cell-input";
+      sel.dataset.key = meta.key;
+      var empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = options.length ? "— انتخاب کالا —" : "کالایی در این وضعیت نیست";
+      sel.appendChild(empty);
+      options.forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt.value || opt.label || "";
+        o.textContent = opt.label || opt.value || "";
+        if (o.value === val) o.selected = true;
+        sel.appendChild(o);
+      });
+      td.appendChild(sel);
+      return;
+    }
+    var field;
+    if (meta.type === "textarea") {
+      field = document.createElement("textarea");
+      field.rows = 2;
+    } else {
+      field = document.createElement("input");
+      field.type = "text";
+    }
+    field.className = "input entry-cell-input";
+    field.value = val;
+    field.dataset.key = meta.key;
+    td.appendChild(field);
+  }
+
+  function enterEditMode() {
+    if (!editToggle || !entryMeta.length) return;
+    editing = true;
+    table.setAttribute("data-editing", "1");
+    editToggle.textContent = "ذخیره";
+    if (editActions) editActions.hidden = false;
+    if (sheetToolbar) sheetToolbar.hidden = false;
+    populateSheetSelect();
+    refreshRows();
+    rows.forEach(function (tr) {
+      Array.prototype.forEach.call(tr.children, function (td, ci) {
+        var meta = entryByCol[ci];
+        if (!meta) return;
+        makeEditableCell(td, meta, cellText(td));
+      });
+    });
+    sortRowsBySheet();
+  }
+
+  function findInsertBefore(sheetN) {
+    var list = dataRows();
+    for (var i = 0; i < list.length; i++) {
+      var s = parseInt(list[i].getAttribute("data-sheet") || "1", 10) || 1;
+      if (s > sheetN) return list[i];
+    }
+    return null;
+  }
+
+  function addEmptyRow() {
+    if (!editing) return;
+    var sheetN = targetSheet();
+    var tr = document.createElement("tr");
+    tr.className = "data-row";
+    tr.setAttribute("data-sheet", String(sheetN));
+    for (var ci = 0; ci < colCount; ci++) {
+      var td = document.createElement("td");
+      td.className = "num";
+      td.dataset.col = String(ci);
+      var meta = entryByCol[ci];
+      if (meta) makeEditableCell(td, meta, "");
+      tr.appendChild(td);
+    }
+    var before = findInsertBefore(sheetN);
+    if (before) tbody.insertBefore(tr, before);
+    else tbody.appendChild(tr);
+    bindRowEvents(tr);
+    sortRowsBySheet();
+  }
+
+  function addNewSheet() {
+    if (!editing) return;
+    sheetCount += 1;
+    populateSheetSelect();
+    if (sheetSel) sheetSel.value = String(sheetCount);
+    addEmptyRow();
+  }
+
+  function collectAndSave() {
+    refreshRows();
+    var rowList = [];
+    var maxSheet = 1;
+    rows.forEach(function (tr) {
+      var sheetN = parseInt(tr.getAttribute("data-sheet") || "1", 10) || 1;
+      maxSheet = Math.max(maxSheet, sheetN);
+      var values = { sheet: sheetN };
+      Array.prototype.forEach.call(tr.children, function (td, ci) {
+        var meta = entryByCol[ci];
+        if (!meta) return;
+        values[meta.key] = cellText(td);
+      });
+      rowList.push(values);
+    });
+    if (!rowList.length) rowList = [{ sheet: 1 }];
+    var form = document.getElementById("entry-save-form");
+    var hidden = document.getElementById("entry-payload");
+    if (!form || !hidden) return;
+    hidden.value = JSON.stringify({
+      rows: rowList,
+      sheet_count: Math.max(sheetCount, maxSheet)
+    });
+    form.submit();
+  }
+
+  if (editToggle) {
+    editToggle.addEventListener("click", function () {
+      if (!editing) enterEditMode();
+      else collectAndSave();
+    });
+  }
+  if (addRowBtn) {
+    addRowBtn.addEventListener("click", function () {
+      if (!editing) enterEditMode();
+      addEmptyRow();
+    });
+  }
+  if (addSheetBtn) {
+    addSheetBtn.addEventListener("click", function () {
+      if (!editing) enterEditMode();
+      addNewSheet();
+    });
+  }
+
+  dataRows().forEach(function (tr) { bindRowEvents(tr); });
+  refreshRows();
+
+  table.addEventListener("keydown", function (e) {
+    if (!rows.length || editing) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); selectAt(selRow + 1, selCol); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); selectAt(selRow - 1, selCol); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); selectAt(selRow, selCol + 1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); selectAt(selRow, selCol - 1); }
+    else if (e.key === "Enter" && rows[selRow] && rows[selRow].hasAttribute("data-drill-index")) {
+      rows[selRow].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    }
+  });
+
+  if (rows.length) selectAt(0, 0);
+  table.focus();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}بارگذاری — وارد کردن Table{% endblock %}
+{% block heading %}وارد کردن Table اکسل{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_excel %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بازگشت به لیست</a>
+</div>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2>انتخاب فایل</h2>
+  </div>
+  <p class="muted" style="margin:0 0 14px">
+    فقط <strong>Table</strong>های اکسل (Insert → Table) خوانده می‌شوند، نه کل شیت.
+    نام هر جدول را می‌توانید قبل از ورود ویرایش کنید.
+  </p>
+  <div class="excel-import-form">
+    <div class="field">
+      <label for="excel-file-input">فایل (.xlsx / .xlsm / .csv)</label>
+      <input type="file" id="excel-file-input" accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
+    </div>
+    <button type="button" class="btn btn-primary-soft" id="excel-preview-btn" disabled>بررسی Tableها</button>
+  </div>
+  <p class="muted" id="excel-import-hint" style="margin-top:10px;font-size:13px"></p>
+</div>
+
+<dialog id="excel-import-dialog" class="dialog excel-import-dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>انتخاب Table برای ورود</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div class="excel-import-fields">
+      <label class="field">
+        <span>نام فایل</span>
+        <input type="text" id="excel-import-title" class="input" maxlength="200">
+      </label>
+      <label class="excel-select-all">
+        <input type="checkbox" id="excel-select-all" checked>
+        <span>انتخاب همه Tableها</span>
+      </label>
+      <div id="excel-sheet-list" class="excel-sheet-list"></div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+      <button type="button" class="btn btn-primary-soft" id="excel-import-confirm">وارد کردن</button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var fileInput = document.getElementById("excel-file-input");
+  var previewBtn = document.getElementById("excel-preview-btn");
+  var hint = document.getElementById("excel-import-hint");
+  var dialog = document.getElementById("excel-import-dialog");
+  var titleInput = document.getElementById("excel-import-title");
+  var sheetList = document.getElementById("excel-sheet-list");
+  var selectAll = document.getElementById("excel-select-all");
+  var confirmBtn = document.getElementById("excel-import-confirm");
+  var currentFile = null;
+  var csrf = (document.querySelector("[name=csrfmiddlewaretoken]") || {}).value
+    || (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+
+  function setHint(msg, isError) {
+    hint.textContent = msg || "";
+    hint.style.color = isError ? "#b91c1c" : "";
+  }
+  function openDialog() {
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+  function closeDialog() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); closeDialog(); }
+  });
+
+  fileInput.addEventListener("change", function () {
+    currentFile = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+    previewBtn.disabled = !currentFile;
+    setHint(currentFile ? ("آماده بررسی: " + currentFile.name) : "");
+  });
+
+  function syncSelectAllState() {
+    var boxes = sheetList.querySelectorAll("input[data-table]");
+    var checked = 0;
+    boxes.forEach(function (b) { if (b.checked) checked++; });
+    selectAll.checked = boxes.length > 0 && checked === boxes.length;
+    selectAll.indeterminate = checked > 0 && checked < boxes.length;
+  }
+
+  selectAll.addEventListener("change", function () {
+    sheetList.querySelectorAll("input[data-table]").forEach(function (b) {
+      b.checked = selectAll.checked;
+    });
+  });
+
+  previewBtn.addEventListener("click", function () {
+    if (!currentFile) return;
+    setHint("در حال خواندن Tableها…");
+    previewBtn.disabled = true;
+    var fd = new FormData();
+    fd.append("file", currentFile);
+    fetch("{% url 'excel_preview' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      previewBtn.disabled = false;
+      if (!data.ok) {
+        setHint(data.error || "خطا در خواندن فایل", true);
+        return;
+      }
+      titleInput.value = data.filename || currentFile.name;
+      sheetList.innerHTML = "";
+      var items = data.tables || data.sheets || [];
+      items.forEach(function (t, idx) {
+        var tableName = t.name || ("Table" + (idx + 1));
+        var sheetName = t.sheet_name || "";
+        var row = document.createElement("div");
+        row.className = "excel-sheet-row";
+        row.innerHTML =
+          '<label class="excel-sheet-check">' +
+            '<input type="checkbox" data-table checked ' +
+              'data-sheet="' + escapeHtml(sheetName) + '" ' +
+              'data-excel-table="' + escapeHtml(tableName) + '" ' +
+              'value="' + escapeHtml(tableName) + '">' +
+          '</label>' +
+          '<div class="excel-sheet-meta">' +
+            '<label class="field excel-table-name-field">' +
+              '<span>نام جدول</span>' +
+              '<input type="text" class="input excel-table-name-input" maxlength="200" value="' + escapeHtml(tableName) + '">' +
+            '</label>' +
+            '<span class="muted">Table اکسل: <strong>' + escapeHtml(tableName) + '</strong>' +
+              (sheetName ? (' · شیت: ' + escapeHtml(sheetName)) : '') +
+              (t.ref ? (' · ' + escapeHtml(t.ref)) : '') +
+              ' · ' + (t.column_count || 0) + ' ستون · ' + (t.row_count || 0) + ' ردیف</span>' +
+          '</div>';
+        sheetList.appendChild(row);
+        row.querySelector("input[data-table]").addEventListener("change", syncSelectAllState);
+      });
+      selectAll.checked = true;
+      selectAll.indeterminate = false;
+      setHint("");
+      openDialog();
+    }).catch(function () {
+      previewBtn.disabled = false;
+      setHint("ارتباط با سرور برقرار نشد.", true);
+    });
+  });
+
+  confirmBtn.addEventListener("click", function () {
+    if (!currentFile) return;
+    var selected = [];
+    sheetList.querySelectorAll(".excel-sheet-row").forEach(function (row) {
+      var box = row.querySelector("input[data-table]");
+      if (!box || !box.checked) return;
+      var nameInput = row.querySelector(".excel-table-name-input");
+      var excelTable = box.getAttribute("data-excel-table") || box.value;
+      var sheet = box.getAttribute("data-sheet") || "";
+      var name = (nameInput && nameInput.value.trim()) || excelTable;
+      selected.push({ sheet: sheet, table: excelTable, name: name });
+    });
+    if (!selected.length) {
+      setHint("حداقل یک Table را انتخاب کنید.", true);
+      return;
+    }
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "در حال وارد کردن…";
+    var fd = new FormData();
+    fd.append("file", currentFile);
+    fd.append("title", titleInput.value || currentFile.name);
+    fd.append("selected_sheets", JSON.stringify(selected));
+    fetch("{% url 'excel_import_confirm' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "وارد کردن";
+      if (!data.ok) {
+        setHint(data.error || "ورود ناموفق بود.", true);
+        return;
+      }
+      closeDialog();
+      window.location = data.detail_url || data.list_url || "{% url 'excel_list' %}";
+    }).catch(function () {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "وارد کردن";
+      setHint("ارتباط با سرور برقرار نشد.", true);
+    });
+  });
+})();
+</script>
+{% endblock %}

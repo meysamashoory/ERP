@@ -57,6 +57,11 @@ class UserProfile(models.Model):
     def can_backup(self) -> bool:
         return self.is_manager
 
+    @property
+    def can_create_reports(self) -> bool:
+        """Viewers are read-only; everyone else may create reports/forms."""
+        return self.can_enter_data
+
     def can_edit_record(self, record) -> bool:
         """Whether this profile may edit a record with a ``created_by`` field."""
         if not self.can_enter_data:

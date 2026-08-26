@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}برنامه‌ها و ثبت تولید{% endblock %}
-{% block heading %}برنامه‌ها و ثبت تولید{% endblock %}
+{% block title %}ثبت و کنترل تولید{% endblock %}
+{% block heading %}ثبت و کنترل تولید{% endblock %}
 {% block nav_programs %}active{% endblock %}
 
 {% block content %}
@@ -16,18 +16,25 @@
       <table class="table">
         <thead><tr>
           <th>شناسه</th><th>شماره برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
-          <th>وضعیت</th><th>تولید/برنامه</th><th>تعیین وضعیت</th><th>عملیات</th>
+          <th>وضعیت</th><th>تولید/برنامه</th><th>تعداد فرم‌ها</th><th>تعیین وضعیت</th><th>عملیات</th>
         </tr></thead>
         <tbody>
           {% for row in rows %}
           <tr>
-            <td>{{ row.program.item.uid }}</td>
+            <td>{{ row.program.resolved_uid }}</td>
             <td>{{ row.program.item.plan.program_number }}</td>
             <td>{{ row.program.machine_label }}</td>
             <td>{{ row.program.item.product.code }}</td>
             <td>{{ row.program.item.product.name }}</td>
             <td><span class="badge status-{{ row.program.status }}">{{ row.program.get_status_display }}</span></td>
             <td class="num">{{ row.totals.produced }} / {{ row.totals.planned }}</td>
+            <td class="forms-cell">
+              <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
+                data-forms-title="{{ row.program.resolved_uid }}"
+                data-forms-ctx="prod_fitting"
+                data-forms-id="{{ row.program.pk }}"
+                data-forms-json="{{ forms_production_json|escape }}">{{ forms_production|length }} فرم</button>
+            </td>
             <td class="row-actions">
               {% if profile.can_enter_data %}
                 {% if row.program.status == 'finished' %}
@@ -66,7 +73,7 @@
       </div>
       {% if pipes %}
       <table class="table">
-        <thead><tr><th>تاریخ</th><th>واحد</th><th>خط</th><th>نوع</th><th>کد کالا</th><th>نام محصول</th><th>تولید</th><th>برنامه</th><th>انحراف</th><th></th></tr></thead>
+        <thead><tr><th>تاریخ</th><th>واحد</th><th>خط</th><th>نوع</th><th>کد کالا</th><th>نام محصول</th><th>تولید</th><th>برنامه</th><th>انحراف</th><th>تعداد فرم‌ها</th><th></th></tr></thead>
         <tbody>
           {% for r in pipes %}
           <tr>
@@ -79,6 +86,13 @@
             <td class="num">{{ r.produced_quantity }}</td>
             <td class="num">{{ r.planned_quantity }}</td>
             <td class="num">{{ r.deviation }}</td>
+            <td class="forms-cell">
+              <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
+                data-forms-title="لوله {{ r.date }}"
+                data-forms-ctx="prod_pipe"
+                data-forms-id="{{ r.pk }}"
+                data-forms-json="{{ forms_production_json|escape }}">{{ forms_production|length }} فرم</button>
+            </td>
             <td class="row-actions">{% if r.can_edit %}<a class="link-edit" href="{% url 'pipe_edit' r.pk %}">ویرایش</a>{% endif %}</td>
           </tr>
           {% endfor %}
@@ -92,4 +106,8 @@
 <dialog id="status-dialog" class="dialog">
   <div data-dialog-body></div>
 </dialog>
+{% endblock %}
+
+{% block scripts %}
+{% include "print_forms/_forms_dialog.html" %}
 {% endblock %}

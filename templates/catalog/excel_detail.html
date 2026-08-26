@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ upload.title }} — بارگذاری{% endblock %}
+{% block heading %}{{ upload.title }}{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_excel %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بازگشت به فهرست</a>
+  {% if can_delete %}
+  <form method="post" action="{% url 'excel_file_delete' upload.pk %}" class="inline"
+        onsubmit="return confirm('کل فایل و تمام جداول آن حذف شود؟');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-danger-soft">حذف کل فایل</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2>جداول فایل</h2>
+    <span class="muted" style="font-size:13px">
+      {{ tables|length }} جدول
+      {% if upload.original_name %} · {{ upload.original_name }}{% endif %}
+      · به‌روزرسانی {{ upload.updated_at|date:"Y/m/d H:i" }}
+    </span>
+  </div>
+
+  {% if not tables %}
+  <p class="empty">هیچ جدولی در این فایل نیست.</p>
+  {% else %}
+  {{ tables_json|json_script:"excel-tables-data" }}
+  {{ transfer_destinations|json_script:"excel-transfer-destinations" }}
+  <div class="excel-detail-layout" id="excel-editor"
+       data-save-url-template="{% url 'excel_table_save' 0 %}"
+       data-delete-url-template="{% url 'excel_table_delete' 0 %}"
+       data-transfer-url-template="{% url 'excel_table_transfer' 0 %}"
+       data-can-edit="{% if can_edit %}1{% else %}0{% endif %}"
+       data-can-delete="{% if can_delete %}1{% else %}0{% endif %}"
+       data-can-transfer="{% if can_transfer %}1{% else %}0{% endif %}">
+    {% csrf_token %}
+    <div class="excel-tabs" role="tablist">
+      {% for t in tables %}
+      <button type="button" class="excel-tab{% if forloop.first %} is-active{% endif %}"
+              role="tab"
+              data-table-id="{{ t.pk }}"
+              aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+        {{ t.name }}
+      </button>
+      {% endfor %}
+    </div>
+
+    {% for t in tables %}
+    <div class="excel-pane{% if forloop.first %} is-active{% endif %}"
+         data-table-id="{{ t.pk }}"
+         {% if not forloop.first %}hidden{% endif %}>
+      <div class="excel-pane-toolbar">
+        <div class="excel-pane-meta">
+          {% if can_edit %}
+          <label class="field excel-rename-field">
+            <span>نام جدول</span>
+            <input type="text" class="input excel-table-name-edit" maxlength="200" value="{{ t.name }}">
+          </label>
+          {% else %}
+          <strong class="excel-table-title">{{ t.name }}</strong>
+          {% endif %}
+          <span class="muted">شیت منبع: {{ t.sheet_name|default:t.name }} · منبع گزارش: {{ t.source_id }}</span>
+        </div>
+        <div class="actions excel-pane-actions">
+          {% if can_transfer %}
+          <button type="button" class="btn btn-sm btn-primary-soft btn-transfer-table">انتقال داده</button>
+          {% endif %}
+          {% if can_edit %}
+          <button type="button" class="btn btn-sm btn-ghost btn-add-row">افزودن ردیف</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-add-col">افزودن ستون</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-delete-selection" disabled title="ابتدا یک ردیف یا ستون را انتخاب کنید">حذف انتخاب‌شده</button>
+          <button type="button" class="btn btn-sm btn-primary-soft btn-save-table">ذخیره جدول</button>
+          {% endif %}
+          {% if can_delete %}
+          <button type="button" class="btn btn-sm btn-danger-soft btn-delete-table">حذف جدول</button>
+          {% endif %}
+        </div>
+      </div>
+      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است. برای ارسال به سامانه از «انتقال داده» استفاده کنید (جدول حذف نمی‌شود). پس از «ذخیره جدول» به فهرست بارگذاری بازمی‌گردید.</p>
+      <div class="excel-grid-wrap" tabindex="0">
+        <table class="excel-grid" aria-label="جدول {{ t.name }}">
+          <colgroup></colgroup>
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="excel-save-status muted" aria-live="polite"></p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<dialog id="excel-transfer-dialog" class="dialog dialog-wide dialog-transfer">
+  <div class="dialog-transfer-layout">
+    <div class="dialog-head">
+      <h3>انتقال داده جدول</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-transfer-close>بستن</button>
+    </div>
+    <div class="dialog-transfer-body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">
+        بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند.
+        هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.
+      </p>
+      <div class="transfer-dest-row">
+        <div class="field">
+          <label for="transfer-destination">بخش مقصد</label>
+          <select id="transfer-destination" class="input"></select>
+        </div>
+        <div class="field">
+          <label for="transfer-level">انتخاب سطح</label>
+          <select id="transfer-level" class="input"></select>
+        </div>
+      </div>
+      <div class="transfer-map-scroll">
+        <table class="transfer-map-table">
+          <thead>
+            <tr>
+              <th>ستون مقصد سامانه</th>
+              <th>نوع</th>
+              <th>ستون متناظر اکسل</th>
+            </tr>
+          </thead>
+          <tbody id="transfer-map-body"></tbody>
+        </table>
+      </div>
+      <div id="transfer-result" hidden></div>
+    </div>
+    <div class="dialog-transfer-footer form-actions">
+      <button type="button" class="btn" id="transfer-submit">انتقال</button>
+      <button type="button" class="btn btn-ghost" data-transfer-close>انصراف</button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/excel_grid.js' %}?v=6"></script>
+<script src="{% static 'js/excel_transfer.js' %}?v=3"></script>
+{% endblock %}

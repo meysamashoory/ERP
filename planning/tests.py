@@ -32,5 +32,157 @@ class MoldChangeDateLogicTests(TestCase):
         self.assertEqual(len(dates), 1)
         self.assertEqual(dates[0].weekday(), 0)
 
+    def test_candidates_for_different_weekdays_are_disjoint(self):
+        plan_date = jdatetime.date(1403, 5, 15)
+        mon = {d.strftime("%Y-%m-%d") for d in mold_change_date_candidates(plan_date, Weekday.DOSHANBE)}
+        wed = {d.strftime("%Y-%m-%d") for d in mold_change_date_candidates(plan_date, Weekday.CHAHARSHANBE)}
+        self.assertTrue(mon)
+        self.assertTrue(wed)
+        self.assertFalse(mon & wed)
+
     def test_persian_weekday_name(self):
         self.assertEqual(persian_weekday(jdatetime.date(1403, 5, 13)), "شنبه")
+
+
+class EmptyZeroWidgetTests(TestCase):
+    def test_line_form_renders_blank_for_zero(self):
+        from .forms import WeeklyPlanLineForm
+        form = WeeklyPlanLineForm()
+        html = str(form["quantity"]) + str(form["cycle"])
+        self.assertNotIn('value="0"', html)
+
+
+class ProductionLineFormSetValidationTests(TestCase):
+    def setUp(self):
+        from catalog.models import ProductionTypeOption
+        self.ptype = ProductionTypeOption.objects.create(label="نوع تست")
+
+    def _formset_data(self, rows):
+        data = {
+            "lines-TOTAL_FORMS": str(len(rows)),
+            "lines-INITIAL_FORMS": "0",
+            "lines-MIN_NUM_FORMS": "0",
+            "lines-MAX_NUM_FORMS": "1000",
+        }
+        for i, row in enumerate(rows):
+            pt = row.get("production_type", "")
+            if pt == "__pt__":
+                pt = str(self.ptype.pk)
+            data[f"lines-{i}-production_type"] = pt
+            data[f"lines-{i}-active_cavities"] = row.get("active_cavities", "")
+            data[f"lines-{i}-quantity"] = row.get("quantity", "")
+            data[f"lines-{i}-cycle"] = row.get("cycle", "")
+        return data
+
+    def test_single_row_without_production_type_is_valid(self):
+        from .forms import WeeklyPlanLineFormSet
+
+        fs = WeeklyPlanLineFormSet(
+            self._formset_data([{
+                "active_cavities": "4",
+                "quantity": "100",
+                "cycle": "30",
+            }]),
+            prefix="lines",
+        )
+        self.assertTrue(fs.is_valid(), fs.errors)
+
+    def test_partial_third_row_is_invalid(self):
+        from .forms import WeeklyPlanLineFormSet
+
+        fs = WeeklyPlanLineFormSet(
+            self._formset_data([
+                {"production_type": "__pt__", "active_cavities": "4", "quantity": "100", "cycle": "30"},
+                {"production_type": "__pt__", "active_cavities": "4", "quantity": "50", "cycle": "20"},
+                {"active_cavities": "2", "quantity": "", "cycle": ""},
+            ]),
+            prefix="lines",
+        )
+        self.assertFalse(fs.is_valid())
+        self.assertTrue(fs.forms[2].errors.get("quantity") or fs.forms[2].errors.get("cycle"))
+
+    def test_two_rows_require_production_type(self):
+        from .forms import WeeklyPlanLineFormSet
+
+        fs = WeeklyPlanLineFormSet(
+            self._formset_data([
+                {"active_cavities": "4", "quantity": "100", "cycle": "30"},
+                {"active_cavities": "2", "quantity": "50", "cycle": "20"},
+            ]),
+            prefix="lines",
+        )
+        self.assertFalse(fs.is_valid())
+        self.assertTrue(any("production_type" in (e or {}) for e in fs.errors))
+
+
+class ProductCollisionTests(TestCase):
+    def test_same_product_same_mold_same_type_conflicts(self):
+        from django.core.management import call_command
+        from planning.views import _product_collision_in_plan
+        from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
+        from catalog.models import ProductionTypeOption, MoldOption
+
+        call_command("seed_demo")
+        plan = WeeklyPlan.objects.filter(status="draft").first()
+        item = plan.items.select_related("product", "mold").first()
+        self.assertIsNotNone(item)
+        pt = ProductionTypeOption.objects.filter(is_active=True).first()
+        if not item.lines.exists():
+            WeeklyPlanLine.objects.create(
+                item=item, production_type=pt, quantity=10, cycle=20, active_cavities=1
+            )
+        line = item.lines.first()
+        mold = item.mold or MoldOption.objects.filter(is_active=True).first()
+        if item.mold_id is None and mold:
+            item.mold = mold
+            item.save(update_fields=["mold"])
+        type_id = line.production_type_id
+        self.assertTrue(
+            _product_collision_in_plan(
+                plan,
+                product=item.product,
+                mold=item.mold,
+                type_ids=[type_id] if type_id else [],
+                exclude_item_id=None,
+            )
+        )
+        # Editing the same item is fine.
+        self.assertFalse(
+            _product_collision_in_plan(
+                plan,
+                product=item.product,
+                mold=item.mold,
+                type_ids=[type_id] if type_id else [],
+                exclude_item_id=item.pk,
+            )
+        )
+
+    def test_product_label_is_name_only(self):
+        from django.core.management import call_command
+        from planning.forms import WeeklyPlanItemForm
+        from planning.models import WeeklyPlan
+
+        call_command("seed_demo")
+        plan = WeeklyPlan.objects.filter(status="draft").first()
+        item = plan.items.select_related("product").first()
+        form = WeeklyPlanItemForm(plan_date=plan.date, instance=item)
+        label = form.fields["product"].label_from_instance(item.product)
+        self.assertEqual(label, item.product.name)
+        self.assertNotIn(item.product.code, label)
+
+
+class WeeklyPlanDateUniqueTests(TestCase):
+    def test_duplicate_plan_date_rejected(self):
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from planning.forms import WeeklyPlanForm
+        from planning.models import WeeklyPlan
+
+        call_command("seed_demo")
+        existing = WeeklyPlan.objects.first()
+        form = WeeklyPlanForm(data={
+            "program_number": "BP-UNIQUE-TEST",
+            "date": existing.date.strftime("%Y/%m/%d"),
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("date", form.errors)

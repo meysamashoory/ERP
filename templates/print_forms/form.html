@@ -1,0 +1,555 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block heading %}{{ page_title }}{% endblock %}
+{% block nav_reports %}{% endblock %}
+{% block nav_form_list %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'print_form_list' %}">بازگشت به لیست</a>
+  <button class="btn btn-sm" type="submit" form="print-form-builder" id="top-submit">ثبت فرم</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="print-form-builder" class="builder-compact designer-only">
+  {% csrf_token %}
+  {{ form.frames_json }}
+  {{ form.page_settings_json }}
+  {{ form.page_width_mm }}
+  {{ form.page_height_mm }}
+  {{ form.title }}
+  {{ form.number }}
+  {{ form.description }}
+  {% if form.is_manager %}{{ form.is_standard }}{% else %}{{ form.is_standard }}{% endif %}
+
+  <div class="panel panel-compact designer-first" id="builder-panel">
+    <div class="designer-toolbar-bar">
+      <button type="button" class="btn btn-sm" data-add="header">عنوان</button>
+      <button type="button" class="btn btn-sm" data-add="box">کادر</button>
+      <button type="button" class="btn btn-sm" data-add="field">فیلد</button>
+      <button type="button" class="btn btn-sm" data-add="line">خط</button>
+      <button type="button" class="btn btn-sm" data-add="logo">لوگو</button>
+      <button type="button" class="btn btn-sm" data-add="data_extend">امتداد دیتا</button>
+      <span class="toolbar-sep"></span>
+      <button type="button" class="btn btn-sm btn-ghost" data-zoom="-">−</button>
+      <span class="zoom-label" id="zoom-label">۱۰۰٪</span>
+      <button type="button" class="btn btn-sm btn-ghost" data-zoom="+">+</button>
+      <button type="button" class="btn btn-sm btn-danger" data-delete-selected>حذف انتخاب</button>
+    </div>
+    <div class="panel-body panel-body-compact designer-body">
+      <div class="ruler-workspace" id="ruler-workspace">
+        <div class="ruler-corner"></div>
+        <div class="ruler-h" id="ruler-h"></div>
+        <div class="ruler-v" id="ruler-v"></div>
+        <div class="designer-scroll" id="designer-scroll">
+          <div class="designer-stage" id="designer-stage">
+            <div class="form-canvas designer-page" id="form-canvas"></div>
+          </div>
+        </div>
+      </div>
+      <div class="props-panel props-panel-scroll" id="frame-props">
+        <details class="props-section" open>
+          <summary>کاغذ و حاشیه چاپ</summary>
+          <div class="field">
+            <label>اندازه کاغذ</label>
+            <select id="paper-preset">
+              <option value="A4-P">A4 عمودی (۲۱۰×۲۹۷)</option>
+              <option value="A4-L">A4 افقی (۲۹۷×۲۱۰)</option>
+              <option value="A5-P">A5 عمودی (۱۴۸×۲۱۰)</option>
+              <option value="A5-L">A5 افقی (۲۱۰×۱۴۸)</option>
+              <option value="custom">سفارشی (Custom)</option>
+            </select>
+          </div>
+          <div class="form-grid form-grid-2">
+            <div class="field"><label>عرض (مم)</label><input class="input spin" type="number" id="prop-page-w" min="50" max="600" step="1"></div>
+            <div class="field"><label>ارتفاع (مم)</label><input class="input spin" type="number" id="prop-page-h" min="50" max="600" step="1"></div>
+          </div>
+          <div class="form-grid form-grid-2">
+            <div class="field"><label>حاشیه بالا</label><input class="input spin" type="number" id="margin-top" min="0" max="80" step="0.5"></div>
+            <div class="field"><label>حاشیه پایین</label><input class="input spin" type="number" id="margin-bottom" min="0" max="80" step="0.5"></div>
+            <div class="field"><label>حاشیه راست</label><input class="input spin" type="number" id="margin-right" min="0" max="80" step="0.5"></div>
+            <div class="field"><label>حاشیه چپ</label><input class="input spin" type="number" id="margin-left" min="0" max="80" step="0.5"></div>
+          </div>
+          <div class="field">
+            <label>شبکه (میلی‌متر)</label>
+            <select id="snap-mm">
+              <option value="0.5">۰٫۵</option>
+              <option value="1">۱</option>
+              <option value="2" selected>۲</option>
+              <option value="5">۵</option>
+              <option value="10">۱۰</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>اسنپ به لبه‌ها (حساسیت مم)</label>
+            <input class="input spin" type="number" id="snap-edge" min="0" max="30" step="0.5" value="2">
+            <p class="muted" style="margin:4px 0 0;font-size:11px">۰ = خاموش. عدد بالاتر = جذب قوی‌تر به لبه کاغذ/حاشیه.</p>
+          </div>
+        </details>
+
+        <details class="props-section" open>
+          <summary>ویژگی‌های انتخاب</summary>
+          <p class="muted" id="props-empty">یک کادر را انتخاب کنید.</p>
+          <div id="props-fields" hidden>
+            <div class="field"><label>برچسب / متن</label><input class="input" id="prop-label"></div>
+            <div class="field"><label>نوع</label>
+              <select id="prop-kind">
+                <option value="header">عنوان</option>
+                <option value="box">کادر</option>
+                <option value="field">فیلد</option>
+                <option value="line">خط</option>
+                <option value="logo">لوگو</option>
+                <option value="data_extend">امتداد دیتا</option>
+              </select>
+            </div>
+            <div class="align-toolbar" title="تراز متن (شبیه اکسل)">
+              <button type="button" class="align-btn" data-align="right" title="راست">⇤</button>
+              <button type="button" class="align-btn" data-align="center" title="وسط">☰</button>
+              <button type="button" class="align-btn" data-align="left" title="چپ">⇥</button>
+              <span class="toolbar-sep"></span>
+              <button type="button" class="align-btn" data-valign="top" title="بالا">⤒</button>
+              <button type="button" class="align-btn" data-valign="middle" title="وسط عمودی">≡</button>
+              <button type="button" class="align-btn" data-valign="bottom" title="پایین">⤓</button>
+            </div>
+            <div class="form-grid form-grid-2">
+              <div class="field"><label>X</label><input class="input spin" type="number" step="0.5" id="prop-x" min="0"></div>
+              <div class="field"><label>Y</label><input class="input spin" type="number" step="0.5" id="prop-y" min="0"></div>
+              <div class="field"><label>عرض</label><input class="input spin" type="number" step="0.5" id="prop-w" min="0.5"></div>
+              <div class="field"><label>ارتفاع</label><input class="input spin" type="number" step="0.5" id="prop-h" min="0.5"></div>
+            </div>
+            <div class="field"><label>چرخش</label><input class="input spin" type="number" step="1" id="prop-rot" min="-180" max="180" value="0"></div>
+            <div class="field"><label>ضخامت خط</label><input class="input spin" type="number" step="0.1" id="prop-stroke" min="0.1" max="5" value="0.5"></div>
+            <div id="logo-props" hidden>
+              <div class="field">
+                <label>تصویر لوگو</label>
+                <input type="file" id="prop-logo-file" accept="image/*,.png,.jpg,.jpeg,.gif,.webp,.svg">
+              </div>
+            </div>
+            <div id="field-bind-props" hidden>
+              <div class="field">
+                <label>منبع داده</label>
+                <select id="prop-source"></select>
+              </div>
+              <div class="field">
+                <label>ستون / آدرس دقیق</label>
+                <select id="prop-source-key"></select>
+              </div>
+              <p class="muted" id="field-bind-path" style="font-size:11px;margin:0"></p>
+            </div>
+          </div>
+        </details>
+        {% if form.is_manager %}
+        <details class="props-section">
+          <summary>استاندارد</summary>
+          <label class="chk">{{ form.is_standard }} فرم استاندارد</label>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+{{ column_groups|json_script:"column-groups" }}
+<script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
+<script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
+<script>
+(function () {
+  var MM = 3.7795275591;
+  var zoom = 1;
+  var snap = 2;
+  var frames = [];
+  var pageSettings = { margin_top: 10, margin_bottom: 10, margin_left: 10, margin_right: 10, snap_edge: 2 };
+  try { frames = JSON.parse(document.getElementById("frames-initial").textContent || "[]"); } catch (e) { frames = []; }
+  try {
+    var ps = JSON.parse(document.getElementById("page-settings-initial").textContent || "{}");
+    pageSettings = Object.assign(pageSettings, ps || {});
+  } catch (e) {}
+  frames.forEach(function (f) {
+    if (f.left == null && f.x != null) f.left = f.x;
+    if (f.left == null) f.left = 0;
+    if (!f.align) f.align = "center";
+    if (!f.valign) f.valign = "middle";
+  });
+  var selectedId = null;
+  var hidden = document.getElementById("id_frames_json");
+  var settingsHidden = document.getElementById("id_page_settings_json");
+  var pageWInput = document.getElementById("id_page_width_mm") || document.querySelector('[name="page_width_mm"]');
+  var pageHInput = document.getElementById("id_page_height_mm") || document.querySelector('[name="page_height_mm"]');
+  var canvas = document.getElementById("form-canvas");
+  var rulerH = document.getElementById("ruler-h");
+  var rulerV = document.getElementById("ruler-v");
+  var designerScroll = document.getElementById("designer-scroll");
+  var propsPanel = document.getElementById("frame-props");
+  var uid = 1;
+  var groups = [];
+  try { groups = JSON.parse(document.getElementById("column-groups").textContent || "[]"); } catch (e) { groups = []; }
+
+  function pageW() { return parseFloat(pageWInput.value) || 210; }
+  function pageH() { return parseFloat(pageHInput.value) || 297; }
+  function px(mm) { return mm * MM * zoom; }
+  function mmFromPx(v) { return v / (MM * zoom); }
+  function snapMm(v) { return Math.round(v / snap) * snap; }
+  function edgeSnap(v, size, margins) {
+    var s = parseFloat(pageSettings.snap_edge) || 0;
+    if (s <= 0) return v;
+    var anchors = [0, margins[0], size - margins[1], size];
+    for (var i = 0; i < anchors.length; i++) {
+      if (Math.abs(v - anchors[i]) <= s) return anchors[i];
+    }
+    return v;
+  }
+  function syncHidden() {
+    frames.forEach(function (f) { f.x = f.left; });
+    hidden.value = JSON.stringify(frames);
+    settingsHidden.value = JSON.stringify(pageSettings);
+  }
+
+  var PRESETS = { "A4-P": [210, 297], "A4-L": [297, 210], "A5-P": [148, 210], "A5-L": [210, 148] };
+
+  function syncPresetSelect() {
+    var w = pageW(), h = pageH();
+    var sel = document.getElementById("paper-preset");
+    var found = "custom";
+    Object.keys(PRESETS).forEach(function (k) {
+      if (PRESETS[k][0] === w && PRESETS[k][1] === h) found = k;
+    });
+    sel.value = found;
+    document.getElementById("prop-page-w").value = w;
+    document.getElementById("prop-page-h").value = h;
+    document.getElementById("margin-top").value = pageSettings.margin_top;
+    document.getElementById("margin-bottom").value = pageSettings.margin_bottom;
+    document.getElementById("margin-left").value = pageSettings.margin_left;
+    document.getElementById("margin-right").value = pageSettings.margin_right;
+    document.getElementById("snap-edge").value = pageSettings.snap_edge;
+  }
+
+  document.getElementById("paper-preset").addEventListener("change", function () {
+    var v = this.value;
+    if (PRESETS[v]) {
+      pageWInput.value = PRESETS[v][0];
+      pageHInput.value = PRESETS[v][1];
+      render();
+    }
+  });
+
+  function drawRulers() {
+    var w = pageW(), h = pageH();
+    rulerH.innerHTML = "";
+    rulerV.innerHTML = "";
+    rulerH.style.width = px(w) + "px";
+    rulerV.style.height = px(h) + "px";
+    for (var x = 0; x <= w; x += 1) {
+      if (x % 5 !== 0 && snap > 1) continue;
+      var tick = document.createElement("div");
+      tick.className = "ruler-tick" + (x % 10 === 0 ? " major" : "");
+      tick.style.left = px(x) + "px";
+      if (x % 10 === 0) {
+        var lab = document.createElement("span");
+        lab.textContent = String(x);
+        tick.appendChild(lab);
+      }
+      rulerH.appendChild(tick);
+    }
+    for (var y = 0; y <= h; y += 1) {
+      if (y % 5 !== 0 && snap > 1) continue;
+      var tick2 = document.createElement("div");
+      tick2.className = "ruler-tick" + (y % 10 === 0 ? " major" : "");
+      tick2.style.top = px(y) + "px";
+      if (y % 10 === 0) {
+        var lab2 = document.createElement("span");
+        lab2.textContent = String(y);
+        tick2.appendChild(lab2);
+      }
+      rulerV.appendChild(tick2);
+    }
+  }
+
+  function renderMargins() {
+    var mt = pageSettings.margin_top || 0;
+    var mb = pageSettings.margin_bottom || 0;
+    var ml = pageSettings.margin_left || 0;
+    var mr = pageSettings.margin_right || 0;
+    var box = document.createElement("div");
+    box.className = "print-margin-guide";
+    box.style.top = px(mt) + "px";
+    box.style.left = px(ml) + "px";
+    box.style.width = px(Math.max(1, pageW() - ml - mr)) + "px";
+    box.style.height = px(Math.max(1, pageH() - mt - mb)) + "px";
+    canvas.appendChild(box);
+  }
+
+  function render() {
+    var w = pageW(), h = pageH();
+    canvas.style.width = px(w) + "px";
+    canvas.style.height = px(h) + "px";
+    canvas.innerHTML = "";
+    var grid = document.createElement("div");
+    grid.className = "designer-grid";
+    var g = px(snap);
+    grid.style.backgroundSize = g + "px " + g + "px";
+    canvas.appendChild(grid);
+    renderMargins();
+    frames.forEach(function (f) {
+      var el = document.createElement("div");
+      el.className = "form-frame kind-" + (f.kind || "box") + (f.id === selectedId ? " selected" : "");
+      el.style.left = px(f.left || 0) + "px";
+      el.style.top = px(f.y || 0) + "px";
+      el.style.width = px(f.width || 20) + "px";
+      el.style.height = px(f.height || 10) + "px";
+      el.style.transform = "rotate(" + (f.rotation || 0) + "deg)";
+      if (f.stroke) el.style.borderWidth = px(f.stroke) + "px";
+      el.style.textAlign = f.align || "center";
+      el.style.alignItems = f.valign === "top" ? "flex-start" : (f.valign === "bottom" ? "flex-end" : "center");
+      el.dataset.id = f.id;
+      if (f.kind === "logo" && f.image_data) {
+        var img = document.createElement("img");
+        img.src = f.image_data;
+        img.alt = f.label || "لوگو";
+        img.className = "frame-logo-img";
+        el.appendChild(img);
+      } else if (f.kind === "data_extend") {
+        el.classList.add("kind-data-extend");
+        el.textContent = "";
+      } else if (f.kind === "field") {
+        var label = f.label || "فیلد";
+        if (f.source && f.source_key) label += " ⟨" + f.source + "." + f.source_key + "⟩";
+        el.textContent = label;
+      } else {
+        el.textContent = f.label || f.kind;
+      }
+      el.addEventListener("mousedown", startDrag);
+      if (f.id === selectedId) {
+        ["nw","ne","sw","se"].forEach(function (c) {
+          var hndl = document.createElement("span");
+          hndl.className = "resize-handle " + c;
+          hndl.dataset.corner = c;
+          hndl.addEventListener("mousedown", startResize);
+          el.appendChild(hndl);
+        });
+      }
+      canvas.appendChild(el);
+    });
+    drawRulers();
+    syncHidden();
+    renderProps();
+    syncPresetSelect();
+    document.getElementById("zoom-label").textContent = Math.round(zoom * 100) + "٪";
+  }
+
+  function find(id) { return frames.find(function (f) { return f.id === id; }); }
+
+  function fillSourceSelects(f) {
+    var srcSel = document.getElementById("prop-source");
+    var keySel = document.getElementById("prop-source-key");
+    srcSel.innerHTML = '<option value="">— انتخاب منبع —</option>';
+    groups.forEach(function (g) {
+      var o = document.createElement("option");
+      o.value = g.id; o.textContent = g.label;
+      srcSel.appendChild(o);
+    });
+    srcSel.value = f.source || "";
+    function fillKeys() {
+      keySel.innerHTML = '<option value="">— انتخاب ستون —</option>';
+      var g = groups.find(function (x) { return x.id === srcSel.value; });
+      if (g) {
+        (g.columns || []).forEach(function (c) {
+          var o = document.createElement("option");
+          o.value = c[0]; o.textContent = c[1];
+          keySel.appendChild(o);
+        });
+      }
+      keySel.value = f.source_key || "";
+      var path = document.getElementById("field-bind-path");
+      path.textContent = (f.source && f.source_key)
+        ? ("آدرس: " + f.source + " → " + f.source_key)
+        : "هنوز به ستونی وصل نشده است.";
+    }
+    fillKeys();
+    srcSel.onchange = function () {
+      f.source = srcSel.value;
+      f.source_key = "";
+      fillKeys();
+      render();
+    };
+    keySel.onchange = function () {
+      f.source_key = keySel.value;
+      fillKeys();
+      render();
+    };
+  }
+
+  function renderProps() {
+    var empty = document.getElementById("props-empty");
+    var fields = document.getElementById("props-fields");
+    var f = find(selectedId);
+    if (!f) { empty.hidden = false; fields.hidden = true; return; }
+    empty.hidden = true; fields.hidden = false;
+    document.getElementById("prop-label").value = f.label || "";
+    document.getElementById("prop-kind").value = f.kind || "box";
+    document.getElementById("prop-x").value = f.left || 0;
+    document.getElementById("prop-y").value = f.y || 0;
+    document.getElementById("prop-w").value = f.width;
+    document.getElementById("prop-h").value = f.height;
+    document.getElementById("prop-rot").value = f.rotation || 0;
+    document.getElementById("prop-stroke").value = f.stroke || 0.5;
+    document.getElementById("logo-props").hidden = f.kind !== "logo";
+    document.getElementById("field-bind-props").hidden = f.kind !== "field";
+    document.querySelectorAll(".align-btn").forEach(function (btn) {
+      btn.classList.toggle("active",
+        (btn.dataset.align && btn.dataset.align === f.align) ||
+        (btn.dataset.valign && btn.dataset.valign === f.valign)
+      );
+    });
+    if (f.kind === "field") fillSourceSelects(f);
+  }
+
+  function applyPropInputs() {
+    var f = find(selectedId); if (!f) return;
+    f.label = document.getElementById("prop-label").value;
+    f.kind = document.getElementById("prop-kind").value;
+    f.left = snapMm(Math.max(0, parseFloat(document.getElementById("prop-x").value) || 0));
+    f.y = snapMm(Math.max(0, parseFloat(document.getElementById("prop-y").value) || 0));
+    f.width = Math.max(snap, snapMm(parseFloat(document.getElementById("prop-w").value) || snap));
+    f.height = Math.max(0.5, snapMm(parseFloat(document.getElementById("prop-h").value) || 1));
+    f.rotation = parseFloat(document.getElementById("prop-rot").value) || 0;
+    f.stroke = parseFloat(document.getElementById("prop-stroke").value) || 0.5;
+    if (f.kind === "data_extend") {
+      f.left = 0; f.width = pageW(); f.height = Math.max(0.5, f.height);
+    }
+    render();
+  }
+  ["prop-label","prop-kind","prop-x","prop-y","prop-w","prop-h","prop-rot","prop-stroke"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", applyPropInputs);
+  });
+
+  document.querySelectorAll(".align-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var f = find(selectedId); if (!f) return;
+      if (btn.dataset.align) f.align = btn.dataset.align;
+      if (btn.dataset.valign) f.valign = btn.dataset.valign;
+      render();
+    });
+  });
+
+  document.getElementById("prop-logo-file").addEventListener("change", function (e) {
+    var f = find(selectedId); if (!f || f.kind !== "logo") return;
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { f.image_data = reader.result; render(); };
+    reader.readAsDataURL(file);
+  });
+
+  ["prop-page-w", "prop-page-h"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      pageWInput.value = document.getElementById("prop-page-w").value;
+      pageHInput.value = document.getElementById("prop-page-h").value;
+      document.getElementById("paper-preset").value = "custom";
+      render();
+    });
+  });
+  ["margin-top","margin-bottom","margin-left","margin-right","snap-edge"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      pageSettings.margin_top = parseFloat(document.getElementById("margin-top").value) || 0;
+      pageSettings.margin_bottom = parseFloat(document.getElementById("margin-bottom").value) || 0;
+      pageSettings.margin_left = parseFloat(document.getElementById("margin-left").value) || 0;
+      pageSettings.margin_right = parseFloat(document.getElementById("margin-right").value) || 0;
+      pageSettings.snap_edge = parseFloat(document.getElementById("snap-edge").value) || 0;
+      render();
+    });
+  });
+
+  var drag = null;
+  function startDrag(e) {
+    if (e.target.classList.contains("resize-handle")) return;
+    e.preventDefault();
+    selectedId = e.currentTarget.dataset.id;
+    var f = find(selectedId);
+    drag = { mode: "move", id: selectedId, startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y };
+    render();
+  }
+  function startResize(e) {
+    e.preventDefault(); e.stopPropagation();
+    var id = e.currentTarget.parentElement.dataset.id;
+    var f = find(id);
+    selectedId = id;
+    drag = {
+      mode: "resize", corner: e.currentTarget.dataset.corner, id: id,
+      startX: e.clientX, startY: e.clientY, ox: f.left || 0, oy: f.y, ow: f.width, oh: f.height
+    };
+  }
+  window.addEventListener("mousemove", function (e) {
+    if (!drag) return;
+    var f = find(drag.id); if (!f) return;
+    var dx = mmFromPx(e.clientX - drag.startX);
+    var dy = mmFromPx(e.clientY - drag.startY);
+    var mt = pageSettings.margin_top || 0, mb = pageSettings.margin_bottom || 0;
+    var ml = pageSettings.margin_left || 0, mr = pageSettings.margin_right || 0;
+    if (drag.mode === "move") {
+      f.left = snapMm(Math.max(0, drag.ox + dx));
+      f.y = snapMm(Math.max(0, drag.oy + dy));
+      f.left = edgeSnap(f.left, pageW(), [ml, mr]);
+      f.y = edgeSnap(f.y, pageH(), [mt, mb]);
+      if (f.kind === "data_extend") { f.left = 0; f.width = pageW(); }
+    } else {
+      var c = drag.corner;
+      if (c === "se") { f.width = snapMm(Math.max(snap, drag.ow + dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "sw") { f.left = snapMm(Math.max(0, drag.ox + dx)); f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh + dy)); }
+      if (c === "ne") { f.width = snapMm(Math.max(snap, drag.ow + dx)); f.y = snapMm(Math.max(0, drag.oy + dy)); f.height = snapMm(Math.max(1, drag.oh - dy)); }
+      if (c === "nw") {
+        f.left = snapMm(Math.max(0, drag.ox + dx)); f.y = snapMm(Math.max(0, drag.oy + dy));
+        f.width = snapMm(Math.max(snap, drag.ow - dx)); f.height = snapMm(Math.max(1, drag.oh - dy));
+      }
+    }
+    render();
+  });
+  window.addEventListener("mouseup", function () { drag = null; });
+
+  canvas.addEventListener("mousedown", function (e) {
+    if (e.target === canvas || e.target.classList.contains("designer-grid") || e.target.classList.contains("print-margin-guide")) {
+      selectedId = null; render();
+    }
+  });
+
+  document.querySelectorAll("[data-add]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var kind = btn.getAttribute("data-add");
+      var f = {
+        id: "f" + Date.now() + "-" + (uid++),
+        label: kind === "header" ? "عنوان" : kind === "field" ? "فیلد" : kind === "logo" ? "لوگو" : kind === "data_extend" ? "" : kind === "line" ? "" : "کادر",
+        kind: kind, left: 10, x: 10, y: 15 + frames.length * 10,
+        width: (kind === "line" || kind === "header" || kind === "data_extend") ? Math.max(40, pageW() - 20) : (kind === "logo" ? 40 : 70),
+        height: kind === "line" || kind === "data_extend" ? 1 : kind === "header" ? 12 : kind === "logo" ? 30 : 16,
+        rotation: 0, stroke: 0.5, align: "center", valign: "middle"
+      };
+      if (kind === "data_extend") { f.left = 0; f.width = pageW(); f.height = 0.8; }
+      if (kind === "field") { f.source = ""; f.source_key = ""; }
+      frames.push(f); selectedId = f.id; render();
+    });
+  });
+  document.querySelector("[data-delete-selected]").addEventListener("click", function () {
+    if (!selectedId) return;
+    frames = frames.filter(function (f) { return f.id !== selectedId; });
+    selectedId = null; render();
+  });
+  document.querySelectorAll("[data-zoom]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      zoom = Math.max(0.5, Math.min(2, zoom + (btn.getAttribute("data-zoom") === "+" ? 0.1 : -0.1)));
+      render();
+    });
+  });
+  document.getElementById("snap-mm").addEventListener("change", function (e) {
+    snap = parseFloat(e.target.value) || 2; render();
+  });
+
+  // Independent scroll: props panel vs paper canvas
+  propsPanel.addEventListener("wheel", function (e) { e.stopPropagation(); }, { passive: true });
+  designerScroll.addEventListener("wheel", function (e) { e.stopPropagation(); }, { passive: true });
+
+  render();
+})();
+</script>
+{% endblock %}

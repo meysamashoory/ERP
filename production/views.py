@@ -16,7 +16,12 @@ from .forms import (
     StoppageFormSetPipe,
     pipe_field_map,
 )
-from .models import PipeProduction, ProductionDayEntry, ProductionProgram
+from .models import (
+    PipeProduction,
+    ProductionDayEntry,
+    ProductionHistoryRecord,
+    ProductionProgram,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -122,14 +127,33 @@ def entry_edit(request, pk):
 
 @login_required
 def program_list(request):
-    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes)."""
+    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes).
+
+    Injection tab shows awaiting (to start), running, and temporarily stopped
+    programs. Finished programs appear only under «سوابق تولید».
+    """
     profile = _profile(request)
-    programs = (
+    programs = list(
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
         )
-        .order_by("-item__plan__date", "item__machine__unit__number",
-                  "item__machine__number", "item__sequence")
+        .filter(
+            status__in=[
+                ProductionProgram.Status.AWAITING,
+                ProductionProgram.Status.RUNNING,
+                ProductionProgram.Status.TEMP_STOP,
+            ]
+        )
+    )
+    from core.natsort import natural_key
+
+    programs.sort(
+        key=lambda p: (
+            -(p.item.plan.date.toordinal() if p.item.plan_id and p.item.plan.date else 0),
+            p.item.machine.unit.number if p.item.machine_id else 0,
+            natural_key(p.item.machine.number if p.item.machine_id else ""),
+            p.item.sequence or 0,
+        )
     )
     rows = [{"program": p, "totals": program_totals(p)} for p in programs]
 
@@ -138,8 +162,97 @@ def program_list(request):
         rec.can_edit = bool(profile and profile.can_edit_record(rec))
 
     active_tab = request.GET.get("tab", "injection")
+    from reports.form_purposes import PURPOSE_PRODUCTION, forms_for_purpose
+    import json as _json
+    forms_production = [
+        {"id": f.pk, "number": f.number, "title": f.title}
+        for f in forms_for_purpose(request.user, PURPOSE_PRODUCTION)
+    ]
     return render(request, "production/hub.html",
-                  {"rows": rows, "pipes": pipes, "profile": profile, "active_tab": active_tab})
+                  {
+                      "rows": rows,
+                      "pipes": pipes,
+                      "profile": profile,
+                      "active_tab": active_tab,
+                      "forms_production": forms_production,
+                      "forms_production_json": _json.dumps(forms_production, ensure_ascii=False),
+                  })
+
+
+@login_required
+def production_history(request):
+    """All planning/production programs + Excel archives, sorted naturally."""
+    from .history import build_history_rows
+    from .sync import check_history_machine_conflicts, sync_all_history_to_planning
+
+    profile = _profile(request)
+    sync_all_history_to_planning(user=request.user)
+    check_history_machine_conflicts()
+    rows = build_history_rows()
+    return render(
+        request,
+        "production/history.html",
+        {"rows": rows, "profile": profile},
+    )
+
+
+@login_required
+def production_history_detail(request, pk):
+    """Detail of one live production program with per-entry documents."""
+    from .history import entry_detail_rows, history_row_from_program, program_summary_text
+
+    profile = _profile(request)
+    program = get_object_or_404(
+        ProductionProgram.objects.select_related(
+            "item__product", "item__machine__unit", "item__plan", "mold"
+        ).prefetch_related("item__lines", "entries__deviation_reason"),
+        pk=pk,
+    )
+    row = history_row_from_program(program)
+    return render(
+        request,
+        "production/history_detail.html",
+        {
+            "profile": profile,
+            "row": row,
+            "program": program,
+            "summary": program_summary_text(program),
+            "entries": entry_detail_rows(program),
+            "totals": program_totals(program),
+        },
+    )
+
+
+@login_required
+def production_history_archive_detail(request, pk):
+    """Detail for an Excel-imported history archive row."""
+    from .history import (
+        archive_summary_text,
+        entry_detail_rows_from_archive,
+        history_row_from_archive,
+    )
+
+    profile = _profile(request)
+    rec = get_object_or_404(ProductionHistoryRecord, pk=pk)
+    row = history_row_from_archive(rec)
+    entries = entry_detail_rows_from_archive(rec)
+    return render(
+        request,
+        "production/history_detail.html",
+        {
+            "profile": profile,
+            "row": row,
+            "program": None,
+            "summary": archive_summary_text(rec),
+            "entries": entries,
+            "totals": {
+                "produced": row["actual_qty"],
+                "planned": row["planned_qty"],
+                "deviation": (row["planned_qty"] or 0) - (row["actual_qty"] or 0),
+                "hours": 0,
+            },
+        },
+    )
 
 
 ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]
@@ -206,7 +319,11 @@ def program_status(request, pk):
             form = ProgramStartForm(request.POST, program=program)
             if form.is_valid():
                 cd = form.cleaned_data
-                mold = cd.get("mold")
+                production_type = int(cd["production_type"])
+                lines = list(program.item.lines.all())
+                line_idx = production_type - 1
+                line = lines[line_idx] if 0 <= line_idx < len(lines) else None
+                mold = line.mold if line else None
                 machine_conflict = machine_running_conflict(program)
                 if machine_conflict:
                     messages.error(
@@ -220,12 +337,12 @@ def program_status(request, pk):
                     messages.error(
                         request,
                         f"محصول «{program.item.product.name}» هم‌اکنون روی «{prod_conflict.machine_label}» "
-                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی انتخاب کنید.",
+                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی در برنامه‌ریزی انتخاب کنید.",
                     )
                     return redirect("program_status", pk=pk)
                 program.change_type = cd["change_type"]
                 program.change_reason = cd.get("change_reason")
-                program.production_type = int(cd["production_type"])
+                program.production_type = production_type
                 program.mold = mold
                 program.start_date = cd["start_date"]
                 program.start_time = cd["start_time"]

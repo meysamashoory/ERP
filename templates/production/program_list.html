@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}برنامه‌های تولید{% endblock %}
-{% block heading %}برنامه‌های تولید — تعیین وضعیت{% endblock %}
+{% block title %}ثبت و کنترل تولید{% endblock %}
+{% block heading %}ثبت و کنترل تولید — تعیین وضعیت{% endblock %}
 {% block nav_programs %}active{% endblock %}
 
 {% block content %}
@@ -14,7 +14,7 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td>{{ row.program.item.uid }}</td>
+        <td>{{ row.program.resolved_uid }}</td>
         <td>{{ row.program.item.plan.program_number }}</td>
         <td>{{ row.program.machine_label }}</td>
         <td>{{ row.program.item.product.code }}</td>
