@@ -17,6 +17,11 @@ from .models import ProductionDayEntry, ProductionHistoryRecord, ProductionProgr
 def _fmt(value) -> str:
     if value in (None, ""):
         return "—"
+    from catalog.jalali_dates import format_jalali_slash
+
+    text = format_jalali_slash(value)
+    if text:
+        return text
     if hasattr(value, "strftime"):
         return format_jdate(value) or "—"
     return str(value)

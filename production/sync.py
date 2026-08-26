@@ -32,23 +32,17 @@ def status_label(code: str) -> str:
 
 
 def _to_jdate(value):
-    if value is None:
-        return None
-    if hasattr(value, "togregorian"):
-        return value
-    if isinstance(value, date):
-        return jdatetime.date.fromgregorian(date=value)
-    return None
+    """Convert history DateField / jDateField values to ``jdatetime.date``."""
+    from catalog.jalali_dates import storage_to_jalali
+
+    return storage_to_jalali(value)
 
 
 def _to_gdate(value):
-    if value is None:
+    j = _to_jdate(value)
+    if j is None:
         return None
-    if hasattr(value, "togregorian"):
-        return value.togregorian()
-    if isinstance(value, date):
-        return value
-    return None
+    return j.togregorian()
 
 
 def resolve_machine(*, unit_number, machine_number) -> Machine | None:
@@ -76,7 +70,7 @@ def resolve_product(*, code: str, name: str = "") -> Product | None:
     return None
 
 
-def _next_free_plan_date(preferred: date | None):
+def _next_free_plan_date(preferred):
     """WeeklyPlan.date is unique — bump until free."""
     d = _to_jdate(preferred) or jdatetime.date.today()
     from planning.models import WeeklyPlan
@@ -88,13 +82,42 @@ def _next_free_plan_date(preferred: date | None):
     return d
 
 
+def _live_program_uids() -> set[str]:
+    from production.models import ProductionProgram
+
+    uids: set[str] = set()
+    for prog in ProductionProgram.objects.select_related("item").prefetch_related(
+        "item__lines"
+    ):
+        uid = (prog.resolved_uid or "").strip()
+        if uid:
+            uids.add(uid)
+    return uids
+
+
+def _planning_line_uids() -> set[str]:
+    from planning.models import WeeklyPlanLine
+
+    return {
+        (u or "").strip()
+        for u in WeeklyPlanLine.objects.exclude(uid="").values_list("uid", flat=True)
+        if (u or "").strip()
+    }
+
+
 @transaction.atomic
-def sync_history_record_to_planning(rec, *, user=None) -> dict[str, Any]:
+def sync_history_record_to_planning(
+    rec, *, user=None, live_uids: set[str] | None = None
+) -> dict[str, Any]:
     """Ensure a WeeklyPlan + item + program exist for this archive row.
+
+    Plans are keyed by ``plan_number`` (شماره برنامه): multiple history rows with
+    the same plan number become items under that single weekly plan.
 
     Returns {ok, plan_id, program_id, created, error}.
     """
-    from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, persian_weekday
+    from catalog.jalali_dates import coerce_to_jalali_storage
+    from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
     from planning.models import Weekday
     from production.models import ProductionProgram
 
@@ -105,9 +128,38 @@ def sync_history_record_to_planning(rec, *, user=None) -> dict[str, Any]:
         result["error"] = "شماره برنامه خالی است."
         return result
 
-    # Live program already owns this UID — skip creating a parallel item.
-    for prog in ProductionProgram.objects.select_related("item").all():
-        if (prog.resolved_uid or "").strip() == uid and uid:
+    # Repair accidental Gregorian storage on the archive row (years ≥ 1600).
+    dirty_fields: list[str] = []
+    for field in (
+        "plan_date",
+        "mold_change_date",
+        "plan_start_date",
+        "actual_start_date",
+        "actual_end_date",
+    ):
+        raw = getattr(rec, field, None)
+        fixed = coerce_to_jalali_storage(raw)
+        if raw is not None and fixed is not None and fixed != raw:
+            setattr(rec, field, fixed)
+            dirty_fields.append(field)
+    if dirty_fields:
+        rec.save(update_fields=[*dirty_fields, "updated_at"])
+
+    if live_uids is None:
+        live_uids = _live_program_uids()
+    if uid and uid in live_uids:
+        prog = (
+            ProductionProgram.objects.select_related("item")
+            .filter(item__lines__uid=uid)
+            .distinct()
+            .first()
+        )
+        if prog is None:
+            for p in ProductionProgram.objects.select_related("item"):
+                if (p.resolved_uid or "").strip() == uid:
+                    prog = p
+                    break
+        if prog is not None:
             result["ok"] = True
             result["program_id"] = prog.pk
             result["plan_id"] = prog.item.plan_id
@@ -139,6 +191,18 @@ def sync_history_record_to_planning(rec, *, user=None) -> dict[str, Any]:
             approved_by=user,
         )
         result["created"] = True
+    else:
+        # Keep plan date in sync when archive has a usable شمسی date
+        jd = _to_jdate(rec.plan_date)
+        if jd and plan.date != jd:
+            conflict = (
+                WeeklyPlan.objects.filter(date=jd)
+                .exclude(pk=plan.pk)
+                .exists()
+            )
+            if not conflict:
+                plan.date = jd
+                plan.save(update_fields=["date"])
 
     mold_change = _to_jdate(rec.plan_start_date or rec.mold_change_date) or plan.date
     weekday = mold_change.weekday() if hasattr(mold_change, "weekday") else Weekday.SHANBE
@@ -229,19 +293,72 @@ def sync_history_record_to_planning(rec, *, user=None) -> dict[str, Any]:
 
 
 def sync_all_history_to_planning(*, user=None) -> dict[str, int]:
-    """Create/update planning rows for every archive history record."""
+    """Create/update planning rows for every archive history record (by plan number)."""
     from production.models import ProductionHistoryRecord
 
     stats = {"ok": 0, "failed": 0, "skipped": 0}
-    for rec in ProductionHistoryRecord.objects.all():
+    live_uids = _live_program_uids()
+    for rec in ProductionHistoryRecord.objects.all().iterator(chunk_size=200):
         if not (rec.plan_number or "").strip():
             stats["skipped"] += 1
             continue
-        out = sync_history_record_to_planning(rec, user=user)
+        out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
         if out.get("ok"):
             stats["ok"] += 1
+            if out.get("error") != "live" and (rec.program_uid or "").strip():
+                live_uids.add((rec.program_uid or "").strip())
         else:
             stats["failed"] += 1
+            register_alarm(
+                title="همگام‌سازی سابقه با برنامه‌ریزی ناموفق",
+                message=out.get("error") or "خطای نامشخص",
+                suggestion="کد کالا و شماره دستگاه/واحد را در کاتالوگ بررسی کنید.",
+                severity=SystemAlarm.Severity.SERIOUS,
+                kind=SystemAlarm.Kind.DATA_TRANSFER,
+                details={"program_uid": rec.program_uid, "plan_number": rec.plan_number},
+                dedupe=True,
+            )
+    return stats
+
+
+def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
+    """Sync only archive rows not yet present in planning (fast when already synced).
+
+    Groups into WeeklyPlan by ``plan_number``. Safe to call from plan list.
+    """
+    from production.models import ProductionHistoryRecord
+
+    stats = {"ok": 0, "failed": 0, "skipped": 0}
+    live_uids = _live_program_uids()
+    planned_uids = _planning_line_uids()
+    known = live_uids | planned_uids
+
+    for rec in (
+        ProductionHistoryRecord.objects.exclude(plan_number="")
+        .order_by("plan_number", "program_uid", "id")
+        .iterator(chunk_size=200)
+    ):
+        uid = (rec.program_uid or "").strip()
+        if uid and uid in known:
+            stats["skipped"] += 1
+            continue
+        # Incomplete Excel rows cannot become planning items — skip quietly
+        if not (rec.product_code or rec.product_name):
+            stats["skipped"] += 1
+            continue
+        if rec.unit_number is None or not str(rec.machine_number or "").strip():
+            stats["skipped"] += 1
+            continue
+        out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
+        if out.get("ok"):
+            stats["ok"] += 1
+            if uid:
+                known.add(uid)
+                if out.get("error") != "live":
+                    planned_uids.add(uid)
+        else:
+            stats["failed"] += 1
+            # Avoid flooding alarms on every plan_list visit for the same bad row
             register_alarm(
                 title="همگام‌سازی سابقه با برنامه‌ریزی ناموفق",
                 message=out.get("error") or "خطای نامشخص",

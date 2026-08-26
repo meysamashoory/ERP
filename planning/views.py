@@ -23,10 +23,12 @@ def plan_list(request):
     from django.db.models import Count
 
     from core.natsort import natural_key
+    from production.sync import ensure_history_synced_to_planning
     from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
 
     profile = get_profile(request.user)
-    # History → planning sync runs on Excel transfer/update, not on every list load.
+    # History → planning by plan_number: only missing rows (fast when already synced)
+    ensure_history_synced_to_planning(user=request.user)
 
     sort = (request.GET.get("sort") or "date").strip()
     direction = (request.GET.get("dir") or "desc").strip().lower()

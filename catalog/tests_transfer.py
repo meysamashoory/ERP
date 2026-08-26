@@ -310,6 +310,108 @@ class ExcelTransferTests(TestCase):
             or WeeklyPlan.objects.filter(program_number="BP-SYNC-1").exists()
         )
 
+    def test_history_to_planning_by_plan_number_uses_jalali_dates(self):
+        """Archive row → WeeklyPlan grouped by plan_number with شمسی dates."""
+        import jdatetime
+        from datetime import date
+
+        from catalog.models import Machine, Product
+        from planning.models import WeeklyPlan
+        from production.sync import sync_history_record_to_planning
+
+        product = Product.objects.first()
+        machine = Machine.objects.select_related("unit").first()
+        rec = ProductionHistoryRecord.objects.create(
+            program_uid="36006666001001",
+            plan_number="BP-JALALI-1",
+            plan_date=date(1405, 6, 1),
+            plan_start_date=date(1405, 6, 2),
+            actual_start_date=date(1405, 6, 3),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            planned_qty=50,
+            planned_cycle=28,
+            active_cavities=4,
+        )
+        # Also accept accidental Gregorian storage and repair it
+        rec2 = ProductionHistoryRecord.objects.create(
+            program_uid="36006666001002",
+            plan_number="BP-JALALI-1",
+            plan_date=date(2026, 8, 23),  # میلادی equivalent of 1405/06/01
+            plan_start_date=date(2026, 8, 24),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            planned_qty=60,
+            planned_cycle=30,
+            active_cavities=2,
+        )
+        out1 = sync_history_record_to_planning(rec, user=self.admin)
+        out2 = sync_history_record_to_planning(rec2, user=self.admin)
+        self.assertTrue(out1["ok"], out1)
+        self.assertTrue(out2["ok"], out2)
+        self.assertEqual(out1["plan_id"], out2["plan_id"])
+
+        plan = WeeklyPlan.objects.get(program_number="BP-JALALI-1")
+        self.assertEqual(plan.items.count(), 2)
+        self.assertIsInstance(plan.date, jdatetime.date)
+        self.assertEqual((plan.date.year, plan.date.month, plan.date.day), (1405, 6, 1))
+
+        rec2.refresh_from_db()
+        self.assertEqual(rec2.plan_date, date(1405, 6, 1))
+
+        # Transfer of Gregorian ISO string stores شمسی
+        from catalog.transfer import transfer_excel_table
+
+        upload = ExcelUpload.objects.create(title="dates", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="سوابق",
+            headers=["شناسه", "برنامه", "تاریخ", "کد", "نام", "واحد", "دستگاه"],
+            rows=[
+                [
+                    "36006666001003",
+                    "BP-JALALI-2",
+                    "2026-08-23",
+                    product.code,
+                    product.name,
+                    str(machine.unit.number),
+                    machine.number,
+                ]
+            ],
+        )
+        result = transfer_excel_table(
+            table=table,
+            destination_id="production_history",
+            level_id="history_list",
+            mapping={
+                "program_uid": 0,
+                "plan_number": 1,
+                "plan_date": 2,
+                "product_code": 3,
+                "product_name": 4,
+                "unit_number": 5,
+                "machine_number": 6,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(result.failed, 0)
+        stored = ProductionHistoryRecord.objects.get(program_uid="36006666001003")
+        self.assertEqual(stored.plan_date, date(1405, 6, 1))
+        plan2 = WeeklyPlan.objects.filter(program_number="BP-JALALI-2").first()
+        self.assertIsNotNone(plan2)
+        # Plan.date is unique — may bump one day if 1405/06/01 already taken by BP-JALALI-1
+        self.assertEqual(plan2.date.year, 1405)
+        self.assertEqual(plan2.date.month, 6)
+        self.assertGreaterEqual(plan2.date.day, 1)
+        # History archive itself keeps the exact شمسی value from Excel
+        self.assertEqual(stored.plan_date, date(1405, 6, 1))
+        item = plan2.items.first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.product_id, product.pk)
 
 class ProductDataTests(TestCase):
     @classmethod
@@ -448,24 +550,22 @@ class ProductDataTests(TestCase):
         self.assertTrue(any("وزن هر واحد" in a for a in result.alarms))
 
     def test_jalali_and_excel_serial_dates(self):
-        """Excel serial 46257 and شمسی 1405/06/01 both map to 2026-08-23."""
-        import jdatetime
+        """Excel serial / میلادی / شمسی all store as Jalali-encoded date(1405,6,1)."""
         from catalog.transfer import _parse_date
         from datetime import date
 
-        expected = jdatetime.date(1405, 6, 1).togregorian()
-        self.assertEqual(expected, date(2026, 8, 23))
+        expected = date(1405, 6, 1)  # شمسی encoded for history DateField
 
         for raw in ("46257", "46257.0", "1405/06/01", "1405-06-01", "۱۴۰۵/۰۶/۰۱"):
             parsed, err = _parse_date(raw, "تاریخ آزمایشی")
             self.assertIsNone(err, msg=f"raw={raw!r} err={err}")
             self.assertEqual(parsed, expected, msg=f"raw={raw!r}")
 
-        # Must NOT treat 1405 as Gregorian year 1405
+        # Must NOT treat 1405 as Gregorian year 1405, and must NOT store میلادی year
         parsed, err = _parse_date("1405/06/01", "تاریخ")
-        self.assertEqual(parsed.year, 2026)
+        self.assertEqual(parsed.year, 1405)
 
-        # Datetime string from openpyxl
+        # Datetime / ISO Gregorian from openpyxl → شمسی storage
         parsed, err = _parse_date("2026-08-23 00:00:00", "تاریخ")
         self.assertIsNone(err)
         self.assertEqual(parsed, expected)
@@ -474,9 +574,9 @@ class ProductDataTests(TestCase):
 
         self.assertEqual(
             _cell_str(46257, number_format="[$-fa-IR,96]yyyy/mm/dd"),
-            "2026-08-23",
+            "1405/06/01",
         )
-        self.assertEqual(_cell_str(date(2026, 8, 23)), "2026-08-23")
+        self.assertEqual(_cell_str(date(2026, 8, 23)), "1405/06/01")
 
     def test_qty_phrase_extracts_number_and_merges_type_into_name(self):
         from catalog.qty_parse import (

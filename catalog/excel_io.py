@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 
 from openpyxl.utils import range_boundaries
@@ -17,22 +17,6 @@ MAX_PREVIEW_ROWS = 5
 MAX_IMPORT_ROWS = 5000
 MAX_COLS = 80
 
-# Excel's 1900-date system epoch (with the legacy leap-day quirk baked in).
-_EXCEL_EPOCH = date(1899, 12, 30)
-
-
-def _excel_serial_to_date(serial: float | int) -> date | None:
-    try:
-        n = int(float(serial))
-    except (TypeError, ValueError):
-        return None
-    if not (1 <= n <= 100000):
-        return None
-    try:
-        return _EXCEL_EPOCH + timedelta(days=n)
-    except OverflowError:
-        return None
-
 
 def _looks_like_excel_date_format(number_format: str) -> bool:
     fmt = (number_format or "").strip().lower()
@@ -40,7 +24,6 @@ def _looks_like_excel_date_format(number_format: str) -> bool:
         return False
     if "fa-ir" in fmt or "fa_ir" in fmt:
         return True
-    # y/m/d tokens (ignore quoted literals roughly)
     return any(tok in fmt for tok in ("yy", "mm", "dd", "yyyy", "m/", "d/", "/m", "/d"))
 
 
@@ -48,19 +31,22 @@ def _cell_str(value: Any, *, number_format: str = "") -> str:
     """Normalize a worksheet cell to a transferable string.
 
     Date/datetime values and Excel serials with a date (incl. fa-IR) number format
-    become ISO Gregorian ``YYYY-MM-DD`` so transfer parsing is unambiguous.
+    become Jalali ``YYYY/MM/DD`` (e.g. ``1405/06/01``) so the system stores/display
+    شمسی — never raw میلادی years in the Excel grid.
     """
+    from catalog.jalali_dates import format_jalali_slash, excel_serial_to_gregorian
+
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.date().isoformat()
+        return format_jalali_slash(value.date())
     if isinstance(value, date):
-        return value.isoformat()
+        return format_jalali_slash(value)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if _looks_like_excel_date_format(number_format):
-            as_date = _excel_serial_to_date(value)
+            as_date = excel_serial_to_gregorian(value)
             if as_date is not None:
-                return as_date.isoformat()
+                return format_jalali_slash(as_date)
         if isinstance(value, float) and value.is_integer():
             return str(int(value))
         return str(value).strip()

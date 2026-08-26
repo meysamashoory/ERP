@@ -6,9 +6,21 @@ import jdatetime
 
 
 def format_jdate(value) -> str:
-    """Display Jalali dates as ``1405/02/25`` (never day-first or dash-separated)."""
+    """Display Jalali dates as ``1405/02/25`` (never day-first or dash-separated).
+
+    Also converts accidental Gregorian ``date`` values (year ≥ 1600) to شمسی.
+    """
     if value in (None, ""):
         return ""
+    try:
+        from catalog.jalali_dates import format_jalali_slash, is_gregorian_year
+
+        if hasattr(value, "year") and is_gregorian_year(int(value.year)):
+            text = format_jalali_slash(value)
+            if text:
+                return text
+    except Exception:  # noqa: BLE001
+        pass
     if hasattr(value, "strftime"):
         try:
             return value.strftime("%Y/%m/%d")
