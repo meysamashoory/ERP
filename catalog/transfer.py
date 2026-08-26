@@ -49,12 +49,12 @@ class TransferResult:
 
 # Exact columns of «سوابق تولید» list (+ end date for status inference)
 HISTORY_LIST_FIELDS: list[DestField] = [
+    # کد کالا / وضعیت / نمایش شناسه در UI سطح دوم است؛ کلید شناسه برای انتقال لیست لازم است.
     DestField("program_uid", "شناسه تعویض", "string", required=True),
     DestField("plan_number", "شماره برنامه", "string", required=True),
     DestField("plan_date", "تاریخ برنامه‌ریزی", "date"),
     DestField("unit_number", "شماره واحد", "integer"),
     DestField("machine_number", "شماره دستگاه", "string"),
-    # کد کالا / وضعیت در سطح روزانه نگاشت می‌شوند؛ نام جنس در لیست می‌ماند
     DestField("product_name", "نام جنس", "string"),
     DestField("mold_number", "شماره قالب", "string"),
     DestField("unique_code", "کد یکتا", "string"),

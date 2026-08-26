@@ -7,9 +7,9 @@
 {% block content %}
 <div class="panel">
   <div class="panel-head panel-head-compact">
-    <h2>سوابق تولید بر اساس شناسه تعویض</h2>
+    <h2>سوابق تولید</h2>
     <span class="muted" style="font-size:13px">
-      برای مشاهده جزئیات اسناد روزانه، روی هر ردیف کلیک کنید.
+      برای مشاهده شناسه تعویض، کد کالا، وضعیت و اسناد روزانه، روی هر ردیف کلیک کنید.
     </span>
   </div>
 
@@ -31,7 +31,6 @@
     <table class="table table-compact table-list-nav" id="history-list-table">
       <thead>
         <tr>
-          <th data-col="change_uid">شناسه تعویض</th>
           <th data-col="plan_number">شماره برنامه</th>
           <th data-col="plan_date">تاریخ برنامه‌ریزی</th>
           <th data-col="machine">شناسه دستگاه</th>
@@ -54,8 +53,7 @@
       <tbody>
         {% for row in rows %}
         <tr class="list-row" data-href="{{ row.detail_url }}" tabindex="0">
-          <td class="num cell-nav" data-col="change_uid" data-value="{{ row.change_uid }}"><strong>{{ row.change_uid|default:"—" }}</strong></td>
-          <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}">{{ row.plan_number }}</td>
+          <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}"><strong>{{ row.plan_number }}</strong></td>
           <td class="num cell-nav" data-col="plan_date" data-value="{{ row.plan_date_display }}">{{ row.plan_date_display }}</td>
           <td class="cell-nav" data-col="machine" data-value="{{ row.machine }}">{{ row.machine }}</td>
           <td class="cell-nav" data-col="product_name" data-value="{{ row.product_name }}" title="{{ row.product_name }}">{{ row.product_name }}</td>

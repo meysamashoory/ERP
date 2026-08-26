@@ -146,10 +146,16 @@ class ExcelTransferTests(TestCase):
         self.assertIn("عدد تولید یافت نشد", alarm_text)
 
         history = self.client.get(reverse("production_history"))
-        self.assertContains(history, "36001010101001")
         self.assertContains(history, "قطعه الف")
-        self.assertContains(history, "شناسه تعویض")
         self.assertContains(history, "ضایعات تولید")
+        self.assertContains(history, "BP-9001")
+        # شناسه تعویض فقط در سطح دوم (جزئیات روزانه)
+        self.assertNotContains(history, 'data-col="change_uid"')
+        detail = self.client.get(
+            reverse("production_history_archive_detail", args=[rec.pk])
+        )
+        self.assertContains(detail, "شناسه تعویض")
+        self.assertContains(detail, "36001010101001")
 
     def test_hub_hides_finished_programs(self):
         from production.models import ProductionProgram
@@ -170,10 +176,12 @@ class ExcelTransferTests(TestCase):
         self.assertNotContains(hub, finished.resolved_uid)
 
         history = self.client.get(reverse("production_history"))
-        self.assertContains(history, finished.resolved_uid)
-
+        # سطح اول شناسه را نشان نمی‌دهد؛ در جزئیات هست
+        self.assertNotContains(history, 'data-col="change_uid"')
         detail = self.client.get(reverse("production_history_detail", args=[finished.pk]))
         self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, finished.resolved_uid)
+        self.assertContains(detail, "شناسه تعویض")
         self.assertContains(detail, "اسناد ثبت‌شده روزانه")
         self.assertContains(detail, "انحراف آمار تولید")
 
@@ -834,6 +842,8 @@ class ProductDataTests(TestCase):
 
         listing = self.client.get(reverse("production_history"))
         self.assertEqual(listing.status_code, 200)
-        # سطح اول دیگر ستون کد کالا / وضعیت ندارد
+        # سطح اول دیگر ستون شناسه تعویض / کد کالا / وضعیت ندارد (همه در سطح روزانه)
+        self.assertNotContains(listing, 'data-col="change_uid"')
         self.assertNotContains(listing, 'data-col="product_code"')
         self.assertNotContains(listing, 'data-col="status"')
+        self.assertContains(listing, 'data-col="plan_number"')

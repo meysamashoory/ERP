@@ -15,6 +15,9 @@
   <div class="panel-body">
     <p class="history-summary">{{ summary }}</p>
     <dl class="detail-meta">
+      <div><dt>شناسه تعویض</dt><dd class="num">{{ row.change_uid|default:"—" }}</dd></div>
+      <div><dt>کد کالا</dt><dd>{{ row.product_code }}</dd></div>
+      <div><dt>وضعیت</dt><dd><span class="badge status-{{ row.status_code }}">{{ row.status_label }}</span></dd></div>
       <div><dt>نام کامل محصول</dt><dd>{{ row.product_name }}</dd></div>
       <div><dt>شماره برنامه</dt><dd>{{ row.plan_number }}</dd></div>
     </dl>
