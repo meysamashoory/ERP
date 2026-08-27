@@ -45,10 +45,48 @@ def _to_gdate(value):
     return j.togregorian()
 
 
+def _fa_digits_to_en(text: str) -> str:
+    table = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    return str(text or "").translate(table)
+
+
+def normalize_plan_number(value: str | int | None) -> str:
+    """Normalize شماره برنامه for grouping (Persian digits → English, trim)."""
+    text = _fa_digits_to_en(str(value or "")).strip()
+    return text[:40]
+
+
+def decode_unit_machine_from_uid(uid: str) -> tuple[int | None, str]:
+    """Extract unit/machine digits from a 14-digit شناسه تعویض when Excel omitted them."""
+    digits = "".join(ch for ch in _fa_digits_to_en(uid) if ch.isdigit())
+    if len(digits) < 8:
+        return None, ""
+    try:
+        from planning.uid import scheme_params
+
+        p = scheme_params()
+        i = int(p.get("year_digits", 2)) + int(p.get("program_digits", 3))
+        u_digits = int(p.get("unit_digits", 1))
+        m_digits = int(p.get("machine_digits", 2))
+        unit_s = digits[i : i + u_digits]
+        mach_s = digits[i + u_digits : i + u_digits + m_digits]
+        unit_n = int(unit_s) if unit_s else None
+        return unit_n, str(int(mach_s)) if mach_s else ""
+    except Exception:
+        # Fallback for classic 14-digit layout: YY(2) PPP(3) U(1) MM(2) …
+        if len(digits) >= 8:
+            return int(digits[5:6]), str(int(digits[6:8]))
+        return None, ""
+
+
 def resolve_machine(*, unit_number, machine_number) -> Machine | None:
     if unit_number is None or machine_number in (None, ""):
         return None
-    unit = ProductionUnit.objects.filter(number=int(unit_number)).first()
+    try:
+        unit_n = int(unit_number)
+    except (TypeError, ValueError):
+        return None
+    unit = ProductionUnit.objects.filter(number=unit_n).first()
     if not unit:
         return None
     return (
@@ -68,6 +106,87 @@ def resolve_product(*, code: str, name: str = "") -> Product | None:
     if name:
         return Product.objects.filter(name=name).first()
     return None
+
+
+def ensure_product_for_history(rec) -> Product | None:
+    """Resolve product from archive row; create a catalog stub when missing."""
+    from catalog.models import ProductSubGroup
+
+    product = resolve_product(
+        code=getattr(rec, "product_code", "") or "",
+        name=getattr(rec, "product_name", "") or "",
+    )
+    if product:
+        return product
+
+    code = (getattr(rec, "product_code", "") or "").strip()
+    name = (getattr(rec, "product_name", "") or "").strip()
+    uid = (getattr(rec, "program_uid", "") or "").strip()
+    if not code and not name and not uid:
+        return None
+    if not code:
+        code = f"H-{(uid or name)[:28]}"
+    if not name:
+        name = code
+    code = code[:40]
+
+    existing = Product.objects.filter(code=code).first()
+    if existing:
+        return existing
+
+    subgroup = ProductSubGroup.objects.order_by("id").first()
+    if subgroup is None:
+        return None
+    product = Product.objects.create(
+        code=code,
+        name=name[:200],
+        subgroup=subgroup,
+        is_active=True,
+    )
+    return product
+
+
+def ensure_machine_for_history(rec) -> Machine | None:
+    """Resolve machine from archive row / UID; create unit+machine stubs if needed."""
+    from catalog.models import MachineType
+
+    unit_n = getattr(rec, "unit_number", None)
+    mach_n = str(getattr(rec, "machine_number", "") or "").strip()
+    if unit_n is None or not mach_n:
+        du, dm = decode_unit_machine_from_uid(getattr(rec, "program_uid", "") or "")
+        if unit_n is None:
+            unit_n = du
+        if not mach_n:
+            mach_n = dm
+    if unit_n is None:
+        unit_n = 1
+    if not mach_n:
+        mach_n = "1"
+    try:
+        unit_n = int(unit_n)
+    except (TypeError, ValueError):
+        unit_n = 1
+    mach_n = str(int(_fa_digits_to_en(mach_n))) if str(mach_n).strip() else "1"
+
+    machine = resolve_machine(unit_number=unit_n, machine_number=mach_n)
+    if machine:
+        return machine
+
+    unit, _ = ProductionUnit.objects.get_or_create(
+        number=unit_n,
+        defaults={"name": f"واحد {unit_n}"},
+    )
+    machine = (
+        Machine.objects.filter(unit=unit, number=mach_n).order_by("id").first()
+    )
+    if machine:
+        return machine
+    return Machine.objects.create(
+        unit=unit,
+        number=mach_n,
+        machine_type=MachineType.INJECTION,
+        is_active=True,
+    )
 
 
 def _next_free_plan_date(preferred):
@@ -282,10 +401,14 @@ def sync_history_record_to_planning(
 
     result: dict[str, Any] = {"ok": False, "created": False, "error": ""}
     uid = (rec.program_uid or "").strip()
-    plan_number = (rec.plan_number or "").strip()
+    plan_number = normalize_plan_number(getattr(rec, "plan_number", "") or "")
     if not plan_number:
         result["error"] = "شماره برنامه خالی است."
         return result
+    # Keep normalized plan number on the archive row for stable grouping
+    if (rec.plan_number or "").strip() != plan_number:
+        rec.plan_number = plan_number
+        rec.save(update_fields=["plan_number", "updated_at"])
 
     # Repair accidental Gregorian storage on the archive row (years ≥ 1600).
     dirty_fields: list[str] = []
@@ -309,39 +432,75 @@ def sync_history_record_to_planning(
     if uid and uid in live_uids:
         prog = _find_program_by_uid(uid)
         if prog is not None:
-            _apply_program_state_from_history(rec, prog)
-            _sync_history_quantities_to_program(rec, prog, user=user)
-            result["ok"] = True
-            result["program_id"] = prog.pk
-            result["plan_id"] = prog.item.plan_id
-            result["error"] = "live"
-            return result
+            # If already live under the same plan number, only refresh quantities.
+            live_plan_no = normalize_plan_number(
+                getattr(getattr(prog, "item", None), "plan", None)
+                and prog.item.plan.program_number
+            )
+            if live_plan_no == plan_number:
+                _apply_program_state_from_history(rec, prog)
+                _sync_history_quantities_to_program(rec, prog, user=user)
+                result["ok"] = True
+                result["program_id"] = prog.pk
+                result["plan_id"] = prog.item.plan_id
+                result["error"] = "live"
+                return result
+            # Different plan number in Excel → continue and attach under Excel plan.
 
-    product = resolve_product(code=rec.product_code, name=rec.product_name)
-    machine = resolve_machine(unit_number=rec.unit_number, machine_number=rec.machine_number)
+    product = ensure_product_for_history(rec)
+    machine = ensure_machine_for_history(rec)
     if not product:
-        result["error"] = f"کالای «{rec.product_code or rec.product_name}» در کاتالوگ یافت نشد."
+        result["error"] = f"کالای «{rec.product_code or rec.product_name}» قابل ایجاد/یافتن نیست."
         return result
     if not machine:
         result["error"] = (
-            f"دستگاه «{rec.machine_number}» واحد «{rec.unit_number}» یافت نشد."
+            f"دستگاه «{rec.machine_number}» واحد «{rec.unit_number}» قابل ایجاد/یافتن نیست."
         )
         return result
 
+    # Persist backfilled unit/machine/code when we inferred them
+    backfill: list[str] = []
+    if rec.unit_number is None:
+        rec.unit_number = machine.unit.number
+        backfill.append("unit_number")
+    if not str(rec.machine_number or "").strip():
+        rec.machine_number = machine.number
+        backfill.append("machine_number")
+    if not str(rec.product_code or "").strip() and product.code:
+        rec.product_code = product.code
+        backfill.append("product_code")
+    if backfill:
+        rec.save(update_fields=[*backfill, "updated_at"])
+
     plan = WeeklyPlan.objects.filter(program_number=plan_number).first()
+    if not plan and len(plan_number) > 30:
+        plan = WeeklyPlan.objects.filter(program_number=plan_number[:30]).first()
     if not plan:
+        from django.db import IntegrityError
+
         plan_date = _to_jdate(rec.plan_date) or jdatetime.date.today()
-        # date must be unique
-        if WeeklyPlan.objects.filter(date=plan_date).exclude(program_number=plan_number).exists():
-            plan_date = _next_free_plan_date(plan_date)
-        plan = WeeklyPlan.objects.create(
-            program_number=plan_number,
-            date=plan_date,
-            status=WeeklyPlan.Status.APPROVED,
-            created_by=user,
-            approved_by=user,
-        )
-        result["created"] = True
+        plan_date = _next_free_plan_date(plan_date)
+        for _attempt in range(40):
+            try:
+                # Nested atomic → savepoint so IntegrityError does not abort the outer txn
+                with transaction.atomic():
+                    plan = WeeklyPlan.objects.create(
+                        program_number=plan_number[:30],
+                        date=plan_date,
+                        status=WeeklyPlan.Status.APPROVED,
+                        created_by=user,
+                        approved_by=user,
+                    )
+                result["created"] = True
+                break
+            except IntegrityError:
+                plan = WeeklyPlan.objects.filter(program_number=plan_number[:30]).first()
+                if plan:
+                    break
+                plan_date = _next_free_plan_date(plan_date + timedelta(days=1))
+        if plan is None:
+            result["error"] = "ایجاد برنامه هفتگی به‌خاطر تداخل تاریخ ممکن نشد."
+            return result
     else:
         # Keep plan date in sync when archive has a usable شمسی date
         jd = _to_jdate(rec.plan_date)
@@ -449,12 +608,109 @@ def sync_all_history_to_planning(*, user=None) -> dict[str, int]:
     return stats
 
 
+def _existing_weekly_plan_numbers() -> set[str]:
+    """Normalized program_number values already present as WeeklyPlan rows."""
+    from planning.models import WeeklyPlan
+
+    return {
+        normalize_plan_number(n)
+        for n in WeeklyPlan.objects.values_list("program_number", flat=True)
+        if normalize_plan_number(n)
+    }
+
+
+def sync_history_chunk_to_planning(
+    *, user=None, offset: int = 0, limit: int = 50, force: bool = False
+) -> dict[str, Any]:
+    """Sync a slice of archive history into planning (for progress UI).
+
+    Returns ok/failed/skipped counts plus pagination: total, offset, next_offset, done, percent.
+    When ``force`` is True, re-sync even if UID already exists in planning.
+
+    Skip rule: only skip a row when its UID is already known *and* its
+    ``plan_number`` already has a WeeklyPlan. Excel imports often reuse UIDs
+    while introducing new plan numbers — those must still create plans.
+    """
+    from production.models import ProductionHistoryRecord
+
+    qs = (
+        ProductionHistoryRecord.objects.exclude(plan_number="")
+        .order_by("plan_number", "program_uid", "id")
+    )
+    total = qs.count()
+    offset = max(0, int(offset or 0))
+    limit = max(1, min(int(limit or 50), 200))
+    chunk = list(qs[offset : offset + limit])
+
+    stats: dict[str, Any] = {
+        "ok": 0,
+        "failed": 0,
+        "skipped": 0,
+        "created": 0,
+        "updated": 0,
+        "refreshed": 0,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "processed": 0,
+        "done": False,
+        "percent": 0,
+        "next_offset": offset,
+    }
+    live_uids = _live_program_uids()
+    planned_uids = _planning_line_uids()
+    known = live_uids | planned_uids
+    existing_plans = _existing_weekly_plan_numbers()
+
+    for rec in chunk:
+        stats["processed"] += 1
+        uid = (rec.program_uid or "").strip()
+        plan_no = normalize_plan_number(rec.plan_number)
+        # Skip only when this plan number is already represented AND uid is known
+        if (
+            not force
+            and uid
+            and uid in known
+            and plan_no
+            and plan_no in existing_plans
+        ):
+            stats["skipped"] += 1
+            continue
+        if not (rec.product_code or rec.product_name or uid):
+            stats["skipped"] += 1
+            continue
+        out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
+        if out.get("ok"):
+            stats["ok"] += 1
+            if out.get("created"):
+                stats["created"] += 1
+            else:
+                stats["updated"] += 1
+            if uid:
+                known.add(uid)
+                live_uids.add(uid)
+                planned_uids.add(uid)
+            if plan_no:
+                existing_plans.add(plan_no)
+        else:
+            stats["failed"] += 1
+
+    next_offset = offset + len(chunk)
+    stats["next_offset"] = next_offset
+    stats["done"] = next_offset >= total
+    stats["percent"] = 100 if total == 0 else min(100, int(round(100 * next_offset / total)))
+    return stats
+
+
 def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
     """Sync only archive rows not yet present in planning (fast when already synced).
 
     Groups into WeeklyPlan by ``plan_number``. Safe to call from plan list.
     Also refreshes status/quantities for rows already linked when they are
     «در حال تولید».
+
+    Rows whose UID is already known are still synced when their ``plan_number``
+    does not yet have a WeeklyPlan (Excel reverse-aggregation case).
     """
     from production.models import ProductionHistoryRecord, ProductionProgram
 
@@ -462,6 +718,7 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
     live_uids = _live_program_uids()
     planned_uids = _planning_line_uids()
     known = live_uids | planned_uids
+    existing_plans = _existing_weekly_plan_numbers()
 
     for rec in (
         ProductionHistoryRecord.objects.exclude(plan_number="")
@@ -469,6 +726,7 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
         .iterator(chunk_size=200)
     ):
         uid = (rec.program_uid or "").strip()
+        plan_no = normalize_plan_number(rec.plan_number)
         inferred = infer_history_status(
             actual_start=rec.actual_start_date, actual_end=rec.actual_end_date
         )
@@ -479,7 +737,7 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
             "temp_stop",
         )
 
-        if uid and uid in known:
+        if uid and uid in known and plan_no and plan_no in existing_plans:
             # Refresh live/running programs so ثبت و کنترل stays up to date
             if is_active:
                 prog = _find_program_by_uid(uid)
@@ -490,11 +748,8 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
                     continue
             stats["skipped"] += 1
             continue
-        # Incomplete Excel rows cannot become planning items — skip quietly
-        if not (rec.product_code or rec.product_name):
-            stats["skipped"] += 1
-            continue
-        if rec.unit_number is None or not str(rec.machine_number or "").strip():
+        # Need at least a product identity or UID so stubs can be created
+        if not (rec.product_code or rec.product_name or uid):
             stats["skipped"] += 1
             continue
         out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
@@ -505,6 +760,8 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
                 if out.get("error") != "live":
                     planned_uids.add(uid)
                     live_uids.add(uid)
+            if plan_no:
+                existing_plans.add(plan_no)
         else:
             stats["failed"] += 1
             # Avoid flooding alarms on every plan_list visit for the same bad row

@@ -45,16 +45,23 @@ class TransferResult:
     alarms: list[str] = field(default_factory=list)
     table_deleted: bool = False
     redirect_url: str = ""
+    # Chunked transfer progress (optional)
+    total_rows: int = 0
+    offset: int = 0
+    next_offset: int = 0
+    done: bool = True
+    percent: int = 100
 
 
 # Exact columns of «سوابق تولید» list (+ end date for status inference)
 HISTORY_LIST_FIELDS: list[DestField] = [
-    # کد کالا / وضعیت / نمایش شناسه در UI سطح دوم است؛ کلید شناسه برای انتقال لیست لازم است.
+    # شناسه برای کلید لیست لازم است؛ کد کالا اختیاری (در سطح روزانه هم هست).
     DestField("program_uid", "شناسه تعویض", "string", required=True),
     DestField("plan_number", "شماره برنامه", "string", required=True),
     DestField("plan_date", "تاریخ برنامه‌ریزی", "date"),
     DestField("unit_number", "شماره واحد", "integer"),
     DestField("machine_number", "شماره دستگاه", "string"),
+    DestField("product_code", "کد کالا", "string"),
     DestField("product_name", "نام جنس", "string"),
     DestField("mold_number", "شماره قالب", "string"),
     DestField("unique_code", "کد یکتا", "string"),
@@ -475,7 +482,13 @@ def transfer_result_message(result: TransferResult) -> str:
 
 
 def _transfer_history_list(
-    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+    *,
+    table: ExcelTable,
+    col_map: dict[str, int | None],
+    user,
+    mode: str = MODE_TRANSFER,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> TransferResult:
     from production.models import ProductionHistoryRecord, ProductionProgram
     from production.sync import check_history_machine_conflicts, sync_history_record_to_planning
@@ -487,15 +500,31 @@ def _transfer_history_list(
     )
     headers = table.headers if isinstance(table.headers, list) else []
     rows = table.rows if isinstance(table.rows, list) else []
+    total = len(rows)
+    offset = max(0, int(offset or 0))
+    if limit is None:
+        chunk_rows = rows[offset:]
+        next_offset = total
+        done = True
+    else:
+        limit = max(1, min(int(limit), 200))
+        chunk_rows = rows[offset : offset + limit]
+        next_offset = offset + len(chunk_rows)
+        done = next_offset >= total
+    result.total_rows = total
+    result.offset = offset
+    result.next_offset = next_offset
+    result.done = done
+    result.percent = 100 if total == 0 else min(100, int(round(100 * next_offset / total)))
 
     live_uids = set()
     for p in ProductionProgram.objects.select_related("item").all():
         uid = (p.resolved_uid or "").strip()
         if uid:
             live_uids.add(uid)
-    hist_uids = set(ProductionHistoryRecord.objects.values_list("program_uid", flat=True))
 
-    for row_i, row in enumerate(rows, start=1):
+    for local_i, row in enumerate(chunk_rows):
+        row_i = offset + local_i + 1
         if not isinstance(row, list):
             _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
             continue
@@ -540,6 +569,12 @@ def _transfer_history_list(
 
             Product.objects.filter(code=code).update(name=new_name)
 
+        # Normalize plan number for stable grouping in planning
+        if "plan_number" in defaults and defaults["plan_number"] is not None:
+            from production.sync import normalize_plan_number
+
+            defaults["plan_number"] = normalize_plan_number(defaults["plan_number"])
+
         rec = ProductionHistoryRecord.objects.filter(program_uid=uid).first()
         if rec:
             for key, val in defaults.items():
@@ -559,7 +594,6 @@ def _transfer_history_list(
                 extra={"excel_headers": headers, "excel_row_index": row_i},
                 **{k: defaults[k] for k in defaults},
             )
-            hist_uids.add(uid)
 
         sync_out = sync_history_record_to_planning(rec, user=user)
         if not sync_out.get("ok") and sync_out.get("error") not in ("", "live"):
@@ -580,7 +614,8 @@ def _transfer_history_list(
             )
         result.transferred += 1
 
-    check_history_machine_conflicts()
+    if done:
+        check_history_machine_conflicts()
     return result
 
 
@@ -857,11 +892,14 @@ def transfer_excel_table(
     user,
     level_id: str = LEVEL_HISTORY_LIST,
     mode: str = MODE_TRANSFER,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> TransferResult:
     """Transfer or update table rows into destination. Does NOT delete the Excel table.
 
     mode=transfer: create missing records and update existing ones.
     mode=update: only patch existing records; never insert new ones.
+    Optional offset/limit enable chunked transfer with progress percent.
     """
     if mode not in (MODE_TRANSFER, MODE_UPDATE):
         raise ValueError("حالت عملیات نامعتبر است (انتقال یا بروزرسانی).")
@@ -887,7 +925,11 @@ def transfer_excel_table(
     if not handler:
         raise ValueError("هندلر انتقال یافت نشد.")
 
-    result = handler(table=table, col_map=col_map, user=user, mode=mode)
+    kwargs = {"table": table, "col_map": col_map, "user": user, "mode": mode}
+    if handler is _transfer_history_list:
+        kwargs["offset"] = offset
+        kwargs["limit"] = limit
+    result = handler(**kwargs)
     result.mode = mode
     result.redirect_url = reverse("excel_detail", args=[table.upload_id]) if table.upload_id else reverse("excel_list")
     result.table_deleted = False

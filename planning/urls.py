@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.plan_list, name="plan_list"),
+    path("sync-from-history/", views.plan_sync_from_history, name="plan_sync_from_history"),
     path("new/", views.plan_create, name="plan_create"),
     path("<int:pk>/", views.plan_detail, name="plan_detail"),
     path("<int:pk>/edit/", views.plan_edit, name="plan_edit"),

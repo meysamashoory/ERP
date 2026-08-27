@@ -682,6 +682,28 @@ a.tab { text-decoration: none; display: inline-block; }
   margin-bottom: 4px;
 }
 .list-filter-count { font-size: 12px; padding-bottom: 8px; }
+
+.list-filter-bar-compact {
+  gap: 8px 10px;
+  padding: 0 4px 10px;
+}
+.list-filter-bar-compact .field-search {
+  flex: 0 1 280px;
+  max-width: 320px;
+  min-width: 160px;
+}
+.list-filter-bar-compact .field-grow,
+.list-filter-bar .field-grow {
+  flex: 1 1 180px;
+}
+.list-filter-bar-compact .field {
+  min-width: 120px;
+}
+.list-filter-bar-compact .field-search input {
+  width: 100%;
+  max-width: 320px;
+}
+
 .detail-meta {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

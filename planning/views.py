@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from accounts.permissions import get_profile
 from production.models import FittingProduction
@@ -23,19 +24,17 @@ def plan_list(request):
     from django.db.models import Count
 
     from core.natsort import natural_key
-    from production.sync import ensure_history_synced_to_planning
     from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
 
     profile = get_profile(request.user)
-    # History → planning by plan_number: only missing rows (fast when already synced)
-    ensure_history_synced_to_planning(user=request.user)
+    # Heavy history→planning sync is triggered explicitly via «بروزرسانی از سوابق»
 
-    sort = (request.GET.get("sort") or "date").strip()
-    direction = (request.GET.get("dir") or "desc").strip().lower()
+    sort = (request.GET.get("sort") or "number").strip()
+    direction = (request.GET.get("dir") or "asc").strip().lower()
     if sort not in {"number", "date"}:
-        sort = "date"
+        sort = "number"
     if direction not in {"asc", "desc"}:
-        direction = "desc"
+        direction = "asc"
 
     plans = list(
         WeeklyPlan.objects.select_related("created_by", "approved_by")
@@ -66,6 +65,34 @@ def plan_list(request):
             "dir": direction,
         },
     )
+
+
+@login_required
+@require_POST
+def plan_sync_from_history(request):
+    """Chunked history → planning sync used by the plan-list refresh button."""
+    import json
+
+    from production.sync import sync_history_chunk_to_planning
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    try:
+        offset = int(payload.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        limit = int(payload.get("limit") or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    force = bool(payload.get("force"))
+    stats = sync_history_chunk_to_planning(
+        user=request.user, offset=offset, limit=limit, force=force
+    )
+    # stats["ok"] is a success *count*; put boolean ok last so it is not overwritten
+    return JsonResponse({**stats, "synced": stats.get("ok", 0), "ok": True})
 
 
 @login_required

@@ -317,6 +317,60 @@ class ExcelTransferTests(TestCase):
             or WeeklyPlan.objects.filter(program_number="BP-SYNC-1").exists()
         )
 
+
+    def test_history_chunk_sync_creates_plan_even_when_uid_already_known(self):
+        """Excel reverse-aggregation: known UID + new plan_number must still create a plan."""
+        from datetime import date
+
+        from catalog.models import Machine, Product
+        from planning.models import WeeklyPlan
+        from production.sync import (
+            sync_history_chunk_to_planning,
+            sync_history_record_to_planning,
+        )
+
+        product = Product.objects.first()
+        machine = Machine.objects.select_related("unit").first()
+        self.assertIsNotNone(product)
+        self.assertIsNotNone(machine)
+
+        # First history row creates plan BP-KNOWN-UID and registers the UID in planning
+        seed = ProductionHistoryRecord.objects.create(
+            program_uid="UID-CHUNK-REUSE-1",
+            plan_number="BP-KNOWN-UID",
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            plan_date=date(1403, 1, 10),
+            planned_qty=5,
+        )
+        seed_out = sync_history_record_to_planning(seed, user=self.admin)
+        self.assertTrue(seed_out["ok"], seed_out)
+        self.assertTrue(WeeklyPlan.objects.filter(program_number="BP-KNOWN-UID").exists())
+
+        # Second Excel row reuses the same UID under a *new* plan number
+        ProductionHistoryRecord.objects.create(
+            program_uid="UID-CHUNK-REUSE-1",
+            plan_number="BP-NEW-FROM-EXCEL",
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            plan_date=date(1403, 2, 1),
+            planned_qty=8,
+        )
+        self.assertFalse(
+            WeeklyPlan.objects.filter(program_number="BP-NEW-FROM-EXCEL").exists()
+        )
+
+        # Without the plan_number-aware skip fix, chunk sync would skip this UID
+        stats = sync_history_chunk_to_planning(user=self.admin, offset=0, limit=500)
+        self.assertTrue(
+            WeeklyPlan.objects.filter(program_number="BP-NEW-FROM-EXCEL").exists(),
+            msg=f"chunk stats={stats}",
+        )
+
     def test_history_to_planning_by_plan_number_uses_jalali_dates(self):
         """Archive row → WeeklyPlan grouped by plan_number with شمسی dates."""
         import jdatetime

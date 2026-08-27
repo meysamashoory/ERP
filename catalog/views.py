@@ -409,6 +409,24 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
     if not destination_id:
         return JsonResponse({"ok": False, "error": "مقصد انتقال را انتخاب کنید."}, status=400)
     try:
+        offset = int(payload.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    limit = payload.get("limit", None)
+    if limit is not None:
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 80
+    # Chunk history list transfers so the UI can show progress percent
+    if destination_id in ("production_history", "history") and level_id in (
+        "history_list",
+        "list",
+        "",
+    ):
+        if limit is None:
+            limit = 80
+    try:
         result = transfer_excel_table(
             table=table,
             destination_id=destination_id,
@@ -416,6 +434,8 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
             mapping=mapping,
             user=request.user,
             mode=mode,
+            offset=offset,
+            limit=limit,
         )
     except ValueError as exc:
         register_alarm(
@@ -453,6 +473,13 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         "table_deleted": False,
         "redirect_url": result.redirect_url,
         "message": transfer_result_message(result),
+        "progress": {
+            "offset": getattr(result, "offset", 0),
+            "next_offset": getattr(result, "next_offset", 0),
+            "total_rows": getattr(result, "total_rows", 0),
+            "done": getattr(result, "done", True),
+            "percent": getattr(result, "percent", 100),
+        },
     })
 
 

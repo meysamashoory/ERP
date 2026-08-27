@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% load planning_extras %}
+{% load static planning_extras %}
 {% block title %}برنامه‌ریزی هفتگی{% endblock %}
 {% block heading %}برنامه‌ریزی هفتگی تولید{% endblock %}
 {% block nav_planning %}active{% endblock %}
 
 {% block topbar_actions %}
 <div class="topbar-actions">
+  <button type="button" class="btn btn-sm btn-secondary" id="plan-sync-btn">بروزرسانی از سوابق</button>
   {% if profile.can_create_plans %}
   <a class="btn btn-sm" href="{% url 'plan_create' %}">+ برنامه جدید</a>
   {% endif %}
@@ -13,70 +14,89 @@
 {% endblock %}
 
 {% block content %}
+<div id="plan-sync-progress" class="muted" style="display:none;margin:0 0 .75rem;" aria-live="polite"></div>
+
 <div class="panel plan-list-panel">
+  <div class="list-filter-bar list-filter-bar-compact" id="plan-filter-bar">
+    <div class="field">
+      <label for="plan-filter-col">ستون</label>
+      <select id="plan-filter-col" class="input"></select>
+    </div>
+    <div class="field field-search">
+      <label for="plan-filter-q">جستجو</label>
+      <input type="search" id="plan-filter-q" class="input" placeholder="شماره برنامه، روز، ایجادکننده…" autocomplete="off">
+    </div>
+    <button type="button" class="btn btn-sm btn-ghost" id="plan-filter-clear">پاک کردن</button>
+    <span class="muted list-filter-count" id="plan-filter-count"></span>
+  </div>
+
   {% if plans %}
-  <table class="table table-plan-list">
-    <thead>
-      <tr>
-        <th>ردیف</th>
-        <th>
-          <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}">
-            شماره برنامه {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
-          </a>
-        </th>
-        <th>
-          <a class="th-sort" href="?sort=date&dir={% if sort == 'date' and dir == 'asc' %}desc{% else %}asc{% endif %}">
-            تاریخ برنامه {% if sort == 'date' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
-          </a>
-        </th>
-        <th>روز برنامه</th>
-        <th>ایجاد کننده</th>
-        <th>تعداد فرم</th>
-        <th>تقویم برنامه</th>
-        <th>تعداد قالب برنامه</th>
-        <th>عملیات</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for plan in plans %}
-      <tr>
-        <td>{{ forloop.counter }}</td>
-        <td>{{ plan.program_number|program_no }}</td>
-        <td>{{ plan.date|jdate }}</td>
-        <td>{{ plan.weekday_name }}</td>
-        <td>{{ plan.created_by.username|default:'—' }}</td>
-        <td class="forms-cell">
-          <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
-            data-forms-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}"
-            data-forms-ctx="weekly_plan"
-            data-forms-id="{{ plan.pk }}"
-            data-forms-json="{{ forms_weekly_json|escape }}">{{ forms_weekly|length }} فرم</button>
-        </td>
-        <td>
-          <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
-            data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}">تقویم برنامه</button>
-        </td>
-        <td>{{ plan.mold_count }}</td>
-        <td>
-          <form method="post" action="{% url 'plan_operate' plan.pk %}" class="ops-apply-form">
-            {% csrf_token %}
-            <select name="action" class="ops-select input">
-              <option value="view" selected>مشاهده</option>
-              {% if plan.can_edit_by_user %}
-              <option value="edit">ویرایش</option>
-              {% endif %}
-              {% if plan.can_delete_by_user %}
-              <option value="delete">حذف برنامه</option>
-              {% endif %}
-            </select>
-            <button class="btn btn-sm" type="submit">اعمال</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="empty">هنوز برنامه‌ای ثبت نشده است.</p>{% endif %}
+  <div class="table-scroll">
+    <table class="table table-plan-list" id="plan-list-table">
+      <thead>
+        <tr>
+          <th data-col="row">ردیف</th>
+          <th data-col="program_number">
+            <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+              شماره برنامه {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+            </a>
+          </th>
+          <th data-col="date">
+            <a class="th-sort" href="?sort=date&dir={% if sort == 'date' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+              تاریخ برنامه {% if sort == 'date' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+            </a>
+          </th>
+          <th data-col="weekday">روز برنامه</th>
+          <th data-col="creator">ایجاد کننده</th>
+          <th data-col="forms">تعداد فرم</th>
+          <th data-col="calendar">تقویم برنامه</th>
+          <th data-col="mold_count">تعداد قالب برنامه</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for plan in plans %}
+        <tr>
+          <td data-col="row" data-value="{{ forloop.counter }}">{{ forloop.counter }}</td>
+          <td data-col="program_number" data-value="{{ plan.program_number|program_no }}">{{ plan.program_number|program_no }}</td>
+          <td data-col="date" data-value="{{ plan.date|jdate }}">{{ plan.date|jdate }}</td>
+          <td data-col="weekday" data-value="{{ plan.weekday_name }}">{{ plan.weekday_name }}</td>
+          <td data-col="creator" data-value="{{ plan.created_by.username|default:'' }}">{{ plan.created_by.username|default:'—' }}</td>
+          <td class="forms-cell" data-col="forms" data-value="{{ forms_weekly|length }}">
+            <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
+              data-forms-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}"
+              data-forms-ctx="weekly_plan"
+              data-forms-id="{{ plan.pk }}"
+              data-forms-json="{{ forms_weekly_json|escape }}">{{ forms_weekly|length }} فرم</button>
+          </td>
+          <td data-col="calendar" data-value="">
+            <button type="button" class="btn btn-sm btn-ghost" data-calendar-plan="{{ plan.pk }}"
+              data-calendar-title="شماره برنامه {{ plan.program_number|program_no }} — {{ plan.date|jdate }}">تقویم برنامه</button>
+          </td>
+          <td data-col="mold_count" data-value="{{ plan.mold_count }}">{{ plan.mold_count }}</td>
+          <td>
+            <form method="post" action="{% url 'plan_operate' plan.pk %}" class="ops-apply-form">
+              {% csrf_token %}
+              <select name="action" class="ops-select input">
+                <option value="view" selected>مشاهده</option>
+                {% if plan.can_edit_by_user %}
+                <option value="edit">ویرایش</option>
+                {% endif %}
+                {% if plan.can_delete_by_user %}
+                <option value="delete">حذف برنامه</option>
+                {% endif %}
+              </select>
+              <button class="btn btn-sm" type="submit">اعمال</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">هنوز برنامه‌ای ثبت نشده است. از «بروزرسانی از سوابق» یا انتقال اکسل استفاده کنید.</p>
+  {% endif %}
 </div>
 
 <dialog id="plan-calendar-dialog" class="dialog">
@@ -92,7 +112,21 @@
 
 {% block scripts %}
 {% include "print_forms/_forms_dialog.html" %}
+<script src="{% static 'js/list_filter.js' %}?v=2"></script>
 <script>
+(function () {
+  if (window.initColumnFilter) {
+    window.initColumnFilter({
+      tableId: "plan-list-table",
+      colSelectId: "plan-filter-col",
+      queryId: "plan-filter-q",
+      clearId: "plan-filter-clear",
+      countId: "plan-filter-count",
+      defaultCol: "program_number",
+    });
+  }
+})();
+
 (function () {
   var dialog = document.getElementById("plan-calendar-dialog");
   var titleEl = document.getElementById("calendar-dialog-title");
@@ -126,7 +160,7 @@
             html += '<tr><td colspan="' + (units.length + 2) + '" class="muted">داده‌ای نیست</td></tr>';
           } else {
             rows.forEach(function (row) {
-              html += "<tr><td>" + row.weekday + "</td><td>" + row.date + "</td>";
+              html += "<tr><td>" + (row.weekday || "") + "</td><td>" + (row.date || "") + "</td>";
               (row.counts_list || []).forEach(function (c) { html += "<td>" + c + "</td>"; });
               html += "</tr>";
             });
@@ -138,6 +172,7 @@
     });
   });
 })();
+
 (function () {
   document.querySelectorAll(".ops-apply-form").forEach(function (form) {
     form.addEventListener("submit", function (e) {
@@ -146,6 +181,74 @@
         if (!window.confirm("این برنامه حذف شود؟")) e.preventDefault();
       }
     });
+  });
+})();
+
+(function () {
+  var btn = document.getElementById("plan-sync-btn");
+  var progress = document.getElementById("plan-sync-progress");
+  if (!btn || !progress) return;
+
+  function csrfToken() {
+    var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
+  btn.addEventListener("click", async function () {
+    btn.disabled = true;
+    progress.style.display = "block";
+    progress.textContent = "در حال همگام‌سازی… ۰٪";
+    var offset = 0;
+    var limit = 80;
+    var createdTotal = 0;
+    var updatedTotal = 0;
+    try {
+      while (true) {
+        var response = await fetch("{% url 'plan_sync_from_history' %}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken(),
+          },
+          body: JSON.stringify({ offset: offset, limit: limit }),
+        });
+        var data = await response.json();
+        if (!response.ok || data.ok === false) {
+          throw new Error(data.error || "خطا در همگام‌سازی");
+        }
+        createdTotal += data.created || 0;
+        updatedTotal += data.updated || 0;
+        var percent = typeof data.percent === "number" ? data.percent : 0;
+        progress.textContent =
+          "در حال همگام‌سازی… " +
+          percent +
+          "٪" +
+          " (جدید: " +
+          createdTotal +
+          " / به‌روز: " +
+          updatedTotal +
+          ")";
+        if (data.done) {
+          progress.textContent =
+            "همگام‌سازی کامل شد — " +
+            percent +
+            "٪" +
+            " (جدید: " +
+            createdTotal +
+            " / به‌روز: " +
+            updatedTotal +
+            ")";
+          window.setTimeout(function () {
+            window.location.reload();
+          }, 700);
+          return;
+        }
+        offset = data.next_offset || offset + limit;
+      }
+    } catch (err) {
+      progress.textContent = "خطا: " + (err && err.message ? err.message : "نامشخص");
+      btn.disabled = false;
+    }
   });
 })();
 </script>

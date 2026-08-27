@@ -1,68 +1,104 @@
 /**
  * Column-scoped search/filter for list tables.
  * Expects th[data-col] headers and td[data-col][data-value] cells.
+ *
+ * Numeric queries (only digits, incl. Persian) match the cell's numeric value
+ * exactly — searching "35" will not match "135". Text queries stay substring.
  */
 (function () {
+  function toEnDigits(s) {
+    return String(s || "").replace(/[۰-۹٠-٩]/g, function (ch) {
+      var code = ch.charCodeAt(0);
+      if (code >= 0x06f0 && code <= 0x06f9) return String(code - 0x06f0);
+      if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
+      return ch;
+    });
+  }
+
   function normalize(s) {
-    return String(s || "")
+    return toEnDigits(s)
       .toLowerCase()
       .replace(/ي/g, "ی")
       .replace(/ك/g, "ک")
       .trim();
   }
 
+  function isNumericQuery(q) {
+    return /^[0-9]+$/.test(toEnDigits(q).trim());
+  }
+
+  function numericValue(s) {
+    var digits = toEnDigits(s).replace(/[^\d]/g, "");
+    if (!digits) return null;
+    // Avoid treating leading zeros specially for equality of the digit string
+    return String(parseInt(digits, 10));
+  }
+
+  function cellMatches(hay, q, exactNumber) {
+    if (!q) return true;
+    if (exactNumber) {
+      var hv = numericValue(hay);
+      var qv = numericValue(q);
+      if (hv === null || qv === null) return false;
+      return hv === qv;
+    }
+    return normalize(hay).indexOf(normalize(q)) !== -1;
+  }
+
   window.initColumnFilter = function (opts) {
-    const table = document.getElementById(opts.tableId);
-    const colSelect = document.getElementById(opts.colSelectId);
-    const queryInput = document.getElementById(opts.queryId);
-    const clearBtn = document.getElementById(opts.clearId);
-    const countEl = opts.countId ? document.getElementById(opts.countId) : null;
+    var table = document.getElementById(opts.tableId);
+    var colSelect = document.getElementById(opts.colSelectId);
+    var queryInput = document.getElementById(opts.queryId);
+    var clearBtn = document.getElementById(opts.clearId);
+    var countEl = opts.countId ? document.getElementById(opts.countId) : null;
     if (!table || !colSelect || !queryInput) return;
 
-    const headers = Array.from(table.querySelectorAll("thead th[data-col]"));
+    var headers = Array.from(table.querySelectorAll("thead th[data-col]"));
     colSelect.innerHTML = "";
-    const allOpt = document.createElement("option");
+    var allOpt = document.createElement("option");
     allOpt.value = "*";
     allOpt.textContent = "همه ستون‌ها";
     colSelect.appendChild(allOpt);
     headers.forEach(function (th) {
-      const opt = document.createElement("option");
+      var opt = document.createElement("option");
       opt.value = th.getAttribute("data-col") || "";
       opt.textContent = (th.textContent || "").trim();
       colSelect.appendChild(opt);
     });
     if (opts.defaultCol) {
-      const has = Array.from(colSelect.options).some(function (o) {
+      var has = Array.from(colSelect.options).some(function (o) {
         return o.value === opts.defaultCol;
       });
       if (has) colSelect.value = opts.defaultCol;
     }
 
     function apply() {
-      const col = colSelect.value || "*";
-      const q = normalize(queryInput.value);
-      const rows = table.querySelectorAll("tbody tr");
-      let visible = 0;
+      var col = colSelect.value || "*";
+      var rawQ = queryInput.value || "";
+      var q = normalize(rawQ);
+      var exactNumber = isNumericQuery(rawQ);
+      var rows = table.querySelectorAll("tbody tr");
+      var visible = 0;
       rows.forEach(function (tr) {
         if (!q) {
           tr.hidden = false;
           visible += 1;
           return;
         }
-        let hay = "";
+        var match = false;
         if (col === "*") {
-          hay = Array.from(tr.querySelectorAll("td[data-value], td[data-col]"))
-            .map(function (td) {
-              return td.getAttribute("data-value") || td.textContent || "";
-            })
-            .join(" ");
+          var cells = Array.from(tr.querySelectorAll("td[data-value], td[data-col]"));
+          match = cells.some(function (td) {
+            var hay = td.getAttribute("data-value") || td.textContent || "";
+            return cellMatches(hay, rawQ, exactNumber);
+          });
         } else {
-          const td = tr.querySelector('td[data-col="' + col + '"]');
-          hay = td
+          var td = tr.querySelector('td[data-col="' + col + '"]');
+          var hay = td
             ? td.getAttribute("data-value") || td.textContent || ""
             : "";
+          match = cellMatches(hay, rawQ, exactNumber);
         }
-        const match = normalize(hay).indexOf(q) !== -1;
         tr.hidden = !match;
         if (match) visible += 1;
       });

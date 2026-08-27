@@ -293,56 +293,89 @@
       return;
     }
     const isUpdate = activeMode === "update";
-    const busyLabel = isUpdate ? "در حال بروزرسانی…" : "در حال انتقال دیتا…";
+    const baseBusy = isUpdate ? "در حال بروزرسانی" : "در حال انتقال دیتا";
     submitBtn.disabled = true;
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
-    setTableTransferStatus(activeTableId, busyLabel, false);
+    setTableTransferStatus(activeTableId, baseBusy + "… ۰٪", false);
 
     const url = transferTpl.replace(/\/0\/transfer\/?$/, "/" + table.id + "/transfer/");
+    const chunkHistory =
+      (dest.id === "production_history" || dest.id === "history") &&
+      (level.id === "history_list" || level.id === "list" || !level.id);
+    const chunkSize = chunkHistory ? 80 : null;
+
     try {
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrf,
-        },
-        body: JSON.stringify({
+      let offset = 0;
+      let totalTransferred = 0;
+      let totalFailed = 0;
+      let lastMessage = "";
+      let allAlarms = [];
+      let done = false;
+      let guard = 0;
+
+      while (!done && guard < 5000) {
+        guard += 1;
+        const body = {
           destination: dest.id,
           level: level.id,
           mapping: mapping,
           mode: activeMode,
-        }),
-      });
-      const data = await resp.json();
-      const alarms = Array.isArray(data.alarms) ? data.alarms : [];
+          offset: offset,
+        };
+        if (chunkSize != null) body.limit = chunkSize;
+
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrf,
+          },
+          body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        const progress = data.progress || {};
+        const percent = typeof progress.percent === "number" ? progress.percent : 100;
+        setTableTransferStatus(activeTableId, baseBusy + "… " + percent + "٪", false);
+
+        if (!data.ok && !(data.transferred > 0) && offset === 0) {
+          const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
+          setTableTransferStatus(activeTableId, failLabel, false);
+          alert(data.error || data.message || failLabel);
+          submitBtn.disabled = false;
+          return;
+        }
+
+        totalTransferred += data.transferred || 0;
+        totalFailed += data.failed || 0;
+        lastMessage = data.message || lastMessage;
+        if (Array.isArray(data.alarms)) allAlarms = allAlarms.concat(data.alarms);
+
+        if (chunkSize == null || progress.done !== false) {
+          done = true;
+        } else {
+          offset = progress.next_offset || offset + chunkSize;
+          if (progress.total_rows && offset >= progress.total_rows) done = true;
+        }
+      }
+
       const detail =
-        alarms.length > 0
-          ? "\n\nجزئیات خطا:\n• " + alarms.slice(0, 8).join("\n• ")
+        allAlarms.length > 0
+          ? "\n\nجزئیات خطا:\n• " + allAlarms.slice(0, 8).join("\n• ")
           : "";
       const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
       const partialLabel = isUpdate ? "بروزرسانی ناقص" : "انتقال ناقص";
+      const okLabel = isUpdate ? "بروزرسانی موفق" : "انتقال موفق";
 
-      if (!data.ok && !(data.transferred > 0)) {
+      if (totalFailed > 0 && totalTransferred === 0) {
         setTableTransferStatus(activeTableId, failLabel, false);
-        alert((data.error || data.message || failLabel) + detail);
-        submitBtn.disabled = false;
-        return;
-      }
-
-      if (data.failed > 0) {
-        setTableTransferStatus(activeTableId, "⚠ " + (data.message || partialLabel), false);
-        alert((data.message || partialLabel + " انجام شد.") + detail);
+        alert((lastMessage || failLabel) + detail);
+      } else if (totalFailed > 0) {
+        setTableTransferStatus(activeTableId, "⚠ " + (lastMessage || partialLabel) + " — ۱۰۰٪", false);
+        alert((lastMessage || partialLabel + " انجام شد.") + detail);
       } else {
-        setTableTransferStatus(
-          activeTableId,
-          "✓ " + (data.message || (isUpdate ? "بروزرسانی موفق" : "انتقال موفق")),
-          true
-        );
-        alert(
-          data.message ||
-            (isUpdate ? "بروزرسانی با موفقیت انجام شد." : "انتقال با موفقیت انجام شد.")
-        );
+        setTableTransferStatus(activeTableId, "✓ " + (lastMessage || okLabel) + " — ۱۰۰٪", true);
+        alert(lastMessage || (isUpdate ? "بروزرسانی با موفقیت انجام شد." : "انتقال با موفقیت انجام شد."));
       }
       submitBtn.disabled = false;
     } catch (err) {
@@ -351,4 +384,5 @@
       submitBtn.disabled = false;
     }
   });
+
 })();
