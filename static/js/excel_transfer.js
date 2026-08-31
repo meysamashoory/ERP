@@ -311,6 +311,7 @@
       let totalFailed = 0;
       let lastMessage = "";
       let allAlarms = [];
+      let allGroups = [];
       let done = false;
       let guard = 0;
 
@@ -350,6 +351,9 @@
         totalFailed += data.failed || 0;
         lastMessage = data.message || lastMessage;
         if (Array.isArray(data.alarms)) allAlarms = allAlarms.concat(data.alarms);
+        if (Array.isArray(data.alarm_groups) && data.alarm_groups.length) {
+          allGroups = mergeAlarmGroups(allGroups, data.alarm_groups);
+        }
 
         if (chunkSize == null || progress.done !== false) {
           done = true;
@@ -359,10 +363,10 @@
         }
       }
 
-      const detail =
-        allAlarms.length > 0
-          ? "\n\nجزئیات خطا:\n• " + allAlarms.slice(0, 8).join("\n• ")
-          : "";
+      if (!allGroups.length && allAlarms.length) {
+        allGroups = synthesizeGroupsFromAlarms(allAlarms);
+      }
+      const detail = formatAlarmDetail(allGroups, allAlarms);
       const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
       const partialLabel = isUpdate ? "بروزرسانی ناقص" : "انتقال ناقص";
       const okLabel = isUpdate ? "بروزرسانی موفق" : "انتقال موفق";
@@ -384,5 +388,91 @@
       submitBtn.disabled = false;
     }
   });
+
+  function mergeAlarmGroups(existing, incoming) {
+    const byKey = {};
+    const order = [];
+    function ingest(list) {
+      (list || []).forEach(function (g) {
+        const key = g.key || g.title || "other";
+        if (!byKey[key]) {
+          byKey[key] = {
+            key: key,
+            title: g.title || key,
+            explanation: g.explanation || "",
+            count: 0,
+            examples: [],
+            rows: [],
+            rows_label: "",
+          };
+          order.push(key);
+        }
+        const tgt = byKey[key];
+        tgt.count += g.count || 0;
+        if (g.explanation && !tgt.explanation) tgt.explanation = g.explanation;
+        (g.examples || []).forEach(function (ex) {
+          if (tgt.examples.length < 3 && tgt.examples.indexOf(ex) === -1) tgt.examples.push(ex);
+        });
+        (g.rows || []).forEach(function (r) {
+          if (tgt.rows.indexOf(r) === -1) tgt.rows.push(r);
+        });
+      });
+    }
+    ingest(existing);
+    ingest(incoming);
+    return order.map(function (k) {
+      const g = byKey[k];
+      if (g.rows.length) {
+        const shown = g.rows.slice(0, 12).join("، ");
+        const more = g.rows.length > 12 ? " و " + (g.rows.length - 12) + " ردیف دیگر" : "";
+        g.rows_label = "ردیف‌های درگیر: " + shown + more;
+      }
+      return g;
+    });
+  }
+
+  function synthesizeGroupsFromAlarms(alarms) {
+    // Fallback if older server response has no alarm_groups
+    return [
+      {
+        key: "raw",
+        title: "جزئیات خطا",
+        explanation: "پیام‌های خام انتقال (گروه‌بندی سمت سرور در دسترس نبود).",
+        count: alarms.length,
+        examples: alarms.slice(0, 5),
+        rows: [],
+        rows_label: "",
+      },
+    ];
+  }
+
+  function formatAlarmDetail(groups, alarms) {
+    if (groups && groups.length) {
+      let out = "\n\nخلاصه انواع خطا (" + groups.length + " نوع):\n";
+      groups.forEach(function (g, i) {
+        out +=
+          "\n" +
+          (i + 1) +
+          ") " +
+          (g.title || "خطا") +
+          " — " +
+          (g.count || 0) +
+          " مورد\n";
+        if (g.explanation) out += "   توضیح: " + g.explanation + "\n";
+        if (g.rows_label) out += "   " + g.rows_label + "\n";
+        if (g.examples && g.examples.length) {
+          out += "   نمونه:\n";
+          g.examples.forEach(function (ex) {
+            out += "   • " + ex + "\n";
+          });
+        }
+      });
+      return out;
+    }
+    if (alarms && alarms.length) {
+      return "\n\nجزئیات خطا:\n• " + alarms.slice(0, 8).join("\n• ");
+    }
+    return "";
+  }
 
 })();

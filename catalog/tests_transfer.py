@@ -40,14 +40,21 @@ class MenuAndHistoryTests(TestCase):
         self.assertNotContains(dash, "ایجاد گزارش")
         self.assertNotContains(dash, "ایجاد فرم")
 
-        history = self.client.get(reverse("production_history"))
-        self.assertEqual(history.status_code, 200)
-        self.assertContains(history, "سوابق تولید")
-
         system = self.client.get(reverse("system_data"))
         self.assertEqual(system.status_code, 200)
         self.assertContains(system, "واحدهای تولیدی")
+        self.assertContains(system, "زیرگروه‌های کالا")
+        self.assertContains(system, "فیلدهای بینش برنامه‌ریزی")
+        self.assertContains(system, "نمایش ماتریس / برنامه")
         self.assertContains(system, "آلارم‌های سیستم")
+        self.assertNotContains(system, "<h2>مدیریت داده‌های پایه سامانه</h2>")
+
+        history = self.client.get(reverse("production_history"))
+        self.assertEqual(history.status_code, 200)
+        self.assertContains(history, "سوابق تولید")
+        # Title only in topbar — not duplicated as panel h2
+        self.assertNotContains(history, "<h2>سوابق تولید</h2>")
+        self.assertContains(history, "table-scroll")
 
         products = self.client.get(reverse("product_data"))
         self.assertEqual(products.status_code, 200)
@@ -634,6 +641,32 @@ class ProductDataTests(TestCase):
         msg = transfer_result_message(result)
         self.assertIn("ناقص", msg)
         self.assertTrue(any("وزن هر واحد" in a for a in result.alarms))
+        from catalog.transfer import group_transfer_alarms
+
+        groups = group_transfer_alarms(result.alarms)
+        self.assertTrue(groups)
+        self.assertTrue(any(g["count"] >= 1 and g["explanation"] for g in groups))
+        self.assertIn("انواع خطا", msg)
+
+    def test_group_transfer_alarms_collapses_similar(self):
+        from catalog.transfer import group_transfer_alarms
+
+        alarms = [
+            "ردیف 2 جدول «سوابق» — فیلد «مقدار تولید واقعی»: مقدار «abc» عدد صحیح معتبر نیست.",
+            "ردیف 5 جدول «سوابق» — فیلد «ضایعات»: مقدار «x» عدد صحیح معتبر نیست.",
+            "ردیف 8 جدول «سوابق» — فیلد «ضایعات»: مقدار «y» عدد صحیح معتبر نیست.",
+            "ردیف 3 جدول «سوابق» — فیلد «تاریخ برنامه»: تاریخ «بد» نامعتبر است (err).",
+            "ردیف 9 جدول «سوابق» — فیلد «تاریخ پایان»: تاریخ «؟» نامعتبر است (err).",
+            "ردیف 4: ساختار ردیف نامعتبر است.",
+        ]
+        groups = group_transfer_alarms(alarms)
+        self.assertEqual(len(groups), 3)
+        by_key = {g["key"]: g for g in groups}
+        self.assertEqual(by_key["invalid_integer"]["count"], 3)
+        self.assertEqual(by_key["invalid_date"]["count"], 2)
+        self.assertEqual(by_key["row_structure"]["count"], 1)
+        self.assertIn("عدد صحیح", by_key["invalid_integer"]["explanation"])
+        self.assertIn("تاریخ", by_key["invalid_date"]["explanation"])
 
     def test_jalali_and_excel_serial_dates(self):
         """Excel serial / میلادی / شمسی all store as Jalali-encoded date(1405,6,1)."""

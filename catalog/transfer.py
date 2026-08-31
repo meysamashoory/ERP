@@ -494,6 +494,132 @@ def _format_row_errors(row_i: int, table_name: str, errors: list[str]) -> str:
     return f"ردیف {row_i} جدول «{table_name}» — " + " | ".join(errors)
 
 
+def _classify_alarm(msg: str) -> tuple[str, str, str]:
+    """Return (category_key, title, explanation) for a raw alarm line."""
+    text = msg or ""
+    if "ساختار ردیف نامعتبر" in text:
+        return (
+            "row_structure",
+            "ساختار ردیف نامعتبر",
+            "بعضی ردیف‌های اکسل به‌صورت آرایهٔ معتبر خوانده نشده‌اند. "
+            "فایل را دوباره ذخیره کنید یا ردیف‌های خراب/ادغام‌شده را اصلاح کنید.",
+        )
+    if "نگاشت ستون" in text or "خارج از محدوده جدول" in text:
+        return (
+            "column_mapping",
+            "مشکل نگاشت ستون اکسل",
+            "ستون انتخاب‌شده برای یک فیلد مقصد اشتباه یا خارج از محدوده جدول است. "
+            "در دیالوگ انتقال، نگاشت هر فیلد را با سرستون درست اکسل دوباره تنظیم کنید.",
+        )
+    if "تاریخ" in text and ("نامعتبر" in text or "معتبر نیست" in text):
+        return (
+            "invalid_date",
+            "تاریخ نامعتبر",
+            "مقدار تاریخ در اکسل قابل تبدیل نیست. فرمت پیشنهادی جلالی مانند "
+            "۱۴۰۳/۰۱/۱۵ یا معادل میلادی معتبر است؛ سلول‌های متنیِ اشتباه یا خالیِ اجباری را اصلاح کنید.",
+        )
+    if "عدد صحیح معتبر نیست" in text:
+        return (
+            "invalid_integer",
+            "عدد صحیح نامعتبر",
+            "فیلدهای عددی صحیح (مثل تعداد، شماره واحد، حفره) باید فقط رقم باشند. "
+            "متن، فاصله، یا برچسب ترکیبی را از سلول حذف کنید؛ برای «دستگاه/واحد» از برچسب استاندارد استفاده کنید.",
+        )
+    if "عدد اعشاری معتبر نیست" in text or "وزن" in text:
+        return (
+            "invalid_decimal",
+            "عدد اعشاری / وزن نامعتبر",
+            "مقادیر اعشاری یا وزن باید عدد باشند (ممیز نقطه یا اسلش فارسی قابل قبول است). "
+            "واحد یا متن اضافه داخل سلول را جدا کنید.",
+        )
+    if "مقدار" in text and ("عدد" in text or "کمیت" in text or "quantity" in text.lower()):
+        return (
+            "invalid_quantity",
+            "مقدار تولید نامعتبر",
+            "ستون مقدار تولید باید عدد باشد؛ در صورت داشتن پسوند نوع تولید، "
+            "فرمتی مانند «۱۲۰ تزریق» قابل قبول است. متن بدون عدد را اصلاح کنید.",
+        )
+    if "بدون شناسه" in text or (
+        "شناسه تعویض" in text and ("یافت" in text or "وجود" in text or "ندارد" in text)
+    ):
+        return (
+            "missing_uid",
+            "شناسه تعویض خالی یا ناموجود",
+            "ردیف‌هایی که شناسهٔ تعویض ندارند یا شناسه در سامانه پیدا نمی‌شود منتقل نمی‌شوند. "
+            "ستون شناسه را نگاشت کنید و برای بروزرسانی فقط ردیف‌های از قبل موجود را بفرستید.",
+        )
+    if "کد کالا" in text or "کد محصول" in text or "کد محصول والد" in text:
+        return (
+            "product_code",
+            "مشکل کد کالا / محصول",
+            "کد کالا در ردیف خالی، تکراریِ نامعتبر، یا با دادهٔ موجود ناسازگار است. "
+            "ابتدا کالا را در «دیتای محصولات» بسازید یا کد اکسل را با کد سامانه یکسان کنید.",
+        )
+    if "همگام‌سازی برنامه‌ریزی" in text:
+        return (
+            "planning_sync",
+            "خطا در همگام‌سازی با برنامه‌ریزی",
+            "سابقه منتقل شد ولی ساخت/به‌روزرسانی برنامهٔ هفتگی برای برخی ردیف‌ها شکست خورد. "
+            "آلارم سیستم و شماره برنامه را بررسی کنید.",
+        )
+    if "فیلد «" in text and ("معتبر نیست" in text or "نامعتبر" in text):
+        return (
+            "field_value",
+            "مقدار فیلد نامعتبر",
+            "یک یا چند سلول با نوع فیلد مقصد سازگار نیستند. "
+            "متن خطا را برای نام فیلد ببینید و مقدار همان ستون اکسل را اصلاح کنید.",
+        )
+    return (
+        "other",
+        "سایر خطاهای ردیف",
+        "خطاهایی که در دسته‌های بالا جا نگرفتند. جزئیات هر ردیف را در فهرست نمونه‌ها یا آلارم‌های سیستم ببینید.",
+    )
+
+
+def group_transfer_alarms(
+    alarms: list[str],
+    *,
+    max_examples: int = 3,
+) -> list[dict[str, Any]]:
+    """Collapse many similar Excel-transfer alarms into a few explained groups."""
+    buckets: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for raw in alarms or []:
+        msg = str(raw or "").strip()
+        if not msg:
+            continue
+        key, title, explanation = _classify_alarm(msg)
+        if key not in buckets:
+            buckets[key] = {
+                "key": key,
+                "title": title,
+                "explanation": explanation,
+                "count": 0,
+                "examples": [],
+                "rows": [],
+            }
+            order.append(key)
+        bucket = buckets[key]
+        bucket["count"] += 1
+        m = re.search(r"ردیف\s+(\d+)", msg)
+        if m:
+            row_n = int(m.group(1))
+            if row_n not in bucket["rows"]:
+                bucket["rows"].append(row_n)
+        if len(bucket["examples"]) < max_examples:
+            bucket["examples"].append(msg)
+    groups = [buckets[k] for k in order]
+    for g in groups:
+        rows = g["rows"]
+        if rows:
+            shown = "، ".join(str(n) for n in rows[:12])
+            more = f" و {len(rows) - 12} ردیف دیگر" if len(rows) > 12 else ""
+            g["rows_label"] = f"ردیف‌های درگیر: {shown}{more}"
+        else:
+            g["rows_label"] = ""
+    return groups
+
+
 def transfer_result_message(result: TransferResult) -> str:
     """Human message: never claim full success when failures exist."""
     is_update = result.mode == MODE_UPDATE
@@ -512,12 +638,20 @@ def transfer_result_message(result: TransferResult) -> str:
     if not parts:
         return f"هیچ ردیفی برای {verb_noun} یافت نشد."
     if result.failed and not result.transferred:
-        return f"{verb_noun} ناموفق بود: " + "؛ ".join(parts) + "."
-    if result.failed:
-        return f"{verb_noun} ناقص انجام شد: " + "؛ ".join(parts) + "."
-    if result.skipped and result.transferred:
-        return f"{verb_noun} انجام شد: " + "؛ ".join(parts) + "."
-    return f"{verb_noun} با موفقیت انجام شد: " + "؛ ".join(parts) + "."
+        base = f"{verb_noun} ناموفق بود: " + "؛ ".join(parts) + "."
+    elif result.failed:
+        base = f"{verb_noun} ناقص انجام شد: " + "؛ ".join(parts) + "."
+    elif result.skipped and result.transferred:
+        base = f"{verb_noun} انجام شد: " + "؛ ".join(parts) + "."
+    else:
+        base = f"{verb_noun} با موفقیت انجام شد: " + "؛ ".join(parts) + "."
+
+    if result.failed and result.alarms:
+        groups = group_transfer_alarms(result.alarms)
+        if groups:
+            bits = [f"{g['title']} ({g['count']} مورد)" for g in groups[:5]]
+            base += " انواع خطا: " + "؛ ".join(bits) + "."
+    return base
 
 
 def _transfer_history_list(

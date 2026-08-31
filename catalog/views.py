@@ -16,7 +16,12 @@ from accounts.permissions import get_profile
 from .alarms import register_alarm
 from .excel_io import preview_workbook, read_table_data
 from .models import ExcelTable, ExcelUpload, SystemAlarm
-from .transfer import list_destinations, transfer_excel_table, transfer_result_message
+from .transfer import (
+    group_transfer_alarms,
+    list_destinations,
+    transfer_excel_table,
+    transfer_result_message,
+)
 
 
 def _can_view_excel(user) -> bool:
@@ -47,8 +52,11 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
         DeviationReason,
         Machine,
         MoldOption,
+        PlanningDisplaySettings,
+        PlanningInsightField,
         Product,
         ProductGroup,
+        ProductSubGroup,
         ProductionTypeOption,
         ProductionUnit,
         ProgramChangeReason,
@@ -57,70 +65,103 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
         SystemAlarm,
     )
 
+    # گروه‌بندی: ساختار کارخانه، طبقه‌بندی کالا، گزینه‌های عملیاتی، تنظیمات و پایش
     sections = [
         {
+            "group": "ساختار کارخانه",
             "title": "واحدهای تولیدی",
-            "description": "شماره و نام واحدها",
+            "description": "شماره و نام واحدهای تزریق / تولید",
             "count": ProductionUnit.objects.count(),
             "url": reverse("admin:catalog_productionunit_changelist"),
         },
         {
+            "group": "ساختار کارخانه",
             "title": "دستگاه‌ها / خطوط",
-            "description": "دستگاه تزریق و خطوط تولید",
+            "description": "دستگاه تزریق و خطوط تولید (متصل به واحد)",
             "count": Machine.objects.count(),
             "url": reverse("admin:catalog_machine_changelist"),
         },
         {
-            "title": "گروه‌ها و زیرگروه‌های کالا",
-            "description": "ساختار گروه‌بندی محصولات",
+            "group": "طبقه‌بندی کالا",
+            "title": "گروه‌های کالا",
+            "description": "گروه اصلی محصولات",
             "count": ProductGroup.objects.count(),
             "url": reverse("admin:catalog_productgroup_changelist"),
         },
         {
-            "title": "کالاها",
-            "description": "کد، نام و مشخصات محصول",
-            "count": Product.objects.count(),
-            "url": reverse("admin:catalog_product_changelist"),
+            "group": "طبقه‌بندی کالا",
+            "title": "زیرگروه‌های کالا",
+            "description": "زیرگروه وابسته به گروه اصلی",
+            "count": ProductSubGroup.objects.count(),
+            "url": reverse("admin:catalog_productsubgroup_changelist"),
         },
         {
+            "group": "طبقه‌بندی کالا",
+            "title": "کالاها (فهرست ادمین)",
+            "description": "ویرایش جدولی در «دیتای محصولات»؛ اینجا فهرست ادمین",
+            "count": Product.objects.count(),
+            "url": reverse("product_data"),
+        },
+        {
+            "group": "گزینه‌های عملیاتی",
             "title": "انواع قالب",
-            "description": "فهرست قالب‌های قابل انتخاب",
+            "description": "فهرست قالب‌های قابل انتخاب در برنامه",
             "count": MoldOption.objects.count(),
             "url": reverse("admin:catalog_moldoption_changelist"),
         },
         {
+            "group": "گزینه‌های عملیاتی",
             "title": "انواع تولید",
-            "description": "گزینه‌های نوع تولید در برنامه",
+            "description": "گزینه‌های نوع تولید در برنامه و سوابق",
             "count": ProductionTypeOption.objects.count(),
             "url": reverse("admin:catalog_productiontypeoption_changelist"),
         },
         {
+            "group": "گزینه‌های عملیاتی",
             "title": "دلایل انحراف",
             "description": "علل انحراف آمار تولید",
             "count": DeviationReason.objects.count(),
             "url": reverse("admin:catalog_deviationreason_changelist"),
         },
         {
+            "group": "گزینه‌های عملیاتی",
             "title": "دلایل توقف",
             "description": "علل توقف تولید",
             "count": StoppageReason.objects.count(),
             "url": reverse("admin:catalog_stoppagereason_changelist"),
         },
         {
+            "group": "گزینه‌های عملیاتی",
             "title": "دلایل تغییر برنامه",
-            "description": "علل تغییر / راه‌اندازی",
+            "description": "علل تغییر / راه‌اندازی برنامه",
             "count": ProgramChangeReason.objects.count(),
             "url": reverse("admin:catalog_programchangereason_changelist"),
         },
         {
+            "group": "تنظیمات و پایش",
             "title": "قانون شناسه برنامه",
-            "description": "الگوی ساخت شناسه تعویض",
+            "description": "الگوی ساخت شناسه ۱۴ رقمی تعویض",
             "count": ProgramUidScheme.objects.count(),
             "url": reverse("admin:catalog_programuidscheme_changelist"),
         },
         {
+            "group": "تنظیمات و پایش",
+            "title": "فیلدهای بینش برنامه‌ریزی",
+            "description": "ستون‌های قابل نمایش در کادر بینش برنامه",
+            "count": PlanningInsightField.objects.count(),
+            "url": reverse("admin:catalog_planninginsightfield_changelist"),
+        },
+        {
+            "group": "تنظیمات و پایش",
+            "title": "نمایش ماتریس / برنامه",
+            "description": "ضریب ارتفاع، واحدهای ماتریس، تفکیک گروه",
+            "count": PlanningDisplaySettings.objects.count(),
+            "url": reverse("admin:catalog_planningdisplaysettings_changelist"),
+        },
+        {
+            "group": "تنظیمات و پایش",
             "title": "آلارم‌های سیستم",
-            "description": "تداخل تولید، انتقال اکسل، شناسه تکراری",
+            "description": "تداخل تولید، انتقال اکسل، شناسه تکراری (باز)",
             "count": SystemAlarm.objects.filter(status=SystemAlarm.Status.OPEN).count(),
             "url": reverse("admin:catalog_systemalarm_changelist"),
         },
@@ -469,7 +510,8 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         "failed": result.failed,
         "skipped": result.skipped,
         "mode": result.mode,
-        "alarms": result.alarms[:50],
+        "alarms": result.alarms[:40],
+        "alarm_groups": group_transfer_alarms(result.alarms),
         "table_deleted": False,
         "redirect_url": result.redirect_url,
         "message": transfer_result_message(result),

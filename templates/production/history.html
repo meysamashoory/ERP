@@ -5,14 +5,7 @@
 {% block nav_history %}active{% endblock %}
 
 {% block content %}
-<div class="panel">
-  <div class="panel-head panel-head-compact">
-    <h2>سوابق تولید</h2>
-    <span class="muted" style="font-size:13px">
-      برای مشاهده شناسه تعویض، کد کالا، وضعیت و اسناد روزانه، روی هر ردیف کلیک کنید.
-    </span>
-  </div>
-
+<div class="panel panel-list">
   {% if rows %}
   <div class="list-filter-bar" id="history-filter-bar">
     <div class="field">
@@ -26,6 +19,7 @@
     <button type="button" class="btn btn-sm btn-ghost" id="history-filter-clear">پاک کردن</button>
     <span class="muted list-filter-count" id="history-filter-count"></span>
   </div>
+  <p class="panel-hint">برای مشاهده شناسه تعویض، کد کالا، وضعیت و اسناد روزانه، روی هر ردیف کلیک کنید.</p>
 
   <div class="table-scroll table-scroll-wide">
     <table class="table table-compact table-list-nav" id="history-list-table">

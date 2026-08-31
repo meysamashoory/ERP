@@ -29,15 +29,10 @@
     {% endfor %}
   </div>
 
-  <div class="panel panel-compact">
-    <div class="panel-head panel-head-compact">
-      <h2>
-        {% for t in tabs %}{% if active_tab == t.id %}{{ t.label }}{% endif %}{% endfor %}
-      </h2>
-      <span class="muted" style="font-size:13px">
-        قابل ویرایش از این صفحه؛ انتقال داده از «بارگذاری» با مقصد «دیتای محصولات».
-      </span>
-    </div>
+  <div class="panel panel-compact panel-list">
+    <p class="panel-hint">
+      قابل ویرایش از این صفحه؛ انتقال داده از «بارگذاری» با مقصد «دیتای محصولات».
+    </p>
 
     {% if active_tab == "info" %}
     <div class="table-scroll">

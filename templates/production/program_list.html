@@ -4,8 +4,9 @@
 {% block nav_programs %}active{% endblock %}
 
 {% block content %}
-<div class="panel">
+<div class="panel panel-list">
   {% if rows %}
+  <div class="table-scroll">
   <table class="table">
     <thead><tr>
       <th>شناسه</th><th>شماره برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
@@ -41,6 +42,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}<p class="empty">برنامه‌ای تأیید نشده است. پس از تأیید برنامه هفتگی، کالاها اینجا ظاهر می‌شوند.</p>{% endif %}
 </div>
 {% endblock %}

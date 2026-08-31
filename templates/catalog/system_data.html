@@ -5,16 +5,18 @@
 {% block nav_system_data %}active{% endblock %}
 
 {% block content %}
-<div class="panel panel-compact">
-  <div class="panel-head panel-head-compact">
-    <h2>مدیریت داده‌های پایه سامانه</h2>
-    <span class="muted" style="font-size:13px">همان ساختار فهرست گزارش‌ها — برای ویرایش جزئیات وارد هر بخش شوید.</span>
-  </div>
+<div class="panel panel-compact panel-list">
+  <p class="panel-hint">
+    داده‌های پایه و تنظیمات سامانه — کالاها و BOM در «دیتای محصولات» مدیریت می‌شوند؛
+    برای ویرایش جزئیات هر بخش وارد همان بخش شوید.
+  </p>
   {% if sections %}
+  <div class="table-scroll">
   <table class="table table-compact table-plan-list">
     <thead>
       <tr>
         <th style="width:70px">ردیف</th>
+        <th style="width:140px">گروه</th>
         <th>بخش</th>
         <th style="width:120px">تعداد</th>
         <th style="width:220px">عملیات</th>
@@ -24,6 +26,7 @@
       {% for s in sections %}
       <tr>
         <td class="num">{{ forloop.counter }}</td>
+        <td><span class="system-data-group">{{ s.group }}</span></td>
         <td>
           <span class="list-title">{{ s.title }}</span>
           {% if s.description %}<div class="list-desc">{{ s.description }}</div>{% endif %}
@@ -38,6 +41,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="empty">بخشی تعریف نشده است.</p>
   {% endif %}

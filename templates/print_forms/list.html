@@ -14,8 +14,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="panel panel-compact">
+<div class="panel panel-compact panel-list">
   {% if rows %}
+  <div class="table-scroll">
   <table class="table table-compact table-list-nav" id="form-list-table">
     <thead>
       <tr>
@@ -74,6 +75,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="empty">هنوز فرمی ایجاد نشده است.</p>
   {% endif %}
