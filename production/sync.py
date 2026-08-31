@@ -85,12 +85,21 @@ def resolve_machine(*, unit_number, machine_number) -> Machine | None:
     try:
         unit_n = int(unit_number)
     except (TypeError, ValueError):
-        return None
+        from catalog.qty_parse import parse_unit_machine_label
+
+        parsed_unit, _ = parse_unit_machine_label(str(unit_number))
+        if parsed_unit is None:
+            return None
+        unit_n = parsed_unit
+    mach = str(machine_number).strip()
+    digits = "".join(ch for ch in _fa_digits_to_en(mach) if ch.isdigit())
+    if digits:
+        mach = str(int(digits))
     unit = ProductionUnit.objects.filter(number=unit_n).first()
     if not unit:
         return None
     return (
-        Machine.objects.filter(unit=unit, number=str(machine_number).strip())
+        Machine.objects.filter(unit=unit, number=mach)
         .order_by("id")
         .first()
     )
@@ -149,9 +158,28 @@ def ensure_product_for_history(rec) -> Product | None:
 def ensure_machine_for_history(rec) -> Machine | None:
     """Resolve machine from archive row / UID; create unit+machine stubs if needed."""
     from catalog.models import MachineType
+    from catalog.qty_parse import parse_unit_machine_label
 
     unit_n = getattr(rec, "unit_number", None)
     mach_n = str(getattr(rec, "machine_number", "") or "").strip()
+
+    # Combined Excel labels like «دستگاه 6 واحد1» may land in either field
+    for raw in (mach_n, str(unit_n) if unit_n is not None else ""):
+        if not raw:
+            continue
+        parsed_unit, parsed_mach = parse_unit_machine_label(raw)
+        if parsed_unit is not None and unit_n is None:
+            unit_n = parsed_unit
+        if parsed_mach and (
+            not mach_n
+            or "دستگاه" in mach_n
+            or "واحد" in mach_n
+            or not any(ch.isdigit() for ch in _fa_digits_to_en(mach_n))
+        ):
+            # Prefer parsed digits over the raw combined label
+            if "دستگاه" in raw or "واحد" in raw or not mach_n:
+                mach_n = parsed_mach
+
     if unit_n is None or not mach_n:
         du, dm = decode_unit_machine_from_uid(getattr(rec, "program_uid", "") or "")
         if unit_n is None:
@@ -165,8 +193,16 @@ def ensure_machine_for_history(rec) -> Machine | None:
     try:
         unit_n = int(unit_n)
     except (TypeError, ValueError):
-        unit_n = 1
-    mach_n = str(int(_fa_digits_to_en(mach_n))) if str(mach_n).strip() else "1"
+        # unit_number may still be a messy label string
+        parsed_unit, _ = parse_unit_machine_label(str(unit_n))
+        unit_n = parsed_unit if parsed_unit is not None else 1
+
+    digits = "".join(ch for ch in _fa_digits_to_en(mach_n) if ch.isdigit())
+    if digits:
+        mach_n = str(int(digits))
+    else:
+        _, parsed_mach = parse_unit_machine_label(mach_n)
+        mach_n = parsed_mach or "1"
 
     machine = resolve_machine(unit_number=unit_n, machine_number=mach_n)
     if machine:

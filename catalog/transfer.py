@@ -210,10 +210,17 @@ def _cell(row: list, index: int | None) -> str:
 def _parse_integer(raw: str, label: str) -> tuple[int | None, str | None]:
     if raw == "":
         return None, None
-    cleaned = raw.replace(",", "").replace("٬", "").replace(" ", "")
+    cleaned = _normalize_digits(raw).replace(",", "").replace("٬", "").replace(" ", "")
     try:
         return int(float(cleaned)), None
     except (TypeError, ValueError):
+        # Fall back to first digit run (e.g. "حفره 4")
+        digits = re.findall(r"\d+", cleaned)
+        if len(digits) == 1:
+            try:
+                return int(digits[0]), None
+            except (TypeError, ValueError):
+                pass
         return None, f"فیلد «{label}»: مقدار «{raw}» عدد صحیح معتبر نیست."
 
 
@@ -406,6 +413,17 @@ def _row_alarm(
     )
 
 
+def _apply_unit_machine_from_label(values: dict[str, Any], raw: str) -> None:
+    """Fill unit_number / machine_number from combined Excel labels when missing."""
+    from catalog.qty_parse import parse_unit_machine_label
+
+    unit, machine = parse_unit_machine_label(raw)
+    if unit is not None and values.get("unit_number") is None:
+        values["unit_number"] = unit
+    if machine is not None and not str(values.get("machine_number") or "").strip():
+        values["machine_number"] = machine
+
+
 def _parse_row(
     row: list,
     col_map: dict[str, int | None],
@@ -415,6 +433,7 @@ def _parse_row(
     from catalog.qty_parse import (
         apply_production_type_to_name,
         extract_qty_and_production_type,
+        parse_unit_machine_label,
     )
 
     values: dict[str, Any] = {}
@@ -436,6 +455,26 @@ def _parse_row(
                 values[f.key] = qty
                 if ptype:
                     prod_type = ptype
+            continue
+        if f.key in {"unit_number", "machine_number"}:
+            # Combined labels like «دستگاه 6 واحد1» may be mapped to either column
+            unit, machine = parse_unit_machine_label(raw)
+            has_label = ("دستگاه" in raw) or ("واحد" in raw)
+            if has_label and (unit is not None or machine is not None):
+                _apply_unit_machine_from_label(values, raw)
+                continue
+            if f.key == "unit_number":
+                parsed, err = _parse_integer(raw, f.label)
+                if err:
+                    errors.append(err)
+                elif parsed is not None:
+                    values["unit_number"] = parsed
+            else:
+                # machine_number: keep digits when possible, else raw string
+                if machine is not None:
+                    values["machine_number"] = machine
+                else:
+                    values["machine_number"] = raw
             continue
         parsed, err = _PARSERS[f.type](raw, f.label)
         if err:

@@ -715,6 +715,60 @@ class ProductDataTests(TestCase):
         self.assertEqual(rec.produced_qty, 1000)
         self.assertEqual(rec.product_name, "زانو جنرال 45-110")
 
+    def test_combined_machine_unit_label_parses_without_int_crash(self):
+        """Excel cells like «دستگاه 6 واحد1» must not raise int() errors."""
+        from catalog.qty_parse import parse_unit_machine_label
+        from catalog.transfer import transfer_excel_table
+        from production.models import ProductionHistoryRecord
+        from production.sync import ensure_machine_for_history
+
+        self.assertEqual(parse_unit_machine_label("دستگاه 6 واحد1"), (1, "6"))
+        self.assertEqual(parse_unit_machine_label("دستگاه 6 واحد 1"), (1, "6"))
+        self.assertEqual(parse_unit_machine_label("واحد ۲ دستگاه ۰۳"), (2, "3"))
+        self.assertEqual(parse_unit_machine_label("دستگاه ۶"), (None, "6"))
+
+        upload = ExcelUpload.objects.create(title="mach-label", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="سوابق",
+            headers=["شناسه", "برنامه", "دستگاه/واحد", "کد", "نام"],
+            rows=[
+                [
+                    "36001777001001",
+                    "BP-MU-1",
+                    "دستگاه 6 واحد1",
+                    "P-MU",
+                    "قطعه تست",
+                ]
+            ],
+        )
+        result = transfer_excel_table(
+            table=table,
+            destination_id="production_history",
+            level_id="history_list",
+            mapping={
+                "program_uid": 0,
+                "plan_number": 1,
+                "machine_number": 2,
+                "product_code": 3,
+                "product_name": 4,
+            },
+            user=self.expert,
+        )
+        self.assertEqual(result.failed, 0, msg=result.alarms)
+        self.assertEqual(result.transferred, 1)
+        rec = ProductionHistoryRecord.objects.get(program_uid="36001777001001")
+        self.assertEqual(rec.unit_number, 1)
+        self.assertEqual(rec.machine_number, "6")
+        # Sync path must also tolerate the raw combined label if already stored
+        rec.machine_number = "دستگاه 6 واحد1"
+        rec.unit_number = None
+        rec.save(update_fields=["machine_number", "unit_number", "updated_at"])
+        machine = ensure_machine_for_history(rec)
+        self.assertIsNotNone(machine)
+        self.assertEqual(str(machine.number), "6")
+        self.assertEqual(machine.unit.number, 1)
+
     def test_update_mode_does_not_create_new_history_rows(self):
         from catalog.transfer import MODE_UPDATE, transfer_excel_table
         from production.models import ProductionHistoryRecord
