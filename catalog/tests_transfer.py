@@ -665,7 +665,7 @@ class ProductDataTests(TestCase):
         self.assertEqual(by_key["invalid_integer"]["count"], 3)
         self.assertEqual(by_key["invalid_date"]["count"], 2)
         self.assertEqual(by_key["row_structure"]["count"], 1)
-        self.assertIn("عدد صحیح", by_key["invalid_integer"]["explanation"])
+        self.assertIn("عددی صحیح", by_key["invalid_integer"]["explanation"])
         self.assertIn("تاریخ", by_key["invalid_date"]["explanation"])
 
     def test_jalali_and_excel_serial_dates(self):
