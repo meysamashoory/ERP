@@ -308,7 +308,7 @@ body:has(> .layout) {
 
 /* Full usable width of the LCD (edge-to-edge within main) */
 .content {
-  padding: 12px 14px 14px;
+  padding: 8px 10px 10px;
   max-width: none;
   width: 100%;
   flex: 1;
@@ -1204,19 +1204,23 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
 .table-scroll-wide {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: calc(100vh - 148px);
+  /* Fill remaining viewport under filters; both scrollbars on this box */
+  height: 0;
+  max-height: none;
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   -webkit-overflow-scrolling: touch;
+  width: 100%;
 }
 .table-scroll > .table,
 .table-scroll-wide > .table {
   margin: 0;
   border-collapse: separate;
   border-spacing: 0;
+  width: max(100%, max-content);
 }
 .table-scroll thead th,
 .table-scroll-wide thead th {
@@ -1231,6 +1235,7 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
   overflow: hidden;
   margin-bottom: 0;
 }
