@@ -1214,6 +1214,8 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
   background: #fff;
   -webkit-overflow-scrolling: touch;
   width: 100%;
+  /* LTR scrollport keeps both scrollbars predictable; table stays RTL */
+  direction: ltr;
 }
 .table-scroll > .table,
 .table-scroll-wide > .table {
@@ -1221,6 +1223,7 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
   border-collapse: separate;
   border-spacing: 0;
   width: max(100%, max-content);
+  direction: rtl;
 }
 .table-scroll thead th,
 .table-scroll-wide thead th {
