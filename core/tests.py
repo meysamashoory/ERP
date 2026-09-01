@@ -170,7 +170,8 @@ class PlanningUiTests(TestCase):
     def test_sidebar_branding_and_logout(self):
         self.client.login(username="admin", password="erp12345")
         resp = self.client.get(reverse("dashboard"))
-        self.assertContains(resp, "سامانه برنامه‌ریزی و کنترل تولید")
+        self.assertContains(resp, "سامانه برنامه ریزی")
+        self.assertContains(resp, "و کنترل تولید")
         self.assertContains(resp, "خروج از سامانه")
         self.assertNotContains(resp, "مدیر سامانه")
         self.assertContains(resp, "(admin)")

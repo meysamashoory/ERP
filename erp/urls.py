@@ -19,6 +19,6 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-admin.site.site_header = "سامانه برنامه‌ریزی و کنترل تولید"
+admin.site.site_header = "سامانه برنامه ریزی و کنترل تولید"
 admin.site.site_title = "برنامه‌ریزی تولید"
 admin.site.index_title = "مدیریت داده‌ها"

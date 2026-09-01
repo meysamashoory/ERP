@@ -26,6 +26,8 @@ body.admin-embed .sidebar {
 }
 body.admin-embed .sidebar .brand-name {
   color: #fff !important;
+  white-space: pre-line !important;
+  line-height: 1.35 !important;
 }
 body.admin-embed .sidebar .brand-mark {
   color: #818cf8 !important;
