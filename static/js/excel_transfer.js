@@ -210,7 +210,7 @@
     refreshExclusiveOptions();
   }
 
-  function setTableTransferStatus(tableId, text, isDone) {
+  function setTableTransferStatus(tableId, text, isDone, errorDetail) {
     const pane = root.querySelector('.excel-pane[data-table-id="' + tableId + '"]');
     if (!pane) return;
     let badge = pane.querySelector(".excel-transfer-status");
@@ -222,7 +222,55 @@
     }
     badge.textContent = text || "";
     badge.classList.toggle("is-done", !!isDone);
-    badge.classList.toggle("is-busy", !!text && !isDone);
+    badge.classList.toggle("is-busy", !!text && !isDone && !errorDetail);
+    badge.classList.toggle("is-failed", !!errorDetail);
+
+    let actions = pane.querySelector(".excel-transfer-status-actions");
+    if (!actions) {
+      actions = document.createElement("span");
+      actions.className = "excel-transfer-status-actions";
+      badge.insertAdjacentElement("afterend", actions);
+    }
+    let viewBtn = actions.querySelector(".btn-view-transfer-errors");
+    if (errorDetail) {
+      pane._lastTransferErrorDetail = String(errorDetail).replace(/^\n+/, "");
+      if (!viewBtn) {
+        viewBtn = document.createElement("button");
+        viewBtn.type = "button";
+        viewBtn.className = "btn btn-sm btn-ghost btn-view-transfer-errors";
+        viewBtn.textContent = "مشاهده خطا";
+        viewBtn.addEventListener("click", function () {
+          showTransferErrorsDialog(pane._lastTransferErrorDetail || "");
+        });
+        actions.appendChild(viewBtn);
+      }
+      viewBtn.hidden = false;
+    } else if (viewBtn) {
+      viewBtn.hidden = true;
+      if (!text) pane._lastTransferErrorDetail = "";
+    }
+  }
+
+  function showTransferErrorsDialog(detail) {
+    const errDialog = document.getElementById("excel-transfer-errors-dialog");
+    const body = document.getElementById("excel-transfer-errors-body");
+    if (!errDialog || !body) {
+      alert(detail || "جزئیات خطا در دسترس نیست.");
+      return;
+    }
+    body.textContent = detail || "جزئیات خطا در دسترس نیست.";
+    if (typeof errDialog.showModal === "function") errDialog.showModal();
+    else errDialog.setAttribute("open", "open");
+  }
+
+  const errDialog = document.getElementById("excel-transfer-errors-dialog");
+  if (errDialog) {
+    errDialog.querySelectorAll("[data-transfer-errors-close]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (typeof errDialog.close === "function") errDialog.close();
+        else errDialog.removeAttribute("open");
+      });
+    });
   }
 
   function applyModeUi(mode) {
@@ -341,8 +389,12 @@
 
         if (!data.ok && !(data.transferred > 0) && offset === 0) {
           const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
-          setTableTransferStatus(activeTableId, failLabel, false);
-          alert(data.error || data.message || failLabel);
+          const earlyDetail = formatAlarmDetail(
+            Array.isArray(data.alarm_groups) ? data.alarm_groups : [],
+            Array.isArray(data.alarms) ? data.alarms : []
+          );
+          const earlyMsg = (data.error || data.message || failLabel) + earlyDetail;
+          setTableTransferStatus(activeTableId, failLabel, false, earlyMsg);
           submitBtn.disabled = false;
           return;
         }
@@ -372,19 +424,30 @@
       const okLabel = isUpdate ? "بروزرسانی موفق" : "انتقال موفق";
 
       if (totalFailed > 0 && totalTransferred === 0) {
-        setTableTransferStatus(activeTableId, failLabel, false);
-        alert((lastMessage || failLabel) + detail);
+        setTableTransferStatus(
+          activeTableId,
+          failLabel,
+          false,
+          (lastMessage || failLabel) + detail
+        );
       } else if (totalFailed > 0) {
-        setTableTransferStatus(activeTableId, "⚠ " + (lastMessage || partialLabel) + " — ۱۰۰٪", false);
-        alert((lastMessage || partialLabel + " انجام شد.") + detail);
+        setTableTransferStatus(
+          activeTableId,
+          "⚠ " + (lastMessage || partialLabel) + " — ۱۰۰٪",
+          false,
+          (lastMessage || partialLabel + " انجام شد.") + detail
+        );
       } else {
         setTableTransferStatus(activeTableId, "✓ " + (lastMessage || okLabel) + " — ۱۰۰٪", true);
-        alert(lastMessage || (isUpdate ? "بروزرسانی با موفقیت انجام شد." : "انتقال با موفقیت انجام شد."));
       }
       submitBtn.disabled = false;
     } catch (err) {
-      setTableTransferStatus(activeTableId, "", false);
-      alert("خطا در ارتباط با سرور. در صورت تکرار، آلارم سیستم را بررسی کنید.");
+      setTableTransferStatus(
+        activeTableId,
+        isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق",
+        false,
+        "خطا در ارتباط با سرور. در صورت تکرار، آلارم سیستم را بررسی کنید."
+      );
       submitBtn.disabled = false;
     }
   });

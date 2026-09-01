@@ -118,6 +118,11 @@ class ExcelManagementTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "جدول موجودی")
         self.assertContains(detail, "excel-grid")
+        self.assertContains(detail, "دوبار کلیک")
+        self.assertContains(detail, "جزئیات خطای انتقال")
+        self.assertContains(detail, "excel-transfer-errors-dialog")
+        self.assertNotContains(detail, "افزودن ردیف")
+        self.assertNotContains(detail, "افزودن ستون")
 
     def test_missing_table_does_not_import(self):
         self.client.login(username="expert", password="erp12345")

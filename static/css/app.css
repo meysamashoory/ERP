@@ -141,7 +141,33 @@ a { color: var(--brand); }
 }
 .excel-transfer-status.is-busy { color: #b45309; }
 .excel-transfer-status.is-done { color: #15803d; }
+.excel-transfer-status.is-failed,
 .excel-transfer-status:not(.is-done):not(.is-busy) { color: #b91c1c; }
+.excel-transfer-status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 8px;
+  vertical-align: middle;
+}
+.excel-transfer-status-actions .btn-view-transfer-errors {
+  font-size: 12px;
+  padding: 2px 10px;
+}
+.excel-transfer-errors-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Tahoma, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.65;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
 .row-actions-ops {
   display: flex;
   flex-wrap: nowrap;
@@ -1305,15 +1331,22 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .excel-title-cell .excel-header-label {
   display: block; padding: 0 8px; overflow: hidden; text-overflow: ellipsis;
 }
-.excel-header-input {
+.excel-header-input,
+.excel-cell-input {
   border: 0; background: #fff; color: #0f172a;
-  padding: 4px 6px; font: inherit; font-weight: 700; outline: none;
+  padding: 4px 6px; font: inherit; outline: none;
   box-shadow: inset 0 0 0 2px #93c5fd;
-  height: 100%; margin: 0;
+  height: 100%; margin: 0; width: 100%;
 }
+.excel-header-input { font-weight: 700; }
 .excel-data-cell {
   padding: 0 8px; color: #0f172a; cursor: cell;
   background: #fff; text-align: center;
+}
+.excel-data-cell.is-cell-focus,
+.excel-title-cell.is-cell-focus {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 .excel-col-resizer {
   position: absolute; top: 0; right: -2px; width: 6px; height: 100%;

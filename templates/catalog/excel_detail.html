@@ -75,8 +75,6 @@
           <button type="button" class="btn btn-sm btn-ghost btn-transfer-table" data-transfer-mode="update">بروزرسانی</button>
           {% endif %}
           {% if can_edit %}
-          <button type="button" class="btn btn-sm btn-ghost btn-add-row">افزودن ردیف</button>
-          <button type="button" class="btn btn-sm btn-ghost btn-add-col">افزودن ستون</button>
           <button type="button" class="btn btn-sm btn-ghost btn-delete-selection" disabled title="ابتدا یک ردیف یا ستون را انتخاب کنید">حذف انتخاب‌شده</button>
           <button type="button" class="btn btn-sm btn-primary-soft btn-save-table">ذخیره جدول</button>
           {% endif %}
@@ -85,7 +83,7 @@
           {% endif %}
         </div>
       </div>
-      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. سرتیتر آبی قابل ویرایش است. «انتقال داده» ردیف جدید می‌سازد؛ «بروزرسانی» فقط موجودها را اصلاح می‌کند (جدول حذف نمی‌شود). پس از «ذخیره جدول» به فهرست بارگذاری بازمی‌گردید.</p>
+      <p class="excel-hint muted">ستون‌ها A,B,C… و ردیف‌ها شماره‌دار هستند. با دوبار کلیک روی هر سلول (از جمله سرتیتر) آن را ویرایش کنید. «انتقال داده» ردیف جدید می‌سازد؛ «بروزرسانی» فقط موجودها را اصلاح می‌کند (جدول حذف نمی‌شود). پس از «ذخیره جدول» به فهرست بارگذاری بازمی‌گردید.</p>
       <div class="excel-grid-wrap" tabindex="0">
         <table class="excel-grid" aria-label="جدول {{ t.name }}">
           <colgroup></colgroup>
@@ -141,9 +139,22 @@
     </div>
   </div>
 </dialog>
+
+<dialog id="excel-transfer-errors-dialog" class="dialog dialog-wide">
+  <div class="dialog-head">
+    <h3>جزئیات خطای انتقال</h3>
+    <button type="button" class="btn btn-sm btn-ghost" data-transfer-errors-close>بستن</button>
+  </div>
+  <div class="dialog-body" style="padding:16px 18px">
+    <pre id="excel-transfer-errors-body" class="excel-transfer-errors-body"></pre>
+  </div>
+  <div class="form-actions" style="padding:0 18px 16px">
+    <button type="button" class="btn btn-ghost" data-transfer-errors-close>بستن</button>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/excel_grid.js' %}?v=6"></script>
-<script src="{% static 'js/excel_transfer.js' %}?v=8"></script>
+<script src="{% static 'js/excel_grid.js' %}?v=7"></script>
+<script src="{% static 'js/excel_transfer.js' %}?v=9"></script>
 {% endblock %}

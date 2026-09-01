@@ -730,6 +730,35 @@ class ProductDataTests(TestCase):
         self.assertIn("ضایعات", by_key["invalid_integer"]["fields"])
         self.assertTrue(by_key["invalid_integer"]["fields_label"])
 
+    def test_mixed_number_and_text_cells_parse_numeric_part(self):
+        from decimal import Decimal
+
+        from catalog.transfer import _parse_decimal, _parse_integer
+
+        for raw, expected in (
+            ("۲۰ ساعت", 20),
+            ("20 ساعت", 20),
+            ("حفره 4", 4),
+            ("حدود ۱۲ عدد", 12),
+        ):
+            parsed, err = _parse_integer(raw, "آزمایش صحیح")
+            self.assertIsNone(err, msg=raw)
+            self.assertEqual(parsed, expected, msg=raw)
+
+        for raw, expected in (
+            ("۲۰ ساعت", Decimal("20")),
+            ("12.5 kg", Decimal("12.5")),
+            ("۱۲٫۵ گرم", Decimal("12.5")),
+            ("حدود 3.25 ساعت", Decimal("3.25")),
+        ):
+            parsed, err = _parse_decimal(raw, "ساعت تولید برنامه")
+            self.assertIsNone(err, msg=raw)
+            self.assertEqual(parsed, expected, msg=raw)
+
+        bad, err = _parse_decimal("فقط متن", "وزن")
+        self.assertIsNone(bad)
+        self.assertIsNotNone(err)
+
     def test_jalali_and_excel_serial_dates(self):
         """Excel serial / میلادی / شمسی all store as Jalali-encoded date(1405,6,1)."""
         from catalog.transfer import _parse_date

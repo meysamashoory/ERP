@@ -1,7 +1,7 @@
 /**
  * Excel-like grid for imported Excel Tables (ListObjects).
  * - Column letters A,B,C… and row numbers 1,2,3…
- * - Blue header row (سرتیتر) editable; data cells read-only
+ * - Double-click any cell (header or data) to edit, like Excel
  * - Cell navigation (click + arrows), row/col select, resize, autofit, reorder
  */
 (function () {
@@ -232,19 +232,28 @@
   }
 
   function startHeaderEdit(pane, td, ci) {
-    if (!canEdit || td.querySelector("input")) return;
+    startCellEdit(pane, td, 0, ci);
+  }
+
+  function startCellEdit(pane, td, ri, ci) {
+    if (!canEdit || !td || td.querySelector("input")) return;
     const st = stateOf(pane);
+    if (!st) return;
     st.editing = true;
+    st.selection = { type: "cell", row: ri, col: ci };
     const width = st.colWidths[ci] || DEFAULT_COL_W;
-    const text = st.headers[ci] || "";
-    const label = td.querySelector(".excel-header-label");
+    const isHeader = ri === 0;
+    const text = isHeader
+      ? st.headers[ci] || ""
+      : (st.rows[ri - 1] && st.rows[ri - 1][ci] != null ? String(st.rows[ri - 1][ci]) : "");
     const inp = document.createElement("input");
     inp.type = "text";
-    inp.className = "excel-header-input";
+    inp.className = isHeader ? "excel-header-input" : "excel-cell-input";
     inp.value = text;
-    inp.style.width = width - 4 + "px";
-    inp.style.maxWidth = width - 4 + "px";
+    inp.style.width = Math.max(36, width - 4) + "px";
+    inp.style.maxWidth = Math.max(36, width - 4) + "px";
     inp.style.boxSizing = "border-box";
+    const label = td.querySelector(".excel-header-label");
     if (label) label.replaceWith(inp);
     else {
       td.textContent = "";
@@ -257,11 +266,18 @@
       if (!st.editing) return;
       st.editing = false;
       if (commit) {
-        st.headers[ci] = inp.value.trim() || "ستون " + (ci + 1);
+        const next = inp.value;
+        if (isHeader) {
+          st.headers[ci] = next.trim() || "ستون " + (ci + 1);
+        } else {
+          while (st.rows.length < ri) st.rows.push(st.headers.map(function () { return ""; }));
+          const row = st.rows[ri - 1];
+          while (row.length < st.headers.length) row.push("");
+          row[ci] = next;
+        }
       }
-      // keep column width unchanged
       renderGrid(pane);
-      setSelection(pane, { type: "cell", row: 0, col: ci });
+      setSelection(pane, { type: "cell", row: ri, col: ci });
     }
 
     inp.addEventListener("keydown", function (e) {
@@ -269,17 +285,20 @@
       if (e.key === "Enter") {
         e.preventDefault();
         finish(true);
+        if (!isHeader) navigate(pane, 1, 0);
       } else if (e.key === "Escape") {
         e.preventDefault();
         finish(false);
       } else if (e.key === "Tab") {
         e.preventDefault();
         finish(true);
-        const next = e.shiftKey ? ci - 1 : ci + 1;
-        if (next >= 0 && next < st.headers.length) {
-          setSelection(pane, { type: "cell", row: 0, col: next });
-          const nextTd = pane.querySelector('td[data-grid-row="0"][data-col="' + next + '"]');
-          if (nextTd) startHeaderEdit(pane, nextTd, next);
+        const nextCol = e.shiftKey ? ci - 1 : ci + 1;
+        if (nextCol >= 0 && nextCol < st.headers.length) {
+          setSelection(pane, { type: "cell", row: ri, col: nextCol });
+          const nextTd = pane.querySelector(
+            'td[data-grid-row="' + ri + '"][data-col="' + nextCol + '"]'
+          );
+          if (nextTd) startCellEdit(pane, nextTd, ri, nextCol);
         }
       }
     });
@@ -482,17 +501,14 @@
 
       td.addEventListener("click", function (e) {
         if (st.editing) return;
-        const already =
-          st.selection &&
-          st.selection.type === "cell" &&
-          st.selection.row === 0 &&
-          st.selection.col === ci;
-        if (already && canEdit) {
-          e.preventDefault();
-          startHeaderEdit(pane, td, ci);
-          return;
-        }
+        if (e.target.closest("input")) return;
         setSelection(pane, { type: "cell", row: 0, col: ci });
+      });
+      td.addEventListener("dblclick", function (e) {
+        if (!canEdit) return;
+        e.preventDefault();
+        e.stopPropagation();
+        startCellEdit(pane, td, 0, ci);
       });
       headerTr.appendChild(td);
     });
@@ -553,8 +569,16 @@
         td.style.maxWidth = w + "px";
         td.textContent = row[ci] != null ? String(row[ci]) : "";
         td.title = td.textContent;
-        td.addEventListener("click", function () {
+        td.addEventListener("click", function (e) {
+          if (st.editing) return;
+          if (e.target.closest("input")) return;
           setSelection(pane, { type: "cell", row: ri, col: ci });
+        });
+        td.addEventListener("dblclick", function (e) {
+          if (!canEdit) return;
+          e.preventDefault();
+          e.stopPropagation();
+          startCellEdit(pane, td, ri, ci);
         });
         tr.appendChild(td);
       });
@@ -609,14 +633,15 @@
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         if (st.selection && st.selection.type === "cell") navigate(pane, 0, 1);
-      } else if (e.key === "F2" || (e.key === "Enter" && st.selection && st.selection.type === "cell" && st.selection.row === 0)) {
+      } else if (e.key === "F2" || e.key === "Enter") {
         if (!canEdit) return;
-        e.preventDefault();
         const sel = st.selection;
-        if (sel && sel.type === "cell" && sel.row === 0) {
-          const td = pane.querySelector('td[data-grid-row="0"][data-col="' + sel.col + '"]');
-          if (td) startHeaderEdit(pane, td, sel.col);
-        }
+        if (!(sel && sel.type === "cell")) return;
+        e.preventDefault();
+        const td = pane.querySelector(
+          'td[data-grid-row="' + sel.row + '"][data-col="' + sel.col + '"]'
+        );
+        if (td) startCellEdit(pane, td, sel.row, sel.col);
       } else if ((e.key === "Delete" || e.key === "Backspace") && st.selection && (st.selection.type === "row" || st.selection.type === "col")) {
         const active = document.activeElement;
         if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
@@ -635,27 +660,6 @@
         wrap.focus({ preventScroll: true });
       }
     });
-
-    pane.querySelector(".btn-add-row") &&
-      pane.querySelector(".btn-add-row").addEventListener("click", function () {
-        st.rows.push(st.headers.map(function () { return ""; }));
-        st.rowHeights.push(DEFAULT_ROW_H);
-        renderGrid(pane);
-      });
-
-    pane.querySelector(".btn-add-col") &&
-      pane.querySelector(".btn-add-col").addEventListener("click", function () {
-        const name = prompt("نام سرتیتر ستون جدید:", "ستون جدید");
-        if (name == null) return;
-        st.headers.push(String(name).trim() || "ستون جدید");
-        st.colWidths.push(DEFAULT_COL_W);
-        st.rows = st.rows.map(function (r) {
-          const next = r.slice();
-          next.push("");
-          return next;
-        });
-        renderGrid(pane);
-      });
 
     pane.querySelector(".btn-delete-selection") &&
       pane.querySelector(".btn-delete-selection").addEventListener("click", function () {

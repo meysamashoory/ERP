@@ -207,6 +207,21 @@ def _cell(row: list, index: int | None) -> str:
     return str(value).strip()
 
 
+def _extract_number_token(raw: str) -> str | None:
+    """First integer/decimal token from mixed text like «۲۰ ساعت» or ``12.5 kg``."""
+    text = _normalize_digits(str(raw or "")).strip()
+    if not text:
+        return None
+    text = (
+        text.replace("٬", "")
+        .replace(",", "")
+        .replace("٫", ".")
+        .replace("\u200c", "")
+    )
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    return match.group(0) if match else None
+
+
 def _parse_integer(raw: str, label: str) -> tuple[int | None, str | None]:
     if raw == "":
         return None, None
@@ -214,11 +229,10 @@ def _parse_integer(raw: str, label: str) -> tuple[int | None, str | None]:
     try:
         return int(float(cleaned)), None
     except (TypeError, ValueError):
-        # Fall back to first digit run (e.g. "حفره 4")
-        digits = re.findall(r"\d+", cleaned)
-        if len(digits) == 1:
+        token = _extract_number_token(raw)
+        if token is not None:
             try:
-                return int(digits[0]), None
+                return int(float(token)), None
             except (TypeError, ValueError):
                 pass
         return None, f"فیلد «{label}»: مقدار «{raw}» عدد صحیح معتبر نیست."
@@ -227,10 +241,22 @@ def _parse_integer(raw: str, label: str) -> tuple[int | None, str | None]:
 def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
     if raw == "":
         return None, None
-    cleaned = raw.replace(",", "").replace("٬", "").replace(" ", "")
+    cleaned = (
+        _normalize_digits(raw)
+        .replace(",", "")
+        .replace("٬", "")
+        .replace("٫", ".")
+        .replace(" ", "")
+    )
     try:
         return Decimal(cleaned), None
     except Exception:  # noqa: BLE001
+        token = _extract_number_token(raw)
+        if token is not None:
+            try:
+                return Decimal(token), None
+            except Exception:  # noqa: BLE001
+                pass
         return None, f"فیلد «{label}»: مقدار «{raw}» عدد اعشاری معتبر نیست."
 
 
