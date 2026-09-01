@@ -4,7 +4,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <title>{% block title %}{% endblock %}</title>
-<link rel="stylesheet" href="{% static 'css/app.css' %}?v=43">
+<link rel="stylesheet" href="{% static 'css/app.css' %}?v=44">
 <link rel="stylesheet" href="{% block stylesheet %}{% static "admin/css/base.css" %}{% endblock %}">
 {% block dark-mode-vars %}{% endblock %}
 {% block extrastyle %}{% endblock %}
@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{% static "admin/css/responsive.css" %}">
 {% if LANGUAGE_BIDI %}<link rel="stylesheet" href="{% static "admin/css/responsive_rtl.css" %}">{% endif %}
 {% endblock %}
-<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=2">
 {% block blockbots %}<meta name="robots" content="NONE,NOARCHIVE">{% endblock %}
 </head>
 <body class="{% if is_popup %}popup {% endif %}admin-embed {% block bodyclass %}{% endblock %}"

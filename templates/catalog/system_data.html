@@ -28,7 +28,7 @@
               <th style="width:70px">ردیف</th>
               <th>بخش</th>
               <th style="width:100px">تعداد</th>
-              <th style="width:280px">عملیات</th>
+              <th style="width:160px">عملیات</th>
             </tr>
           </thead>
           <tbody>
@@ -43,9 +43,6 @@
               <td class="col-ops">
                 <div class="ops-inline row-actions-ops">
                   <a class="btn btn-sm btn-ghost" href="{{ s.url }}">مشاهده / ویرایش</a>
-                  {% if s.can_add and s.add_url %}
-                  <a class="btn btn-sm btn-ghost ops-add" href="{{ s.add_url }}">+ اضافه کردن</a>
-                  {% endif %}
                 </div>
               </td>
             </tr>

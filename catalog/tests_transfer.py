@@ -60,6 +60,7 @@ class MenuAndHistoryTests(TestCase):
         self.assertContains(system, "system-acc-arrow")
         # All groups start collapsed (no open attribute on details)
         self.assertNotContains(system, "<details class=\"system-acc-group\" open>")
+        self.assertNotContains(system, "+ اضافه کردن")
         # Full admin destinations — not app shortcuts
         self.assertContains(system, reverse("admin:catalog_moldoption_changelist"))
         self.assertContains(system, reverse("admin:auth_group_changelist"))
@@ -700,6 +701,10 @@ class ProductDataTests(TestCase):
         self.assertTrue(groups)
         self.assertTrue(any(g["count"] >= 1 and g["explanation"] for g in groups))
         self.assertIn("انواع خطا", msg)
+        dec = next((g for g in groups if g["key"] == "invalid_decimal"), None)
+        self.assertIsNotNone(dec)
+        self.assertIn("وزن هر واحد", dec["title"])
+        self.assertTrue(any("ستون اکسل" in a for a in result.alarms))
 
     def test_group_transfer_alarms_collapses_similar(self):
         from catalog.transfer import group_transfer_alarms
@@ -720,6 +725,10 @@ class ProductDataTests(TestCase):
         self.assertEqual(by_key["row_structure"]["count"], 1)
         self.assertIn("عددی صحیح", by_key["invalid_integer"]["explanation"])
         self.assertIn("تاریخ", by_key["invalid_date"]["explanation"])
+        self.assertIn("مقدار تولید واقعی", by_key["invalid_integer"]["title"])
+        self.assertIn("مقدار تولید واقعی", by_key["invalid_integer"]["fields"])
+        self.assertIn("ضایعات", by_key["invalid_integer"]["fields"])
+        self.assertTrue(by_key["invalid_integer"]["fields_label"])
 
     def test_jalali_and_excel_serial_dates(self):
         """Excel serial / میلادی / شمسی all store as Jalali-encoded date(1405,6,1)."""

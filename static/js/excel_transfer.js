@@ -404,12 +404,22 @@
             examples: [],
             rows: [],
             rows_label: "",
+            fields_label: g.fields_label || "",
+            fields: g.fields || [],
+            excel_columns: g.excel_columns || [],
           };
           order.push(key);
         }
         const tgt = byKey[key];
         tgt.count += g.count || 0;
         if (g.explanation && !tgt.explanation) tgt.explanation = g.explanation;
+        if (g.fields_label && !tgt.fields_label) tgt.fields_label = g.fields_label;
+        (g.fields || []).forEach(function (f) {
+          if (tgt.fields.indexOf(f) === -1) tgt.fields.push(f);
+        });
+        (g.excel_columns || []).forEach(function (c) {
+          if (tgt.excel_columns.indexOf(c) === -1) tgt.excel_columns.push(c);
+        });
         (g.examples || []).forEach(function (ex) {
           if (tgt.examples.length < 3 && tgt.examples.indexOf(ex) === -1) tgt.examples.push(ex);
         });
@@ -422,10 +432,18 @@
     ingest(incoming);
     return order.map(function (k) {
       const g = byKey[k];
-      if (g.rows.length) {
+        if (g.rows.length) {
         const shown = g.rows.slice(0, 12).join("، ");
         const more = g.rows.length > 12 ? " و " + (g.rows.length - 12) + " ردیف دیگر" : "";
         g.rows_label = "ردیف‌های درگیر: " + shown + more;
+      }
+      if (!g.fields_label && ((g.fields && g.fields.length) || (g.excel_columns && g.excel_columns.length))) {
+        const parts = [];
+        if (g.fields && g.fields.length) parts.push("فیلد مقصد: " + g.fields.slice(0, 8).join("، "));
+        if (g.excel_columns && g.excel_columns.length) {
+          parts.push("ستون اکسل: " + g.excel_columns.slice(0, 8).join("، "));
+        }
+        g.fields_label = parts.join(" | ");
       }
       return g;
     });
@@ -460,6 +478,7 @@
           " مورد\n";
         if (g.explanation) out += "   توضیح: " + g.explanation + "\n";
         if (g.rows_label) out += "   " + g.rows_label + "\n";
+        if (g.fields_label) out += "   " + g.fields_label + "\n";
         if (g.examples && g.examples.length) {
           out += "   نمونه:\n";
           g.examples.forEach(function (ex) {

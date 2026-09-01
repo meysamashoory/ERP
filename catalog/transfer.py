@@ -234,6 +234,27 @@ def _parse_decimal(raw: str, label: str) -> tuple[Any, str | None]:
         return None, f"فیلد «{label}»: مقدار «{raw}» عدد اعشاری معتبر نیست."
 
 
+def _excel_col_hint(
+    col_map: dict[str, int | None],
+    headers: list | None,
+    field_key: str,
+) -> str:
+    """Human hint naming the mapped Excel header / column index."""
+    idx = col_map.get(field_key)
+    if idx is None:
+        return ""
+    try:
+        idx_i = int(idx)
+    except (TypeError, ValueError):
+        return ""
+    header = ""
+    if isinstance(headers, list) and 0 <= idx_i < len(headers):
+        header = str(headers[idx_i] or "").strip()
+    if header:
+        return f" (ستون اکسل «{header}» / ستون {idx_i + 1})"
+    return f" (ستون اکسل شماره {idx_i + 1})"
+
+
 def _normalize_digits(text: str) -> str:
     """Convert Persian/Arabic-Indic digits to ASCII."""
     from catalog.qty_parse import normalize_digits
@@ -428,6 +449,7 @@ def _parse_row(
     row: list,
     col_map: dict[str, int | None],
     fields: list[DestField],
+    headers: list | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Parse mapped cells. Empty cells are skipped (not errors)."""
     from catalog.qty_parse import (
@@ -447,10 +469,11 @@ def _parse_row(
         # Empty Excel cell → leave empty, no error
         if raw == "":
             continue
+        col_hint = _excel_col_hint(col_map, headers, f.key)
         if f.type == "quantity":
             qty, ptype, err = extract_qty_and_production_type(raw)
             if err:
-                errors.append(f"فیلد «{f.label}»: {err}")
+                errors.append(f"فیلد «{f.label}»{col_hint}: {err}")
             else:
                 values[f.key] = qty
                 if ptype:
@@ -466,6 +489,9 @@ def _parse_row(
             if f.key == "unit_number":
                 parsed, err = _parse_integer(raw, f.label)
                 if err:
+                    # Re-attach excel column hint after parser label message
+                    if err.startswith(f"فیلد «{f.label}»"):
+                        err = err.replace(f"فیلد «{f.label}»", f"فیلد «{f.label}»{col_hint}", 1)
                     errors.append(err)
                 elif parsed is not None:
                     values["unit_number"] = parsed
@@ -478,6 +504,8 @@ def _parse_row(
             continue
         parsed, err = _PARSERS[f.type](raw, f.label)
         if err:
+            if err.startswith(f"فیلد «{f.label}»"):
+                err = err.replace(f"فیلد «{f.label}»", f"فیلد «{f.label}»{col_hint}", 1)
             errors.append(err)
         else:
             values[f.key] = parsed
@@ -492,6 +520,14 @@ def _parse_row(
 
 def _format_row_errors(row_i: int, table_name: str, errors: list[str]) -> str:
     return f"ردیف {row_i} جدول «{table_name}» — " + " | ".join(errors)
+
+
+def _first_field_label(errors: list[str]) -> str:
+    for err in errors or []:
+        m = re.search(r"فیلد «([^»]+)»", str(err))
+        if m:
+            return m.group(1)
+    return ""
 
 
 def _classify_alarm(msg: str) -> tuple[str, str, str]:
@@ -525,12 +561,12 @@ def _classify_alarm(msg: str) -> tuple[str, str, str]:
             "فیلدهای عددی صحیح (مثل تعداد، شماره واحد، حفره) باید فقط رقم باشند. "
             "متن، فاصله، یا برچسب ترکیبی را از سلول حذف کنید؛ برای «دستگاه/واحد» از برچسب استاندارد استفاده کنید.",
         )
-    if "عدد اعشاری معتبر نیست" in text or "وزن" in text:
+    if "عدد اعشاری معتبر نیست" in text:
         return (
             "invalid_decimal",
             "عدد اعشاری / وزن نامعتبر",
             "مقادیر اعشاری یا وزن باید عدد باشند (ممیز نقطه یا اسلش فارسی قابل قبول است). "
-            "واحد یا متن اضافه داخل سلول را جدا کنید.",
+            "واحد یا متن اضافه داخل سلول را جدا کنید. نام فیلد مقصد و ستون اکسل در نمونه‌ها آمده است.",
         )
     if "مقدار" in text and ("عدد" in text or "کمیت" in text or "quantity" in text.lower()):
         return (
@@ -597,6 +633,8 @@ def group_transfer_alarms(
                 "count": 0,
                 "examples": [],
                 "rows": [],
+                "fields": [],
+                "excel_columns": [],
             }
             order.append(key)
         bucket = buckets[key]
@@ -606,6 +644,12 @@ def group_transfer_alarms(
             row_n = int(m.group(1))
             if row_n not in bucket["rows"]:
                 bucket["rows"].append(row_n)
+        for field_name in re.findall(r"فیلد «([^»]+)»", msg):
+            if field_name and field_name not in bucket["fields"]:
+                bucket["fields"].append(field_name)
+        for col_name in re.findall(r"ستون اکسل «([^»]+)»", msg):
+            if col_name and col_name not in bucket["excel_columns"]:
+                bucket["excel_columns"].append(col_name)
         if len(bucket["examples"]) < max_examples:
             bucket["examples"].append(msg)
     groups = [buckets[k] for k in order]
@@ -617,6 +661,24 @@ def group_transfer_alarms(
             g["rows_label"] = f"ردیف‌های درگیر: {shown}{more}"
         else:
             g["rows_label"] = ""
+        fields = g["fields"]
+        excel_cols = g["excel_columns"]
+        parts: list[str] = []
+        if fields:
+            parts.append("فیلد مقصد: " + "، ".join(fields[:8]))
+        if excel_cols:
+            parts.append("ستون اکسل: " + "، ".join(excel_cols[:8]))
+        g["fields_label"] = " | ".join(parts)
+        if fields:
+            # Put column/field names in the group title so the alert is actionable
+            shown_fields = "، ".join(fields[:3])
+            more_f = f" و {len(fields) - 3} فیلد دیگر" if len(fields) > 3 else ""
+            g["title"] = f"{g['title']} ({shown_fields}{more_f})"
+            g["explanation"] = (
+                f"{g['explanation']} "
+                f"فیلدهای درگیر: { '، '.join(fields) }."
+                + (f" ستون‌های اکسل: { '، '.join(excel_cols) }." if excel_cols else "")
+            )
     return groups
 
 
@@ -705,14 +767,14 @@ def _transfer_history_list(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, HISTORY_LIST_FIELDS)
+        values, row_errors = _parse_row(row, col_map, HISTORY_LIST_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
                 table=table,
                 row_i=row_i,
                 msg=_format_row_errors(row_i, table.name, row_errors),
-                field_label=row_errors[0].split("»")[0].replace("فیلد «", "") if "فیلد «" in row_errors[0] else "",
+                field_label=_first_field_label(row_errors),
             )
             continue
         uid = str(values.get("program_uid") or "").strip()
@@ -806,6 +868,7 @@ def _transfer_history_daily(
         level_id=LEVEL_HISTORY_DAILY,
         mode=mode,
     )
+    headers = table.headers if isinstance(table.headers, list) else []
     rows = table.rows if isinstance(table.rows, list) else []
 
     for row_i, row in enumerate(rows, start=1):
@@ -815,7 +878,7 @@ def _transfer_history_daily(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, HISTORY_DAILY_FIELDS)
+        values, row_errors = _parse_row(row, col_map, HISTORY_DAILY_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
@@ -909,6 +972,7 @@ def _transfer_product_info(
         destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_INFO, mode=mode
     )
     update_only = mode == MODE_UPDATE
+    headers = table.headers if isinstance(table.headers, list) else []
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
@@ -917,7 +981,7 @@ def _transfer_product_info(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, PRODUCT_INFO_FIELDS)
+        values, row_errors = _parse_row(row, col_map, PRODUCT_INFO_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
@@ -957,6 +1021,7 @@ def _transfer_product_bom(
         destination_id=DESTINATION_PRODUCT_DATA, level_id=LEVEL_PRODUCT_BOM, mode=mode
     )
     update_only = mode == MODE_UPDATE
+    headers = table.headers if isinstance(table.headers, list) else []
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
@@ -965,7 +1030,7 @@ def _transfer_product_bom(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, PRODUCT_BOM_FIELDS)
+        values, row_errors = _parse_row(row, col_map, PRODUCT_BOM_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
@@ -1008,6 +1073,7 @@ def _transfer_product_consumables(
         mode=mode,
     )
     update_only = mode == MODE_UPDATE
+    headers = table.headers if isinstance(table.headers, list) else []
     rows = table.rows if isinstance(table.rows, list) else []
     for row_i, row in enumerate(rows, start=1):
         if not isinstance(row, list):
@@ -1016,7 +1082,7 @@ def _transfer_product_consumables(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, PRODUCT_CONSUMABLE_FIELDS)
+        values, row_errors = _parse_row(row, col_map, PRODUCT_CONSUMABLE_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,

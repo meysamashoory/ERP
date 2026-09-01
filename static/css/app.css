@@ -305,12 +305,27 @@ body:has(> .layout) {
 .conflict-list li { margin: 0 0 10px; }
 .conflict-msg { font-weight: 600; margin-bottom: 4px; }
 .conflict-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.system-accordion { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.system-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.panel-list > .system-accordion {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 .system-acc-group {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .system-acc-summary {
   display: flex;
