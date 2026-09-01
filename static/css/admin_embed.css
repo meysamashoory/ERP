@@ -153,3 +153,61 @@ body.admin-embed #content a:link,
 body.admin-embed #content a:visited {
   color: #4338ca;
 }
+
+/* Resizable / editable headers on admin tables */
+body.admin-embed .admin-resizable-table {
+  table-layout: fixed;
+  width: 100%;
+}
+body.admin-embed .admin-th-resizable {
+  position: relative;
+  overflow: visible;
+}
+body.admin-embed .admin-th-label {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: text;
+}
+body.admin-embed .admin-th-input {
+  width: calc(100% - 10px);
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-weight: 700;
+  color: #0f172a;
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #93c5fd;
+}
+body.admin-embed .admin-col-resizer {
+  position: absolute;
+  top: 0;
+  left: -2px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 6;
+}
+body.admin-embed .admin-col-resizer:hover,
+body.admin-embed .admin-col-resizer:active {
+  background: rgba(37, 99, 235, 0.45);
+}
+body.admin-resizing-col,
+body.admin-resizing-col * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.admin-embed #result_list {
+  overflow: auto;
+}
+body.admin-embed .admin-table-hint {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: #64748b;
+}

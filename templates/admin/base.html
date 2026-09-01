@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{% static "admin/css/responsive.css" %}">
 {% if LANGUAGE_BIDI %}<link rel="stylesheet" href="{% static "admin/css/responsive_rtl.css" %}">{% endif %}
 {% endblock %}
-<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=3">
 {% block blockbots %}<meta name="robots" content="NONE,NOARCHIVE">{% endblock %}
 </head>
 <body class="{% if is_popup %}popup {% endif %}admin-embed {% block bodyclass %}{% endblock %}"
@@ -68,7 +68,7 @@
     <header class="topbar">
       <div class="topbar-title">
         <span class="topbar-title-text">{% if title %}{{ title }}{% else %}داده‌های سیستم{% endif %}</span>
-        <span class="heading-hint">(مدیریت داده — امکانات کامل)</span>
+        <span class="heading-hint">(مدیریت داده — امکانات کامل · کشیدن لبه سرستون = عرض · دوبار کلیک = اصلاح عنوان)</span>
       </div>
       <div class="topbar-user">
         <div class="topbar-actions">
@@ -122,5 +122,8 @@
 {% endif %}
 
 {% block footer %}{% endblock %}
+{% if not is_popup %}
+<script src="{% static 'js/admin_table_layout.js' %}?v=1"></script>
+{% endif %}
 </body>
 </html>

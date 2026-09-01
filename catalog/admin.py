@@ -29,14 +29,18 @@ class MachineInline(admin.TabularInline):
 
 @admin.register(ProductionUnit)
 class ProductionUnitAdmin(admin.ModelAdmin):
-    list_display = ("number", "name")
+    list_display = ("id", "number", "name")
+    list_display_links = ("id",)
+    list_editable = ("number", "name")
     inlines = [MachineInline]
     search_fields = ("name",)
 
 
 @admin.register(Machine)
 class MachineAdmin(admin.ModelAdmin):
-    list_display = ("unit", "machine_type", "number", "is_active")
+    list_display = ("id", "unit", "machine_type", "number", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("unit", "machine_type", "number", "is_active")
     list_filter = ("unit", "machine_type", "is_active")
     search_fields = ("number",)
 
@@ -48,15 +52,18 @@ class ProductSubGroupInline(admin.TabularInline):
 
 @admin.register(ProductGroup)
 class ProductGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "kind", "order")
+    list_display = ("id", "name", "kind", "order")
+    list_display_links = ("id",)
     list_filter = ("kind",)
-    list_editable = ("kind", "order")
+    list_editable = ("name", "kind", "order")
     inlines = [ProductSubGroupInline]
 
 
 @admin.register(ProductSubGroup)
 class ProductSubGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "group", "order")
+    list_display = ("id", "name", "group", "order")
+    list_display_links = ("id",)
+    list_editable = ("name", "group", "order")
     list_filter = ("group",)
     search_fields = ("name",)
 
@@ -116,38 +123,44 @@ class ProductConsumableAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionTypeOption)
 class ProductionTypeOptionAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(StoppageReason)
 class StoppageReasonAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(DeviationReason)
 class DeviationReasonAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(ProgramChangeReason)
 class ProgramChangeReasonAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(MoldOption)
 class MoldOptionAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(PlanningInsightField)
 class PlanningInsightFieldAdmin(admin.ModelAdmin):
-    list_display = ("label", "source", "source_key", "order", "is_active")
-    list_editable = ("order", "is_active", "source", "source_key")
+    list_display = ("id", "label", "source", "source_key", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active", "source", "source_key")
     list_filter = ("source", "is_active")
     search_fields = ("label", "source_key")
     ordering = ("order", "id")
@@ -386,7 +399,9 @@ class ExcelUploadAdmin(admin.ModelAdmin):
 
 @admin.register(ExcelTable)
 class ExcelTableAdmin(admin.ModelAdmin):
-    list_display = ("name", "upload", "sheet_name", "order", "row_count", "column_count", "updated_at")
+    list_display = ("id", "name", "upload", "sheet_name", "order", "row_count", "column_count", "updated_at")
+    list_display_links = ("id",)
+    list_editable = ("name", "order")
     list_filter = ("upload",)
     search_fields = ("name", "sheet_name", "upload__title")
     readonly_fields = ("created_at", "updated_at", "source_id_display")

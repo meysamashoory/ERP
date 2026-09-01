@@ -73,6 +73,10 @@ class MenuAndHistoryTests(TestCase):
         self.assertContains(molds, "داده‌های سیستم")
         self.assertContains(molds, "admin-embed")
         self.assertContains(molds, "بازگشت به داده‌های سیستم")
+        self.assertContains(molds, "admin_table_layout.js")
+        self.assertContains(molds, "دوبار کلیک = اصلاح عنوان")
+        # Label is inline-editable in base-data lists
+        self.assertContains(molds, 'name="form-0-label"')
 
         groups_admin = self.client.get(reverse("admin:auth_group_changelist"))
         self.assertEqual(groups_admin.status_code, 200)
