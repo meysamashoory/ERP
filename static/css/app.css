@@ -1284,11 +1284,21 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
 .panel-list > .list-filter-bar,
 .panel-list > .list-filter-bar-compact,
 .panel-list > .panel-hint,
+.panel-list > .panel-head,
 .panel-list > .product-data-tabs,
 .panel-list > .tabs,
 .panel-list > .form-actions,
-.panel-list > .product-data-actions {
+.panel-list > .product-data-actions,
+.panel-list > .empty {
   flex-shrink: 0;
+}
+/* Non-list panels (e.g. history detail) must not collapse table-scroll to 0 height */
+.panel:not(.panel-list) > .table-scroll,
+.panel:not(.panel-list) > .table-scroll-wide {
+  height: auto;
+  flex: none;
+  min-height: 140px;
+  max-height: calc(100vh - 220px);
 }
 #product-data-root {
   display: flex;
