@@ -44,7 +44,13 @@ a { color: var(--brand); }
 }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 0 8px; }
 .brand-mark { color: #818cf8; font-size: 22px; flex-shrink: 0; }
-.brand-name { font-weight: 700; font-size: 14px; color: #fff; line-height: 1.45; }
+.brand-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  line-height: 1.35;
+  white-space: pre-line;
+}
 .sidebar-user {
   padding: 0 14px 14px;
   margin-bottom: 6px;
@@ -1388,13 +1394,22 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .excel-grid .excel-title-cell.is-selected-col {
   background: #1e40af !important;
 }
+.excel-grid tr.is-selected-row > td.is-cell-focus,
+.excel-grid tr.is-selected-row > th.is-cell-focus,
 .excel-grid .is-cell-focus {
   outline: 2px solid #2563eb; outline-offset: -2px;
-  background: #eff6ff !important;
+  background: #fff !important;
 }
 .excel-grid .excel-title-cell.is-cell-focus {
   background: #1e3a8a !important;
   outline-color: #93c5fd;
+}
+.excel-grid .is-transfer-error {
+  background: #fef08a !important;
+}
+.excel-grid tr.is-selected-row > td.is-transfer-error,
+.excel-grid tr.is-selected-row > td.is-transfer-error.is-cell-focus {
+  background: #fde047 !important;
 }
 .excel-grid .is-drop-target { box-shadow: inset 0 0 0 2px #2563eb; }
 .excel-save-status { margin: 8px 0 0; font-size: 13px; min-height: 1.2em; }
@@ -1596,19 +1611,34 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
 }
 
 .table-nav-cells { outline: none; }
-.table-nav-cells tbody tr.data-row.is-row-selected { background: #eef2ff; }
+.table-nav-cells tbody tr.data-row.is-row-selected { background: #dbeafe; }
 .table-nav-cells tbody tr.data-row.is-row-selected td.is-cell-focus {
-  background: #fde68a;
+  background: #fff;
   box-shadow: none;
-  outline: none;
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 .table-nav-cells tbody tr.data-row { cursor: pointer; }
 .table-nav-cells tbody tr.data-row:hover { background: #f8fafc; }
-.table-nav-cells tbody tr.data-row.is-row-selected:hover { background: #eef2ff; }
+.table-nav-cells tbody tr.data-row.is-row-selected:hover { background: #dbeafe; }
 .table-nav-cells tbody tr.data-row.is-row-selected:hover td.is-cell-focus {
-  background: #fde68a;
+  background: #fff;
 }
 .table-nav-cells[data-editing="1"] tbody tr.data-row { cursor: default; }
+
+/* Shared keyboard table navigation (all list/data tables) */
+table.js-table-nav { outline: none; }
+table.js-table-nav tbody tr.is-row-selected > td,
+table.js-table-nav tbody tr.is-row-selected > th {
+  background: #dbeafe;
+}
+table.js-table-nav tbody tr.is-row-selected > td.is-cell-focus,
+table.js-table-nav tbody tr.is-row-selected > th.is-cell-focus {
+  background: #fff;
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+table.js-table-nav tbody tr { cursor: pointer; }
 .table-nav-cells td.is-entry-edit {
   padding: 4px !important;
   vertical-align: middle;

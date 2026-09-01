@@ -361,6 +361,7 @@
       let allAlarms = [];
       let allGroups = [];
       let allConflicts = [];
+      let allErrorCells = [];
       let done = false;
       let guard = 0;
 
@@ -388,6 +389,10 @@
         const percent = typeof progress.percent === "number" ? progress.percent : 100;
         setTableTransferStatus(activeTableId, baseBusy + "… " + percent + "٪", false);
 
+        if (Array.isArray(data.error_cells) && data.error_cells.length) {
+          allErrorCells = allErrorCells.concat(data.error_cells);
+        }
+
         if (!data.ok && !(data.transferred > 0) && offset === 0) {
           const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
           const earlyDetail = formatAlarmDetail(
@@ -397,6 +402,9 @@
           );
           const earlyMsg = (data.error || data.message || failLabel) + earlyDetail;
           setTableTransferStatus(activeTableId, failLabel, false, earlyMsg);
+          if (typeof window.ExcelGridHighlightErrors === "function") {
+            window.ExcelGridHighlightErrors(activeTableId, allErrorCells);
+          }
           submitBtn.disabled = false;
           return;
         }
@@ -428,6 +436,13 @@
       const partialLabel = isUpdate ? "بروزرسانی ناقص" : "انتقال ناقص";
       const okLabel = isUpdate ? "بروزرسانی موفق" : "انتقال موفق";
       const hasIssues = totalFailed > 0 || (allConflicts && allConflicts.length);
+
+      if (typeof window.ExcelGridClearErrors === "function") {
+        window.ExcelGridClearErrors(activeTableId);
+      }
+      if (totalFailed > 0 && typeof window.ExcelGridHighlightErrors === "function") {
+        window.ExcelGridHighlightErrors(activeTableId, allErrorCells);
+      }
 
       if (totalFailed > 0 && totalTransferred === 0) {
         setTableTransferStatus(

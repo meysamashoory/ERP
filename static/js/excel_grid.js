@@ -149,6 +149,8 @@
         el.classList.add("is-selected-col");
       });
     } else if (sel.type === "cell") {
+      const tr = pane.querySelector('tr[data-grid-row="' + sel.row + '"]');
+      if (tr) tr.classList.add("is-selected-row");
       const td = pane.querySelector(
         'td[data-grid-row="' + sel.row + '"][data-col="' + sel.col + '"]'
       );
@@ -586,7 +588,53 @@
     });
 
     applySelectionClasses(pane);
+    applyTransferErrorHighlights(pane);
   }
+
+  function applyTransferErrorHighlights(pane) {
+    pane.querySelectorAll(".is-transfer-error").forEach(function (el) {
+      el.classList.remove("is-transfer-error");
+    });
+    const cells = pane._transferErrorCells;
+    if (!cells || !cells.length) return;
+    cells.forEach(function (c) {
+      const row = Number(c.row);
+      const col = Number(c.col);
+      if (Number.isNaN(row) || Number.isNaN(col)) return;
+      // transfer row is 1-based data row; grid data rows use same index (header=0)
+      const td = pane.querySelector(
+        'td[data-grid-row="' + row + '"][data-col="' + col + '"]'
+      );
+      if (td) td.classList.add("is-transfer-error");
+    });
+  }
+
+  function highlightTransferErrors(tableId, cells) {
+    const pane = root.querySelector('.excel-pane[data-table-id="' + tableId + '"]');
+    if (!pane) return;
+    const list = Array.isArray(cells) ? cells.slice() : [];
+    // Merge unique
+    const seen = {};
+    const merged = [];
+    (pane._transferErrorCells || []).concat(list).forEach(function (c) {
+      const key = String(c.row) + ":" + String(c.col);
+      if (seen[key]) return;
+      seen[key] = 1;
+      merged.push({ row: Number(c.row), col: Number(c.col) });
+    });
+    pane._transferErrorCells = merged;
+    applyTransferErrorHighlights(pane);
+  }
+
+  function clearTransferErrors(tableId) {
+    const pane = root.querySelector('.excel-pane[data-table-id="' + tableId + '"]');
+    if (!pane) return;
+    pane._transferErrorCells = [];
+    applyTransferErrorHighlights(pane);
+  }
+
+  window.ExcelGridHighlightErrors = highlightTransferErrors;
+  window.ExcelGridClearErrors = clearTransferErrors;
 
   function navigate(pane, dRow, dCol) {
     const st = stateOf(pane);
