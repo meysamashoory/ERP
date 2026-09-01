@@ -160,13 +160,12 @@ class PlanningUiTests(TestCase):
     def test_edit_mode_shows_finalize(self):
         self.client.login(username="admin", password="erp12345")
         plan = WeeklyPlan.objects.get(program_number="BP-1001")  # draft
-        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]) + "?mode=edit")
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "ویرایش شماره و تاریخ")
-        self.assertContains(resp, "تأیید برنامه")
+        self.assertContains(resp, "در حال ویرایش")
+        self.assertContains(resp, "plan-matrix")
         self.assertNotContains(resp, "صفحه اصلی")
-        self.assertContains(resp, "انتخاب قالب")
-        self.assertContains(resp, "در انتظار تأیید")
 
     def test_sidebar_branding_and_logout(self):
         self.client.login(username="admin", password="erp12345")
@@ -179,11 +178,12 @@ class PlanningUiTests(TestCase):
     def test_plan_list_status_labels(self):
         self.client.login(username="admin", password="erp12345")
         resp = self.client.get(reverse("plan_list"))
-        self.assertContains(resp, "تعیین وضعیت")
-        self.assertContains(resp, "تأیید برنامه")
-        self.assertContains(resp, "در انتظار تأیید")
+        self.assertContains(resp, "تعداد قالب برنامه")
+        self.assertContains(resp, "تعداد قالب فعال")
         self.assertContains(resp, "تقویم برنامه")
-        self.assertContains(resp, "تغییر به قابل ویرایش")
+        self.assertContains(resp, "عملیات")
+        self.assertContains(resp, "plan-filter-col")
+        self.assertContains(resp, "topbar-filter")
         self.assertNotContains(resp, "تغییر وضعیت")
         self.assertNotContains(resp, "تأیید (تأییدشده)")
 

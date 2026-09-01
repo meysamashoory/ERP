@@ -45,207 +45,151 @@ def _can_delete_excel(user) -> bool:
 
 @login_required
 def system_data_hub(request: HttpRequest) -> HttpResponse:
-    """App-styled hub mirroring previous Django-admin «داده‌های پایه» options."""
+    """Accordion hub matching previous admin menu groups — in-app destinations."""
     from django.urls import reverse
+    from urllib.parse import urlencode
 
-    from accounts.models import UserProfile
+    from .system_sections import build_system_groups
 
-    from .models import (
-        DeviationReason,
-        ExcelTable,
-        ExcelUpload,
-        Machine,
-        MoldOption,
-        PlanningDisplaySettings,
-        PlanningInsightField,
-        Product,
-        ProductBomLine,
-        ProductConsumable,
-        ProductGroup,
-        ProductSubGroup,
-        ProductionTypeOption,
-        ProductionUnit,
-        ProgramChangeReason,
-        ProgramUidScheme,
-        StoppageReason,
-        SystemAlarm,
+    groups_out = []
+    for group in build_system_groups():
+        items_out = []
+        for item in group.items:
+            url = ""
+            if item.url_name:
+                # url_kwargs may include query-only keys like tab=
+                kwargs = dict(item.url_kwargs or {})
+                tab = kwargs.pop("tab", None)
+                try:
+                    url = reverse(item.url_name, kwargs=kwargs) if kwargs else reverse(item.url_name)
+                except Exception:
+                    url = reverse(item.url_name)
+                if tab:
+                    url = f"{url}?{urlencode({'tab': tab})}"
+            elif item.section_key:
+                url = reverse("system_section", kwargs={"key": item.section_key})
+            add_url = ""
+            if item.can_add and item.section_key:
+                add_url = reverse("system_section", kwargs={"key": item.section_key}) + "?new=1"
+            items_out.append(
+                {
+                    "key": item.key,
+                    "title": item.title,
+                    "description": item.description,
+                    "count": item.count_fn() if item.count_fn else 0,
+                    "url": url,
+                    "can_add": bool(item.can_add and add_url),
+                    "add_url": add_url,
+                }
+            )
+        groups_out.append(
+            {"key": group.key, "title": group.title, "items": items_out}
+        )
+    return render(
+        request,
+        "catalog/system_data.html",
+        {"groups": groups_out},
     )
 
-    # Same options as former admin sidebar under «داده‌های پایه» (+ users)
-    sections = [
+
+def _field_display(obj, name: str) -> str:
+    try:
+        val = getattr(obj, name)
+    except Exception:
+        return "—"
+    if val is None or val == "":
+        return "—"
+    if hasattr(val, "pk") and not isinstance(val, (str, int, float, bool)):
+        return str(val)
+    if isinstance(val, bool):
+        return "بله" if val else "خیر"
+    return str(val)
+
+
+@login_required
+def system_section(request: HttpRequest, key: str) -> HttpResponse:
+    """In-app list/edit for a system-data section (same chrome as the rest of the app)."""
+    from django.forms import modelform_factory
+
+    from .system_sections import get_section_spec
+
+    spec = get_section_spec(key)
+    if not spec:
+        messages.error(request, "بخش یافت نشد.")
+        return redirect("system_data")
+
+    model = spec["model"]
+    profile = get_profile(request.user)
+    can_mutate = bool(profile and profile.can_enter_data)
+    edit_fields = list(spec.get("edit_fields") or [])
+    Form = None
+    if edit_fields:
+        Form = modelform_factory(model, fields=edit_fields)
+
+    instance = None
+    pk = request.GET.get("id") or request.POST.get("id")
+    if pk:
+        try:
+            instance = model.objects.get(pk=int(pk))
+        except (model.DoesNotExist, TypeError, ValueError):
+            instance = None
+
+    want_new = request.GET.get("new") == "1" or request.POST.get("action") == "create"
+    form = None
+    if Form and can_mutate and (want_new or instance):
+        if request.method == "POST" and request.POST.get("action") in {"create", "update"}:
+            form = Form(request.POST, instance=instance)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "ذخیره شد.")
+                return redirect("system_section", key=key)
+        else:
+            form = Form(instance=instance)
+
+    if (
+        request.method == "POST"
+        and request.POST.get("action") == "delete"
+        and instance
+        and spec.get("can_delete")
+        and can_mutate
+    ):
+        instance.delete()
+        messages.success(request, "حذف شد.")
+        return redirect("system_section", key=key)
+
+    qs = model.objects.all()
+    select_related = spec.get("select_related") or []
+    if select_related:
+        qs = qs.select_related(*select_related)
+    rows = []
+    fields = list(spec.get("fields") or ["id"])
+    labels = spec.get("labels") or {}
+    columns = [{"key": f, "label": labels.get(f, f)} for f in fields]
+    for obj in qs[:500]:
+        rows.append(
+            {
+                "id": obj.pk,
+                "cells": [_field_display(obj, f) for f in fields],
+            }
+        )
+
+    return render(
+        request,
+        "catalog/system_section.html",
         {
-            "group": "داده‌های پایه",
-            "title": "آلارم‌های سیستم (بررسی و پاک‌سازی)",
-            "description": "تداخل تولید، انتقال اکسل، شناسه تکراری",
-            "count": SystemAlarm.objects.filter(status=SystemAlarm.Status.OPEN).count(),
-            "url": reverse("admin:catalog_systemalarm_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_systemalarm_add"),
+            "section_key": key,
+            "title": spec["title"],
+            "columns": columns,
+            "rows": rows,
+            "form": form,
+            "instance": instance,
+            "can_add": bool(spec.get("can_add") and can_mutate and Form),
+            "can_edit": bool(spec.get("can_edit") and can_mutate and Form),
+            "can_delete": bool(spec.get("can_delete") and can_mutate),
+            "editing": bool(form is not None),
+            "is_new": bool(want_new and instance is None),
         },
-        {
-            "group": "داده‌های پایه",
-            "title": "انواع قالب",
-            "description": "فهرست قالب‌های قابل انتخاب در برنامه",
-            "count": MoldOption.objects.count(),
-            "url": reverse("admin:catalog_moldoption_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_moldoption_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "تنظیمات نمایش برنامه‌ریزی (کادر آبی و ماتریس)",
-            "description": "ضریب ارتفاع، واحدهای ماتریس، تفکیک گروه",
-            "count": PlanningDisplaySettings.objects.count(),
-            "url": reverse("admin:catalog_planningdisplaysettings_changelist"),
-            "can_add": False,
-            "add_url": "",
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "جداول اکسل",
-            "description": "برگه‌های واردشده از فایل‌های اکسل",
-            "count": ExcelTable.objects.count(),
-            "url": reverse("admin:catalog_exceltable_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_exceltable_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "دستگاه‌ها و خطوط",
-            "description": "دستگاه تزریق و خطوط تولید (متصل به واحد)",
-            "count": Machine.objects.count(),
-            "url": reverse("admin:catalog_machine_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_machine_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "دلایل انحراف",
-            "description": "علل انحراف آمار تولید",
-            "count": DeviationReason.objects.count(),
-            "url": reverse("admin:catalog_deviationreason_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_deviationreason_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "دلایل تغییر برنامه",
-            "description": "علل تغییر / راه‌اندازی برنامه",
-            "count": ProgramChangeReason.objects.count(),
-            "url": reverse("admin:catalog_programchangereason_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_programchangereason_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "دلایل توقف",
-            "description": "علل توقف تولید",
-            "count": StoppageReason.objects.count(),
-            "url": reverse("admin:catalog_stoppagereason_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_stoppagereason_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "زیرگروه‌های محصول",
-            "description": "زیرگروه وابسته به گروه اصلی",
-            "count": ProductSubGroup.objects.count(),
-            "url": reverse("admin:catalog_productsubgroup_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_productsubgroup_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "ساختار BOM",
-            "description": "اجزای تشکیل‌دهنده محصول",
-            "count": ProductBomLine.objects.count(),
-            "url": reverse("admin:catalog_productbomline_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_productbomline_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "فایل‌های اکسل",
-            "description": "فایل‌های بارگذاری‌شده برای انتقال داده",
-            "count": ExcelUpload.objects.count(),
-            "url": reverse("admin:catalog_excelupload_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_excelupload_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "فیلدهای اطلاعات برنامه‌ریزی (نوار شیشه‌ای)",
-            "description": "ستون‌های قابل نمایش در کادر بینش برنامه",
-            "count": PlanningInsightField.objects.count(),
-            "url": reverse("admin:catalog_planninginsightfield_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_planninginsightfield_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "قانون شناسه برنامه (بازتعریف)",
-            "description": "الگوی ساخت شناسه ۱۴ رقمی تعویض",
-            "count": ProgramUidScheme.objects.count(),
-            "url": reverse("admin:catalog_programuidscheme_changelist"),
-            "can_add": False,
-            "add_url": "",
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "محصولات و قطعات",
-            "description": "ویرایش سریع در «دیتای محصولات»؛ فهرست کامل در ادمین",
-            "count": Product.objects.count(),
-            "url": reverse("product_data"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_product_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "مواد مصرفی",
-            "description": "مواد مصرفی به ازای هر محصول",
-            "count": ProductConsumable.objects.count(),
-            "url": reverse("admin:catalog_productconsumable_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_productconsumable_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "واحدهای تولیدی",
-            "description": "شماره و نام واحدهای تزریق / تولید",
-            "count": ProductionUnit.objects.count(),
-            "url": reverse("admin:catalog_productionunit_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_productionunit_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "گروه‌های محصول",
-            "description": "گروه اصلی محصولات",
-            "count": ProductGroup.objects.count(),
-            "url": reverse("admin:catalog_productgroup_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_productgroup_add"),
-        },
-        {
-            "group": "داده‌های پایه",
-            "title": "گزینه‌های نوع تولید",
-            "description": "گزینه‌های نوع تولید در برنامه و سوابق",
-            "count": ProductionTypeOption.objects.count(),
-            "url": reverse("admin:catalog_productiontypeoption_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:catalog_productiontypeoption_add"),
-        },
-        {
-            "group": "کاربران و دسترسی‌ها",
-            "title": "پروفایل کاربران",
-            "description": "نقش و دسترسی کاربران سامانه",
-            "count": UserProfile.objects.count(),
-            "url": reverse("admin:accounts_userprofile_changelist"),
-            "can_add": True,
-            "add_url": reverse("admin:accounts_userprofile_add"),
-        },
-    ]
-    return render(request, "catalog/system_data.html", {"sections": sections})
+    )
 
 
 @login_required
@@ -638,7 +582,8 @@ def excel_file_delete(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def product_data_hub(request: HttpRequest) -> HttpResponse:
-    """Tabbed product master data — editable and Excel-transfer targets."""
+    """Tabbed product master data — view-first; edit after topbar toggle."""
+    from .models import ProductGroup, ProductSubGroup
     from .product_data import (
         PRODUCT_DATA_TABS,
         TAB_BOM,
@@ -651,18 +596,43 @@ def product_data_hub(request: HttpRequest) -> HttpResponse:
     )
 
     profile = get_profile(request.user)
-    can_edit = bool(profile and profile.can_enter_data)
+    can_edit_permission = bool(profile and profile.can_enter_data)
     tab = resolve_tab(request.GET.get("tab"))
+    groups = list(
+        ProductGroup.objects.order_by("order", "name").values("id", "name")
+    )
+    subgroups = list(
+        ProductSubGroup.objects.select_related("group")
+        .order_by("group__order", "order", "name")
+        .values("id", "name", "group_id", "group__name")
+    )
     context = {
         "tabs": PRODUCT_DATA_TABS,
         "active_tab": tab,
-        "can_edit": can_edit,
+        "can_edit_permission": can_edit_permission,
+        # Page opens in view mode; JS enables edit when user clicks «ویرایش».
+        "can_edit": False,
         "counting_units": [
             {"value": "count", "label": "عدد"},
             {"value": "branch", "label": "شاخه"},
             {"value": "coil", "label": "کلاف"},
             {"value": "meter", "label": "متر"},
         ],
+        "product_groups": groups,
+        "product_subgroups": subgroups,
+        "product_groups_json": json.dumps(groups, ensure_ascii=False),
+        "product_subgroups_json": json.dumps(
+            [
+                {
+                    "id": s["id"],
+                    "name": s["name"],
+                    "group_id": s["group_id"],
+                    "group_name": s["group__name"],
+                }
+                for s in subgroups
+            ],
+            ensure_ascii=False,
+        ),
         "info_rows": product_info_rows() if tab == TAB_INFO else [],
         "bom_rows": bom_rows() if tab == TAB_BOM else [],
         "consumable_rows": consumable_rows() if tab == TAB_CONSUMABLES else [],

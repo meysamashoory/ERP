@@ -1,10 +1,11 @@
 /**
- * Editable product-data tabs (info / BOM / consumables).
+ * Product-data tabs: view-first; enable edit via topbar «ویرایش».
  */
 (function () {
   const root = document.getElementById("product-data-root");
-  if (!root || root.dataset.canEdit !== "1") return;
+  if (!root) return;
 
+  const canEditPermission = root.dataset.canEditPermission === "1";
   const tab = root.dataset.tab || "info";
   const saveUrl = root.dataset.saveUrl || "";
   const deleteUrl = root.dataset.deleteUrl || "";
@@ -13,9 +14,103 @@
     (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] ||
     "";
 
+  let groups = [];
+  let subgroups = [];
+  try {
+    groups = JSON.parse(root.dataset.groups || "[]");
+  } catch (e) {
+    groups = [];
+  }
+  try {
+    subgroups = JSON.parse(root.dataset.subgroups || "[]");
+  } catch (e) {
+    subgroups = [];
+  }
+
   const table = root.querySelector(".product-data-table");
-  if (!table) return;
-  const tbody = table.querySelector("tbody");
+  const tbody = table ? table.querySelector("tbody") : null;
+  const toggleBtn = document.getElementById("product-edit-toggle");
+  const hint = document.getElementById("product-view-hint");
+  const actions = root.querySelector(".product-data-actions");
+
+  function parseGroupId(name) {
+    const g = groups.find(function (x) {
+      return x.name === name;
+    });
+    return g ? g.id : null;
+  }
+
+  function fillSubgroupSelect(select, groupName, current) {
+    if (!select) return;
+    const gid = parseGroupId(groupName);
+    const opts = subgroups.filter(function (s) {
+      return !gid || s.group_id === gid;
+    });
+    const cur = current || select.getAttribute("data-current") || select.value || "";
+    select.innerHTML = '<option value="">—</option>';
+    opts.forEach(function (s) {
+      const opt = document.createElement("option");
+      opt.value = s.name;
+      opt.textContent = s.name;
+      if (s.name === cur) opt.selected = true;
+      select.appendChild(opt);
+    });
+    if (cur && !opts.some(function (s) { return s.name === cur; })) {
+      const opt = document.createElement("option");
+      opt.value = cur;
+      opt.textContent = cur;
+      opt.selected = true;
+      select.appendChild(opt);
+    }
+  }
+
+  function initGroupSubgroupRows() {
+    if (!tbody) return;
+    tbody.querySelectorAll("tr").forEach(function (tr) {
+      const gSel = tr.querySelector("[data-group-select]");
+      const sSel = tr.querySelector("[data-subgroup-select]");
+      if (!gSel || !sSel) return;
+      fillSubgroupSelect(sSel, gSel.value, sSel.getAttribute("data-current") || sSel.value);
+      gSel.addEventListener("change", function () {
+        fillSubgroupSelect(sSel, gSel.value, "");
+      });
+    });
+  }
+
+  function setEditable(on) {
+    root.dataset.canEdit = on ? "1" : "0";
+    if (hint) {
+      hint.textContent = on
+        ? "حالت ویرایش — پس از تغییر، «ذخیره تغییرات» را بزنید."
+        : "حالت مشاهده — برای تغییر داده‌ها از «ویرایش» در بالای صفحه استفاده کنید.";
+    }
+    if (actions) actions.hidden = !on;
+    if (toggleBtn) toggleBtn.textContent = on ? "پایان ویرایش" : "ویرایش";
+    if (!tbody) return;
+    tbody.querySelectorAll("input, select, textarea").forEach(function (el) {
+      if (el.type === "checkbox" || el.tagName === "SELECT") {
+        el.disabled = !on;
+      } else {
+        if (on) el.removeAttribute("readonly");
+        else el.setAttribute("readonly", "readonly");
+      }
+    });
+    tbody.querySelectorAll("[data-delete-row]").forEach(function (btn) {
+      btn.hidden = !on;
+    });
+  }
+
+  initGroupSubgroupRows();
+  setEditable(false);
+
+  if (toggleBtn && canEditPermission) {
+    toggleBtn.addEventListener("click", function () {
+      const next = root.dataset.canEdit !== "1";
+      setEditable(next);
+    });
+  }
+
+  if (!tbody) return;
 
   function fieldValue(el) {
     if (!el) return "";
@@ -38,14 +133,32 @@
     return rows;
   }
 
+  function groupOptionsHtml(selected) {
+    let html = '<option value="">—</option>';
+    groups.forEach(function (g) {
+      html +=
+        '<option value="' +
+        g.name +
+        '"' +
+        (g.name === selected ? " selected" : "") +
+        ">" +
+        g.name +
+        "</option>";
+    });
+    return html;
+  }
+
   function blankRowHtml() {
     if (tab === "info") {
       return (
         '<tr data-new="1">' +
         '<td><input class="input input-sm" data-field="code" value=""></td>' +
         '<td><input class="input input-sm" data-field="name" value=""></td>' +
-        '<td><input class="input input-sm" data-field="group_name" value=""></td>' +
-        '<td><input class="input input-sm" data-field="subgroup_name" value=""></td>' +
+        '<td><select class="input input-sm" data-field="group_name" data-group-select>' +
+        groupOptionsHtml("") +
+        "</select></td>" +
+        '<td><select class="input input-sm" data-field="subgroup_name" data-subgroup-select data-current="">' +
+        '<option value="">—</option></select></td>' +
         '<td><select class="input input-sm" data-field="counting_unit">' +
         '<option value="count">عدد</option>' +
         '<option value="branch">شاخه</option>' +
@@ -90,13 +203,24 @@
 
   root.querySelectorAll("[data-add-row]").forEach(function (btn) {
     btn.addEventListener("click", function () {
+      if (root.dataset.canEdit !== "1") return;
       const empty = tbody.querySelector(".empty-row");
       if (empty) empty.remove();
       tbody.insertAdjacentHTML("beforeend", blankRowHtml());
+      const tr = tbody.lastElementChild;
+      const gSel = tr.querySelector("[data-group-select]");
+      const sSel = tr.querySelector("[data-subgroup-select]");
+      if (gSel && sSel) {
+        fillSubgroupSelect(sSel, gSel.value, "");
+        gSel.addEventListener("change", function () {
+          fillSubgroupSelect(sSel, gSel.value, "");
+        });
+      }
     });
   });
 
   tbody.addEventListener("click", function (e) {
+    if (root.dataset.canEdit !== "1") return;
     const removeNew = e.target.closest("[data-remove-new]");
     if (removeNew) {
       const tr = removeNew.closest("tr");
@@ -133,6 +257,7 @@
 
   root.querySelectorAll("[data-save-tab]").forEach(function (btn) {
     btn.addEventListener("click", async function () {
+      if (root.dataset.canEdit !== "1") return;
       const rows = collectRows();
       if (!rows.length) {
         alert("ردیفی برای ذخیره نیست.");

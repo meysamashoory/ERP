@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("data/system/", views.system_data_hub, name="system_data"),
+    path("data/system/<slug:key>/", views.system_section, name="system_section"),
     path("data/products/", views.product_data_hub, name="product_data"),
     path("data/products/save/", views.product_data_save, name="product_data_save"),
     path("data/products/delete/", views.product_data_delete, name="product_data_delete"),

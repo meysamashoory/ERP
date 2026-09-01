@@ -8,6 +8,9 @@
 {% block topbar_actions %}
 <div class="topbar-actions topbar-actions-pair">
   <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">انتقال از اکسل</a>
+  {% if can_edit_permission %}
+  <button type="button" class="btn btn-sm" id="product-edit-toggle">ویرایش</button>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -15,9 +18,12 @@
 <div
   id="product-data-root"
   data-tab="{{ active_tab }}"
-  data-can-edit="{% if can_edit %}1{% else %}0{% endif %}"
+  data-can-edit-permission="{% if can_edit_permission %}1{% else %}0{% endif %}"
+  data-can-edit="0"
   data-save-url="{{ save_url }}"
   data-delete-url="{{ delete_url }}"
+  data-groups='{{ product_groups_json|escape }}'
+  data-subgroups='{{ product_subgroups_json|escape }}'
 >
   {% csrf_token %}
   <div class="tabs product-data-tabs">
@@ -30,8 +36,8 @@
   </div>
 
   <div class="panel panel-compact panel-list">
-    <p class="panel-hint">
-      قابل ویرایش از این صفحه؛ انتقال داده از «بارگذاری» با مقصد «دیتای محصولات».
+    <p class="panel-hint" id="product-view-hint">
+      حالت مشاهده — برای تغییر داده‌ها از «ویرایش» در بالای صفحه استفاده کنید.
     </p>
 
     {% if active_tab == "info" %}
@@ -54,27 +60,37 @@
         <tbody>
           {% for r in info_rows %}
           <tr data-id="{{ r.id }}">
-            <td><input class="input input-sm" data-field="code" value="{{ r.code }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="name" value="{{ r.name }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="group_name" value="{{ r.group_name }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="subgroup_name" value="{{ r.subgroup_name }}" {% if not can_edit %}readonly{% endif %}></td>
+            <td><input class="input input-sm" data-field="code" value="{{ r.code }}" readonly></td>
+            <td><input class="input input-sm" data-field="name" value="{{ r.name }}" readonly></td>
             <td>
-              <select class="input input-sm" data-field="counting_unit" {% if not can_edit %}disabled{% endif %}>
+              <select class="input input-sm" data-field="group_name" data-group-select disabled>
+                <option value="">—</option>
+                {% for g in product_groups %}
+                <option value="{{ g.name }}" {% if r.group_name == g.name %}selected{% endif %}>{{ g.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select class="input input-sm" data-field="subgroup_name" data-subgroup-select disabled
+                      data-current="{{ r.subgroup_name }}">
+                <option value="{{ r.subgroup_name }}">{{ r.subgroup_name|default:"—" }}</option>
+              </select>
+            </td>
+            <td>
+              <select class="input input-sm" data-field="counting_unit" disabled>
                 {% for u in counting_units %}
                 <option value="{{ u.value }}" {% if r.counting_unit == u.value %}selected{% endif %}>{{ u.label }}</option>
                 {% endfor %}
               </select>
             </td>
-            <td><input class="input input-sm num" data-field="unit_weight_grams" value="{{ r.unit_weight_grams }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm num" data-field="per_carton" value="{{ r.per_carton }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm num" data-field="stock_finished" value="{{ r.stock_finished }}" {% if not can_edit %}readonly{% endif %}></td>
+            <td><input class="input input-sm num" data-field="unit_weight_grams" value="{{ r.unit_weight_grams }}" readonly></td>
+            <td><input class="input input-sm num" data-field="per_carton" value="{{ r.per_carton }}" readonly></td>
+            <td><input class="input input-sm num" data-field="stock_finished" value="{{ r.stock_finished }}" readonly></td>
             <td class="num">
-              <input type="checkbox" data-field="needs_assembly" {% if r.needs_assembly %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
+              <input type="checkbox" data-field="needs_assembly" {% if r.needs_assembly %}checked{% endif %} disabled>
             </td>
             <td class="col-ops">
-              {% if can_edit %}
-              <button type="button" class="btn btn-sm btn-ghost" data-delete-row>حذف</button>
-              {% endif %}
+              <button type="button" class="btn btn-sm btn-ghost" data-delete-row hidden>حذف</button>
             </td>
           </tr>
           {% empty %}
@@ -83,12 +99,10 @@
         </tbody>
       </table>
     </div>
-    {% if can_edit %}
-    <div class="form-actions product-data-actions">
+    <div class="form-actions product-data-actions" hidden>
       <button type="button" class="btn btn-sm btn-ghost" data-add-row>＋ ردیف جدید</button>
       <button type="button" class="btn btn-sm" data-save-tab>ذخیره تغییرات</button>
     </div>
-    {% endif %}
 
     {% elif active_tab == "bom" %}
     <div class="table-scroll">
@@ -108,17 +122,15 @@
         <tbody>
           {% for r in bom_rows %}
           <tr data-id="{{ r.id }}">
-            <td><input class="input input-sm" data-field="parent_code" value="{{ r.parent_code }}" {% if not can_edit %}readonly{% endif %}></td>
+            <td><input class="input input-sm" data-field="parent_code" value="{{ r.parent_code }}" readonly></td>
             <td class="muted">{{ r.parent_name }}</td>
-            <td><input class="input input-sm" data-field="component_code" value="{{ r.component_code }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="component_name" value="{{ r.component_name }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm num" data-field="quantity" value="{{ r.quantity }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="unit" value="{{ r.unit }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="notes" value="{{ r.notes }}" {% if not can_edit %}readonly{% endif %}></td>
+            <td><input class="input input-sm" data-field="component_code" value="{{ r.component_code }}" readonly></td>
+            <td><input class="input input-sm" data-field="component_name" value="{{ r.component_name }}" readonly></td>
+            <td><input class="input input-sm num" data-field="quantity" value="{{ r.quantity }}" readonly></td>
+            <td><input class="input input-sm" data-field="unit" value="{{ r.unit }}" readonly></td>
+            <td><input class="input input-sm" data-field="notes" value="{{ r.notes }}" readonly></td>
             <td class="col-ops">
-              {% if can_edit %}
-              <button type="button" class="btn btn-sm btn-ghost" data-delete-row>حذف</button>
-              {% endif %}
+              <button type="button" class="btn btn-sm btn-ghost" data-delete-row hidden>حذف</button>
             </td>
           </tr>
           {% empty %}
@@ -127,12 +139,10 @@
         </tbody>
       </table>
     </div>
-    {% if can_edit %}
-    <div class="form-actions product-data-actions">
+    <div class="form-actions product-data-actions" hidden>
       <button type="button" class="btn btn-sm btn-ghost" data-add-row>＋ ردیف جدید</button>
       <button type="button" class="btn btn-sm" data-save-tab>ذخیره تغییرات</button>
     </div>
-    {% endif %}
 
     {% elif active_tab == "consumables" %}
     <div class="table-scroll">
@@ -152,17 +162,15 @@
         <tbody>
           {% for r in consumable_rows %}
           <tr data-id="{{ r.id }}">
-            <td><input class="input input-sm" data-field="product_code" value="{{ r.product_code }}" {% if not can_edit %}readonly{% endif %}></td>
+            <td><input class="input input-sm" data-field="product_code" value="{{ r.product_code }}" readonly></td>
             <td class="muted">{{ r.product_name }}</td>
-            <td><input class="input input-sm" data-field="material_code" value="{{ r.material_code }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="material_name" value="{{ r.material_name }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm num" data-field="quantity_per_unit" value="{{ r.quantity_per_unit }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="unit" value="{{ r.unit }}" {% if not can_edit %}readonly{% endif %}></td>
-            <td><input class="input input-sm" data-field="notes" value="{{ r.notes }}" {% if not can_edit %}readonly{% endif %}></td>
+            <td><input class="input input-sm" data-field="material_code" value="{{ r.material_code }}" readonly></td>
+            <td><input class="input input-sm" data-field="material_name" value="{{ r.material_name }}" readonly></td>
+            <td><input class="input input-sm num" data-field="quantity_per_unit" value="{{ r.quantity_per_unit }}" readonly></td>
+            <td><input class="input input-sm" data-field="unit" value="{{ r.unit }}" readonly></td>
+            <td><input class="input input-sm" data-field="notes" value="{{ r.notes }}" readonly></td>
             <td class="col-ops">
-              {% if can_edit %}
-              <button type="button" class="btn btn-sm btn-ghost" data-delete-row>حذف</button>
-              {% endif %}
+              <button type="button" class="btn btn-sm btn-ghost" data-delete-row hidden>حذف</button>
             </td>
           </tr>
           {% empty %}
@@ -171,12 +179,10 @@
         </tbody>
       </table>
     </div>
-    {% if can_edit %}
-    <div class="form-actions product-data-actions">
+    <div class="form-actions product-data-actions" hidden>
       <button type="button" class="btn btn-sm btn-ghost" data-add-row>＋ ردیف جدید</button>
       <button type="button" class="btn btn-sm" data-save-tab>ذخیره تغییرات</button>
     </div>
-    {% endif %}
 
     {% else %}
     <p class="empty coming-soon-panel">
@@ -188,5 +194,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/product_data.js' %}?v=1"></script>
+<script src="{% static 'js/product_data.js' %}?v=2"></script>
 {% endblock %}
