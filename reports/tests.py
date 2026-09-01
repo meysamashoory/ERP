@@ -93,7 +93,8 @@ class ReportFlowTests(TestCase):
         self.assertContains(detail, "اصلاح گزارش")
         self.assertNotContains(detail, "قابل اصلاح")
         self.assertContains(detail, "افزودن ردیف")
-        self.assertContains(detail, 'id="entry-edit-actions" hidden')
+        self.assertContains(detail, 'id="entry-edit-actions"')
+        self.assertNotContains(detail, 'id="entry-edit-actions" hidden')
         self.assertContains(detail, "برگه جدید")
         self.assertContains(detail, "موقعیت:")
 
@@ -600,7 +601,7 @@ class PrintFormFlowTests(TestCase):
         # Separators are only injected in edit mode via JS
         self.assertEqual(detail.context["entry_sheet_count"], 2)
         self.assertEqual(detail.context["entry_row_sheets"], [1, 2])
-        self.assertContains(detail, 'id="entry-sheet-toolbar" hidden')
+        self.assertContains(detail, 'id="add-entry-sheet"')
 
         form_obj = PrintForm.objects.create(
             owner=self.expert,

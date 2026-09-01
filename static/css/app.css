@@ -707,24 +707,63 @@ a.tab { text-decoration: none; display: inline-block; }
 .list-filter-count { font-size: 12px; padding-bottom: 8px; }
 
 .list-filter-bar-compact {
-  gap: 8px 10px;
+  gap: 6px 8px;
   padding: 0 4px 10px;
 }
 .list-filter-bar-compact .field-search {
-  flex: 0 1 280px;
-  max-width: 320px;
-  min-width: 160px;
+  flex: 0 1 220px;
+  max-width: 260px;
+  min-width: 140px;
 }
 .list-filter-bar-compact .field-grow,
 .list-filter-bar .field-grow {
   flex: 1 1 180px;
 }
 .list-filter-bar-compact .field {
-  min-width: 120px;
+  min-width: 96px;
 }
 .list-filter-bar-compact .field-search input {
   width: 100%;
-  max-width: 320px;
+  max-width: 260px;
+}
+/* Compact filter in the top bar (history etc.) */
+.topbar-filter.list-filter-bar {
+  padding: 0;
+  margin: 0;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 6px 8px;
+  max-width: min(720px, 62vw);
+}
+.topbar-filter .field label {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+.topbar-filter .input-sm,
+.topbar-filter .input {
+  padding: 5px 8px;
+  font-size: 12.5px;
+  min-height: 32px;
+}
+.topbar-filter .field {
+  min-width: 88px;
+}
+.topbar-filter .field-search {
+  flex: 1 1 160px;
+  min-width: 120px;
+  max-width: 220px;
+}
+.topbar-filter .list-filter-count {
+  padding-bottom: 6px;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+.topbar .topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .detail-meta {
@@ -1299,7 +1338,8 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
   color: var(--muted);
 }
 
-.ops-inline { display: flex; gap: 8px; align-items: center; justify-content: flex-start; padding-inline-end: 4px; }
+.ops-add { color: #15803d; }
+.ops-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .table td.col-ops .ops-inline,
 .table td.col-ops .row-actions-ops {
   justify-content: flex-start;

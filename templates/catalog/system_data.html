@@ -7,8 +7,8 @@
 {% block content %}
 <div class="panel panel-compact panel-list">
   <p class="panel-hint">
-    داده‌های پایه و تنظیمات سامانه — کالاها و BOM در «دیتای محصولات» مدیریت می‌شوند؛
-    برای ویرایش جزئیات هر بخش وارد همان بخش شوید.
+    همان گزینه‌های «داده‌های پایه» قبلی — برای مشاهده/ویرایش وارد هر بخش شوید؛
+    در صورت نیاز می‌توانید از «+ اضافه کردن» رکورد جدید بسازید.
   </p>
   {% if sections %}
   <div class="table-scroll">
@@ -16,10 +16,10 @@
     <thead>
       <tr>
         <th style="width:70px">ردیف</th>
-        <th style="width:140px">گروه</th>
+        <th style="width:160px">گروه</th>
         <th>بخش</th>
-        <th style="width:120px">تعداد</th>
-        <th style="width:220px">عملیات</th>
+        <th style="width:100px">تعداد</th>
+        <th style="width:280px">عملیات</th>
       </tr>
     </thead>
     <tbody>
@@ -35,6 +35,9 @@
         <td class="col-ops">
           <div class="ops-inline row-actions-ops">
             <a class="btn btn-sm btn-ghost" href="{{ s.url }}">مشاهده / ویرایش</a>
+            {% if s.can_add and s.add_url %}
+            <a class="btn btn-sm btn-ghost ops-add" href="{{ s.add_url }}">+ اضافه کردن</a>
+            {% endif %}
           </div>
         </td>
       </tr>

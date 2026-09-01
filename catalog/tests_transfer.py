@@ -43,10 +43,17 @@ class MenuAndHistoryTests(TestCase):
         system = self.client.get(reverse("system_data"))
         self.assertEqual(system.status_code, 200)
         self.assertContains(system, "واحدهای تولیدی")
-        self.assertContains(system, "زیرگروه‌های کالا")
-        self.assertContains(system, "فیلدهای بینش برنامه‌ریزی")
-        self.assertContains(system, "نمایش ماتریس / برنامه")
+        self.assertContains(system, "زیرگروه‌های محصول")
+        self.assertContains(system, "فیلدهای اطلاعات برنامه‌ریزی")
+        self.assertContains(system, "تنظیمات نمایش برنامه‌ریزی")
         self.assertContains(system, "آلارم‌های سیستم")
+        self.assertContains(system, "ساختار BOM")
+        self.assertContains(system, "مواد مصرفی")
+        self.assertContains(system, "جداول اکسل")
+        self.assertContains(system, "فایل‌های اکسل")
+        self.assertContains(system, "دلایل تغییر برنامه")
+        self.assertContains(system, "پروفایل کاربران")
+        self.assertContains(system, "+ اضافه کردن")
         self.assertNotContains(system, "<h2>مدیریت داده‌های پایه سامانه</h2>")
 
         history = self.client.get(reverse("production_history"))
@@ -55,6 +62,13 @@ class MenuAndHistoryTests(TestCase):
         # Title only in topbar — not duplicated as panel h2
         self.assertNotContains(history, "<h2>سوابق تولید</h2>")
         self.assertContains(history, "table-scroll")
+        self.assertContains(history, "برای مشاهده جزئیات روی هر ردیف کلیک کنید.")
+        self.assertNotContains(
+            history,
+            "برای مشاهده شناسه تعویض، کد کالا، وضعیت و اسناد روزانه",
+        )
+        self.assertContains(history, "history-filter-col")
+        self.assertContains(history, "topbar-filter")
 
         products = self.client.get(reverse("product_data"))
         self.assertEqual(products.status_code, 200)
@@ -67,6 +81,8 @@ class MenuAndHistoryTests(TestCase):
         history = self.client.get(reverse("production_history"))
         self.assertContains(history, "history-filter-col")
         self.assertContains(history, "history-filter-q")
+        self.assertContains(history, "history-filter-clear")
+        self.assertContains(history, "history-filter-count")
 
     def test_report_and_form_create_on_list_pages(self):
         self.client.login(username="admin", password="erp12345")

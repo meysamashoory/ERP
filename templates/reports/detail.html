@@ -60,12 +60,13 @@
       <span class="level-chip position-chip" title="موقعیت">موقعیت: {{ path_label }}</span>
     </div>
     {% if can_edit_entry %}
-    <div class="entry-edit-actions" id="entry-edit-actions" hidden>
+    <div class="entry-edit-actions" id="entry-edit-actions">
       <label class="entry-sheet-pick" title="برگه برای افزودن ردیف">
         <span>برگه</span>
         <select id="entry-target-sheet" class="input input-sm"></select>
       </label>
       <button type="button" class="btn btn-sm btn-ghost" id="add-entry-row">+ افزودن ردیف</button>
+      <button type="button" class="btn btn-sm btn-ghost" id="add-entry-sheet">برگه جدید</button>
     </div>
     {% endif %}
   </div>
@@ -90,13 +91,8 @@
       </tbody>
     </table>
   </div>
-  {% if can_edit_entry %}
-  <div class="entry-sheet-toolbar no-print" id="entry-sheet-toolbar" hidden>
-    <button type="button" class="btn btn-sm btn-ghost" id="add-entry-sheet">برگه جدید</button>
-  </div>
-  {% endif %}
   {% else %}
-  <p class="empty">داده‌ای برای این سطح یافت نشد.</p>
+  <p class="empty">داده‌ای برای این سطح یافت نشد.{% if can_edit_entry %} از «+ افزودن ردیف» برای شروع ثبت استفاده کنید.{% endif %}</p>
   {% endif %}
 </div>
 {% endblock %}
@@ -140,8 +136,7 @@
   if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
 
   var table = document.getElementById("report-data-table");
-  if (!table) return;
-  var tbody = table.querySelector("tbody");
+  var tbody = table ? table.querySelector("tbody") : null;
   var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr.data-row"));
   var selRow = 0;
   var selCol = 0;
@@ -160,8 +155,10 @@
   var sheetCount = Math.max(1, parseInt("{{ entry_sheet_count|default:1 }}", 10) || 1);
   var entryByCol = {};
   var colCount = table.querySelectorAll("thead th").length;
-  entryMeta.forEach(function (m) {
-    if (m && m.col_index != null && m.col_index >= 0) entryByCol[m.col_index] = m;
+  entryMeta.forEach(function (m, i) {
+    if (!m) return;
+    var idx = (m.col_index != null && m.col_index >= 0) ? m.col_index : i;
+    entryByCol[idx] = m;
   });
 
   Array.prototype.forEach.call(tbody.querySelectorAll("tr.data-row"), function (tr, i) {
@@ -171,8 +168,8 @@
     sheetCount = Math.max(sheetCount, s);
   });
 
-  if (editActions) editActions.hidden = true;
-  if (sheetToolbar) sheetToolbar.hidden = true;
+  if (editActions) editActions.hidden = false;
+  if (sheetToolbar) sheetToolbar.hidden = false;
 
   function dataRows() {
     return Array.prototype.slice.call(tbody.querySelectorAll("tr.data-row"));
@@ -350,8 +347,45 @@
     td.appendChild(field);
   }
 
+  function ensureTable() {
+    if (document.getElementById("report-data-table")) return;
+    var panel = document.getElementById("report-print-area");
+    if (!panel) return;
+    var empty = panel.querySelector("p.empty");
+    if (empty) empty.remove();
+    var wrap = document.createElement("div");
+    wrap.className = "table-scroll";
+    var table = document.createElement("table");
+    table.className = "table table-nav-cells";
+    table.id = "report-data-table";
+    table.tabIndex = 0;
+    table.setAttribute("data-editing", "0");
+    var thead = document.createElement("thead");
+    var hr = document.createElement("tr");
+    entryMeta.forEach(function (m) {
+      var th = document.createElement("th");
+      th.textContent = m.label || m.key || "";
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    table.appendChild(document.createElement("tbody"));
+    wrap.appendChild(table);
+    panel.appendChild(wrap);
+    // rebind globals used below
+    window.__reportTable = table;
+  }
+
   function enterEditMode() {
-    if (!editToggle || !entryMeta.length) return;
+    if (!entryMeta.length) {
+      window.alert("برای این گزارش ستون قابل ثبت تعریف نشده است. در ویرایش گزارش، از منبع «ثبت داده» ستون اضافه کنید.");
+      return;
+    }
+    ensureTable();
+    table = document.getElementById("report-data-table") || table;
+    if (!table) return;
+    tbody = table.querySelector("tbody");
+    colCount = table.querySelectorAll("thead th").length || entryMeta.length || colCount;
     editing = true;
     table.setAttribute("data-editing", "1");
     editToggle.textContent = "ذخیره";
@@ -379,7 +413,17 @@
   }
 
   function addEmptyRow() {
-    if (!editing) return;
+    if (!editing) {
+      enterEditMode();
+      if (!editing) return;
+    }
+    if (!table || !tbody) {
+      ensureTable();
+      table = document.getElementById("report-data-table");
+      tbody = table ? table.querySelector("tbody") : null;
+      colCount = table ? table.querySelectorAll("thead th").length : (entryMeta.length || 0);
+    }
+    if (!table || !tbody) return;
     var sheetN = targetSheet();
     var tr = document.createElement("tr");
     tr.className = "data-row";
@@ -432,6 +476,8 @@
     });
     form.submit();
   }
+
+  if (typeof populateSheetSelect === "function") populateSheetSelect();
 
   if (editToggle) {
     editToggle.addEventListener("click", function () {
