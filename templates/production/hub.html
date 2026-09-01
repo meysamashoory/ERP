@@ -4,6 +4,27 @@
 {% block nav_programs %}active{% endblock %}
 
 {% block content %}
+{% if production_conflicts %}
+<div class="panel panel-compact conflict-banner">
+  <div class="panel-head panel-head-compact">
+    <h2>هشدار تداخل برنامه‌های در حال تولید</h2>
+  </div>
+  <ul class="conflict-list">
+    {% for c in production_conflicts %}
+    <li>
+      <div class="conflict-msg">{{ c.message }}</div>
+      <div class="conflict-links">
+        {% for link in c.links %}
+        <a class="link-edit" href="{{ link.url }}">{{ link.label }}</a>
+        {% if not forloop.last %}<span class="muted">·</span>{% endif %}
+        {% endfor %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div data-tabs>
   <div class="tabs">
     <button class="tab {% if active_tab != 'pipe' %}active{% endif %}" data-tab="injection" type="button">دستگاه تزریق</button>
@@ -11,8 +32,9 @@
   </div>
 
   <div data-tab-panel="injection" {% if active_tab == 'pipe' %}style="display:none"{% endif %}>
-    <div class="panel">
+    <div class="panel panel-list">
       {% if rows %}
+      <div class="table-scroll">
       <table class="table">
         <thead><tr>
           <th>شناسه</th><th>شماره برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
@@ -35,7 +57,7 @@
                 data-forms-id="{{ row.program.pk }}"
                 data-forms-json="{{ forms_production_json|escape }}">{{ forms_production|length }} فرم</button>
             </td>
-            <td class="row-actions">
+            <td class="row-actions col-status">
               {% if profile.can_enter_data %}
                 {% if row.program.status == 'finished' %}
                   <span class="muted">اتمام تولید</span>
@@ -50,8 +72,8 @@
                 {% endif %}
               {% else %}—{% endif %}
             </td>
-            <td class="row-actions">
-              {% if row.program.status == 'running' and profile.can_enter_data %}
+            <td class="row-actions col-ops">
+              {% if profile.can_enter_data and row.program.status == 'running' %}
                 <a class="link-edit" href="{% url 'entry_create' row.program.pk %}">ثبت آمار روز</a>
               {% elif row.program.status == 'temp_stop' %}
                 <span class="muted">توقف موقت</span>
@@ -61,6 +83,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}<p class="empty">برنامه‌ای تأیید نشده است. پس از تأیید برنامه هفتگی، کالاها اینجا ظاهر می‌شوند.</p>{% endif %}
     </div>
   </div>

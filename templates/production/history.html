@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}سوابق تولید{% endblock %}
-{% block heading %}سوابق تولید{% endblock %}
-{% block nav_history %}active{% endblock %}
-
-{% block topbar_actions %}
+{% block heading %}
+<span class="topbar-title-text">سوابق تولید</span>
 {% if rows %}
+<span class="heading-hint">(برای مشاهده جزئیات روی هر ردیف کلیک کنید.)</span>
 <div class="topbar-filter list-filter-bar list-filter-bar-compact" id="history-filter-bar">
   <div class="field">
     <label for="history-filter-col">ستون</label>
@@ -20,12 +19,11 @@
 </div>
 {% endif %}
 {% endblock %}
+{% block nav_history %}active{% endblock %}
 
 {% block content %}
 <div class="panel panel-list">
   {% if rows %}
-  <p class="panel-hint">برای مشاهده جزئیات روی هر ردیف کلیک کنید.</p>
-
   <div class="table-scroll table-scroll-wide">
     <table class="table table-compact table-list-nav" id="history-list-table">
       <thead>

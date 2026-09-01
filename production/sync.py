@@ -899,13 +899,19 @@ def check_history_machine_conflicts() -> int:
                         f"به‌عنوان در حال تولید است و هم‌زمان برنامه «{other_uid}» "
                         f"روی {prog.machine_label} نیز در حال تولید است."
                     ),
-                    suggestion="یکی از دو مورد را به اتمام تولید برسانید.",
+                    suggestion=(
+                        f"یکی را اصلاح کنید: "
+                        f"/production/programs/{prog.pk}/status/ "
+                        f"یا سابقه /production/history/archive/{rec.pk}/"
+                    ),
                     severity=SystemAlarm.Severity.SERIOUS,
                     kind=SystemAlarm.Kind.PRODUCTION_CONFLICT,
                     details={
                         "history_uid": uid,
                         "live_uid": other_uid,
                         "machine_id": machine.pk,
+                        "live_fix_url": f"/production/programs/{prog.pk}/status/",
+                        "history_fix_url": f"/production/history/archive/{rec.pk}/",
                     },
                     dedupe=True,
                 )

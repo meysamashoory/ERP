@@ -132,16 +132,19 @@ def program_list(request):
 
     Injection tab shows awaiting (to start), running, and temporarily stopped
     programs. Finished programs appear only under «سوابق تولید».
-    Running/awaiting archive history is pulled into this hub.
+
+    Heavy Excel→live sync is *not* run on every page load (it made the hub
+    slow); transfer/sync buttons handle that. Overlaps are detected cheaply
+    and surfaced with fix links.
     """
-    from .sync import ensure_running_history_in_production
+    from .conflicts import collect_in_production_conflicts
 
     profile = _profile(request)
-    ensure_running_history_in_production(user=request.user)
     programs = list(
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
         )
+        .prefetch_related("item__lines")
         .filter(
             status__in=[
                 ProductionProgram.Status.AWAITING,
@@ -178,6 +181,7 @@ def program_list(request):
         }
 
     rows = [{"program": p, "totals": _totals_from_prog(p)} for p in programs]
+    conflicts = collect_in_production_conflicts()
 
     pipes = PipeProduction.objects.select_related("unit", "line", "product", "created_by")[:50]
     for rec in pipes:
@@ -198,8 +202,8 @@ def program_list(request):
                       "active_tab": active_tab,
                       "forms_production": forms_production,
                       "forms_production_json": _json.dumps(forms_production, ensure_ascii=False),
+                      "production_conflicts": conflicts,
                   })
-
 
 @login_required
 def production_history(request):
@@ -281,13 +285,15 @@ ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TE
 
 
 def machine_running_conflict(program):
-    """Another program currently RUNNING on the same machine (only one mold at a time)."""
+    """Another program currently occupying the same machine (running / temp stop)."""
     return (
         ProductionProgram.objects.filter(
-            item__machine=program.item.machine, status=ProductionProgram.Status.RUNNING
+            item__machine=program.item.machine,
+            status__in=ACTIVE_STATUSES,
         )
         .exclude(pk=program.pk)
-        .select_related("item__product")
+        .select_related("item__product", "item__machine__unit")
+        .prefetch_related("item__lines")
         .first()
     )
 
@@ -308,6 +314,19 @@ def product_mold_conflict(program, mold):
         if other.mold_id == (mold.id if mold else None):
             return other
     return None
+
+
+def _conflict_fix_hint(other) -> str:
+    from django.urls import reverse
+
+    try:
+        url = reverse("program_status", args=[other.pk])
+    except Exception:
+        url = ""
+    uid = getattr(other, "resolved_uid", "") or f"#{other.pk}"
+    if url:
+        return f"برای اصلاح به {url} بروید (شناسه {uid})."
+    return f"شناسه متداخل: {uid}"
 
 
 @login_required
@@ -351,7 +370,8 @@ def program_status(request, pk):
                     messages.error(
                         request,
                         f"روی «{program.machine_label}» قالب «{machine_conflict.item.product.name}» "
-                        f"در حال تولید است؛ تا زمان تعیین وضعیت (اتمام آمار) آن، راه‌اندازی قالب جدید ممکن نیست.",
+                        f"در حال تولید است؛ تا اتمام/توقف آن، راه‌اندازی قالب جدید ممکن نیست. "
+                        f"{_conflict_fix_hint(machine_conflict)}",
                     )
                     return redirect("program_status", pk=pk)
                 prod_conflict = product_mold_conflict(program, mold)
@@ -359,7 +379,8 @@ def program_status(request, pk):
                     messages.error(
                         request,
                         f"محصول «{program.item.product.name}» هم‌اکنون روی «{prod_conflict.machine_label}» "
-                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی در برنامه‌ریزی انتخاب کنید.",
+                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی در برنامه‌ریزی انتخاب کنید. "
+                        f"{_conflict_fix_hint(prod_conflict)}",
                     )
                     return redirect("program_status", pk=pk)
                 program.change_type = cd["change_type"]
@@ -395,7 +416,8 @@ def program_status(request, pk):
                     if conflict and status == ProductionProgram.Status.TEMP_STOP:
                         messages.error(
                             request,
-                            f"روی «{program.machine_label}» قالب دیگری در حال تولید است؛ ازسرگیری ممکن نیست.",
+                            f"روی «{program.machine_label}» قالب دیگری در حال تولید است؛ ازسرگیری ممکن نیست. "
+                            f"{_conflict_fix_hint(conflict)}",
                         )
                         return redirect("program_status", pk=pk)
                     program.status = ProductionProgram.Status.RUNNING
