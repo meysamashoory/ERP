@@ -1,0 +1,64 @@
+/* Django admin embedded inside ERP chrome */
+body.admin-embed {
+  background: var(--bg, #eef2f7) !important;
+}
+body.admin-embed #header,
+body.admin-embed #nav-sidebar,
+body.admin-embed .toggle-nav-sidebar {
+  display: none !important;
+}
+body.admin-embed #container {
+  width: auto !important;
+  min-width: 0 !important;
+}
+.admin-embed-content {
+  overflow: auto;
+  padding: 8px 12px 16px !important;
+}
+.admin-embed-crumbs {
+  margin: 0 0 10px;
+}
+.admin-embed-crumbs .breadcrumbs {
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+.admin-embed-crumbs .breadcrumbs a {
+  color: #4338ca;
+}
+body.admin-embed #content {
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  background: #fff;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+}
+body.admin-embed #content h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+body.admin-embed .module caption,
+body.admin-embed .module h2 {
+  background: #1e3a5f !important;
+  color: #fff !important;
+}
+body.admin-embed .button,
+body.admin-embed input[type=submit],
+body.admin-embed input[type=button],
+body.admin-embed .submit-row input {
+  border-radius: 8px;
+}
+body.admin-embed .object-tools {
+  margin-top: 0;
+}
+/* Avoid admin dark theme fighting ERP */
+body.admin-embed {
+  --body-fg: #0f172a;
+  --body-bg: #eef2f7;
+  --body-quiet-color: #64748b;
+  --primary: #1e3a5f;
+  --secondary: #334155;
+  --link-fg: #4338ca;
+  --header-bg: #1e3a5f;
+}

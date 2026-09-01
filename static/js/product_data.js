@@ -1,5 +1,5 @@
 /**
- * Product-data tabs: view-first; enable edit via topbar «ویرایش».
+ * Product-data tabs: plain-text view rows; inputs only after «ویرایش».
  */
 (function () {
   const root = document.getElementById("product-data-root");
@@ -77,8 +77,32 @@
     });
   }
 
+  function syncViewLabels() {
+    if (!tbody) return;
+    tbody.querySelectorAll("tr[data-id], tr[data-new]").forEach(function (tr) {
+      tr.querySelectorAll("[data-field]").forEach(function (el) {
+        const td = el.closest("td");
+        if (!td) return;
+        const view = td.querySelector(".cell-view");
+        if (!view) return;
+        if (el.type === "checkbox") {
+          view.textContent = el.checked ? "بله" : "خیر";
+        } else if (el.tagName === "SELECT") {
+          const opt = el.options[el.selectedIndex];
+          view.textContent = opt ? opt.textContent : el.value || "—";
+        } else {
+          view.textContent = el.value || "—";
+        }
+      });
+    });
+  }
+
   function setEditable(on) {
     root.dataset.canEdit = on ? "1" : "0";
+    if (table) {
+      table.classList.toggle("edit-mode", on);
+      table.classList.toggle("view-mode", !on);
+    }
     if (hint) {
       hint.textContent = on
         ? "حالت ویرایش — پس از تغییر، «ذخیره تغییرات» را بزنید."
@@ -86,18 +110,7 @@
     }
     if (actions) actions.hidden = !on;
     if (toggleBtn) toggleBtn.textContent = on ? "پایان ویرایش" : "ویرایش";
-    if (!tbody) return;
-    tbody.querySelectorAll("input, select, textarea").forEach(function (el) {
-      if (el.type === "checkbox" || el.tagName === "SELECT") {
-        el.disabled = !on;
-      } else {
-        if (on) el.removeAttribute("readonly");
-        else el.setAttribute("readonly", "readonly");
-      }
-    });
-    tbody.querySelectorAll("[data-delete-row]").forEach(function (btn) {
-      btn.hidden = !on;
-    });
+    if (!on) syncViewLabels();
   }
 
   initGroupSubgroupRows();
@@ -152,23 +165,23 @@
     if (tab === "info") {
       return (
         '<tr data-new="1">' +
-        '<td><input class="input input-sm" data-field="code" value=""></td>' +
-        '<td><input class="input input-sm" data-field="name" value=""></td>' +
-        '<td><select class="input input-sm" data-field="group_name" data-group-select>' +
+        '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="code" value=""></td>' +
+        '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="name" value=""></td>' +
+        '<td><span class="cell-view">—</span><select class="input input-sm cell-edit" data-field="group_name" data-group-select>' +
         groupOptionsHtml("") +
         "</select></td>" +
-        '<td><select class="input input-sm" data-field="subgroup_name" data-subgroup-select data-current="">' +
+        '<td><span class="cell-view">—</span><select class="input input-sm cell-edit" data-field="subgroup_name" data-subgroup-select data-current="">' +
         '<option value="">—</option></select></td>' +
-        '<td><select class="input input-sm" data-field="counting_unit">' +
+        '<td><span class="cell-view">عدد</span><select class="input input-sm cell-edit" data-field="counting_unit">' +
         '<option value="count">عدد</option>' +
         '<option value="branch">شاخه</option>' +
         '<option value="coil">کلاف</option>' +
         '<option value="meter">متر</option>' +
         "</select></td>" +
-        '<td><input class="input input-sm num" data-field="unit_weight_grams" value="0"></td>' +
-        '<td><input class="input input-sm num" data-field="per_carton" value=""></td>' +
-        '<td><input class="input input-sm num" data-field="stock_finished" value="0"></td>' +
-        '<td class="num"><input type="checkbox" data-field="needs_assembly"></td>' +
+        '<td><span class="cell-view num">0</span><input class="input input-sm num cell-edit" data-field="unit_weight_grams" value="0"></td>' +
+        '<td><span class="cell-view num">—</span><input class="input input-sm num cell-edit" data-field="per_carton" value=""></td>' +
+        '<td><span class="cell-view num">0</span><input class="input input-sm num cell-edit" data-field="stock_finished" value="0"></td>' +
+        '<td class="num"><span class="cell-view">خیر</span><input class="cell-edit" type="checkbox" data-field="needs_assembly"></td>' +
         '<td class="col-ops"><button type="button" class="btn btn-sm btn-ghost" data-remove-new>حذف</button></td>' +
         "</tr>"
       );
@@ -176,26 +189,26 @@
     if (tab === "bom") {
       return (
         '<tr data-new="1">' +
-        '<td><input class="input input-sm" data-field="parent_code" value=""></td>' +
+        '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="parent_code" value=""></td>' +
         '<td class="muted">—</td>' +
-        '<td><input class="input input-sm" data-field="component_code" value=""></td>' +
-        '<td><input class="input input-sm" data-field="component_name" value=""></td>' +
-        '<td><input class="input input-sm num" data-field="quantity" value="1"></td>' +
-        '<td><input class="input input-sm" data-field="unit" value="عدد"></td>' +
-        '<td><input class="input input-sm" data-field="notes" value=""></td>' +
+        '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="component_code" value=""></td>' +
+        '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="component_name" value=""></td>' +
+        '<td><span class="cell-view num">1</span><input class="input input-sm num cell-edit" data-field="quantity" value="1"></td>' +
+        '<td><span class="cell-view">عدد</span><input class="input input-sm cell-edit" data-field="unit" value="عدد"></td>' +
+        '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="notes" value=""></td>' +
         '<td class="col-ops"><button type="button" class="btn btn-sm btn-ghost" data-remove-new>حذف</button></td>' +
         "</tr>"
       );
     }
     return (
       '<tr data-new="1">' +
-      '<td><input class="input input-sm" data-field="product_code" value=""></td>' +
+      '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="product_code" value=""></td>' +
       '<td class="muted">—</td>' +
-      '<td><input class="input input-sm" data-field="material_code" value=""></td>' +
-      '<td><input class="input input-sm" data-field="material_name" value=""></td>' +
-      '<td><input class="input input-sm num" data-field="quantity_per_unit" value="0"></td>' +
-      '<td><input class="input input-sm" data-field="unit" value="گرم"></td>' +
-      '<td><input class="input input-sm" data-field="notes" value=""></td>' +
+      '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="material_code" value=""></td>' +
+      '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="material_name" value=""></td>' +
+      '<td><span class="cell-view num">0</span><input class="input input-sm num cell-edit" data-field="quantity_per_unit" value="0"></td>' +
+      '<td><span class="cell-view">گرم</span><input class="input input-sm cell-edit" data-field="unit" value="گرم"></td>' +
+      '<td><span class="cell-view">—</span><input class="input input-sm cell-edit" data-field="notes" value=""></td>' +
       '<td class="col-ops"><button type="button" class="btn btn-sm btn-ghost" data-remove-new>حذف</button></td>' +
       "</tr>"
     );

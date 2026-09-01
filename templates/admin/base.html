@@ -1,0 +1,126 @@
+{% load i18n static %}
+<!DOCTYPE html>
+{% get_current_language as LANGUAGE_CODE %}{% get_current_language_bidi as LANGUAGE_BIDI %}
+<html lang="fa" dir="rtl">
+<head>
+<title>{% block title %}{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}?v=43">
+<link rel="stylesheet" href="{% block stylesheet %}{% static "admin/css/base.css" %}{% endblock %}">
+{% block dark-mode-vars %}{% endblock %}
+{% block extrastyle %}{% endblock %}
+{% if LANGUAGE_BIDI %}<link rel="stylesheet" href="{% block stylesheet_rtl %}{% static "admin/css/rtl.css" %}{% endblock %}">{% endif %}
+{% block extrahead %}{% endblock %}
+{% block responsive %}
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="{% static "admin/css/responsive.css" %}">
+{% if LANGUAGE_BIDI %}<link rel="stylesheet" href="{% static "admin/css/responsive_rtl.css" %}">{% endif %}
+{% endblock %}
+<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=1">
+{% block blockbots %}<meta name="robots" content="NONE,NOARCHIVE">{% endblock %}
+</head>
+<body class="{% if is_popup %}popup {% endif %}admin-embed {% block bodyclass %}{% endblock %}"
+  data-admin-utc-offset="{% now "Z" %}">
+
+{% if not is_popup %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-name">سامانه برنامه‌ریزی و کنترل تولید</span>
+    </div>
+    {% if user.is_authenticated %}
+    <div class="sidebar-user">({{ user.username }})</div>
+    <nav class="nav">
+      <div class="nav-section nav-section-solo">
+        <a href="{% url 'dashboard' %}">داشبورد</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">برنامه‌های تولید</div>
+        <a href="{% url 'plan_list' %}">برنامه‌ریزی هفتگی</a>
+        <a href="{% url 'program_list' %}">ثبت و کنترل تولید</a>
+        <a href="{% url 'production_history' %}">سوابق تولید</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">گزارشات</div>
+        <a href="{% url 'report_list' %}">گزارش‌ها</a>
+        <a href="{% url 'print_form_list' %}">فرم‌ها</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">مدیریت داده‌ها</div>
+        <a href="{% url 'excel_list' %}">بارگذاری</a>
+        <a href="{% url 'product_data' %}">دیتای محصولات</a>
+        <a href="{% url 'system_data' %}" class="active">داده‌های سیستم</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">کاربری سامانه</div>
+        {% if user.is_superuser %}
+        <a href="{% url 'user_management' %}">مدیریت کاربران</a>
+        {% endif %}
+        <form method="post" action="{% url 'logout' %}" class="nav-logout">{% csrf_token %}
+          <button class="nav-logout-btn" type="submit">خروج از سامانه</button>
+        </form>
+      </div>
+    </nav>
+    {% endif %}
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <span class="topbar-title-text">{% if title %}{{ title }}{% else %}داده‌های سیستم{% endif %}</span>
+        <span class="heading-hint">(مدیریت داده — امکانات کامل)</span>
+      </div>
+      <div class="topbar-user">
+        <div class="topbar-actions">
+          <a class="btn btn-sm btn-ghost" href="{% url 'system_data' %}">بازگشت به داده‌های سیستم</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="content admin-embed-content">
+      {% block nav-breadcrumbs %}
+      <nav class="admin-embed-crumbs" aria-label="{% translate 'Breadcrumbs' %}">
+        {% block breadcrumbs %}
+          <div class="breadcrumbs">
+            <a href="{% url 'system_data' %}">داده‌های سیستم</a>
+            {% if title %} &rsaquo; {{ title }}{% endif %}
+          </div>
+        {% endblock %}
+      </nav>
+      {% endblock %}
+{% else %}
+<div id="container">
+  <main id="content-start" class="content" tabindex="-1">
+{% endif %}
+
+      {% block messages %}
+        {% if messages %}
+          <ul class="messagelist">{% for message in messages %}
+            <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message|capfirst }}</li>
+          {% endfor %}</ul>
+        {% endif %}
+      {% endblock messages %}
+
+      <div id="content" class="{% block coltype %}colM{% endblock %}">
+        {% block pretitle %}{% endblock %}
+        {% block content_title %}{% if is_popup and title %}<h1>{{ title }}</h1>{% endif %}{% endblock %}
+        {% block content_subtitle %}{% if subtitle %}<h2>{{ subtitle }}</h2>{% endif %}{% endblock %}
+        {% block content %}
+          {% block object-tools %}{% endblock %}
+          {{ content }}
+        {% endblock %}
+        {% block sidebar %}{% endblock %}
+      </div>
+
+{% if is_popup %}
+  </main>
+</div>
+{% else %}
+    </main>
+  </div>
+</div>
+{% endif %}
+
+{% block footer %}{% endblock %}
+</body>
+</html>

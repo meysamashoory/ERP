@@ -45,9 +45,8 @@ def _can_delete_excel(user) -> bool:
 
 @login_required
 def system_data_hub(request: HttpRequest) -> HttpResponse:
-    """Accordion hub matching previous admin menu groups — in-app destinations."""
-    from django.urls import reverse
-    from urllib.parse import urlencode
+    """Accordion hub — each item opens full Django-admin capabilities in app chrome."""
+    from django.urls import NoReverseMatch, reverse
 
     from .system_sections import build_system_groups
 
@@ -55,22 +54,16 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     for group in build_system_groups():
         items_out = []
         for item in group.items:
-            url = ""
-            if item.url_name:
-                # url_kwargs may include query-only keys like tab=
-                kwargs = dict(item.url_kwargs or {})
-                tab = kwargs.pop("tab", None)
-                try:
-                    url = reverse(item.url_name, kwargs=kwargs) if kwargs else reverse(item.url_name)
-                except Exception:
-                    url = reverse(item.url_name)
-                if tab:
-                    url = f"{url}?{urlencode({'tab': tab})}"
-            elif item.section_key:
-                url = reverse("system_section", kwargs={"key": item.section_key})
+            try:
+                url = reverse(item.admin_changelist)
+            except NoReverseMatch:
+                url = ""
             add_url = ""
-            if item.can_add and item.section_key:
-                add_url = reverse("system_section", kwargs={"key": item.section_key}) + "?new=1"
+            if item.can_add and item.admin_add:
+                try:
+                    add_url = reverse(item.admin_add)
+                except NoReverseMatch:
+                    add_url = ""
             items_out.append(
                 {
                     "key": item.key,
@@ -78,7 +71,7 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
                     "description": item.description,
                     "count": item.count_fn() if item.count_fn else 0,
                     "url": url,
-                    "can_add": bool(item.can_add and add_url),
+                    "can_add": bool(add_url),
                     "add_url": add_url,
                 }
             )
@@ -92,104 +85,22 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _field_display(obj, name: str) -> str:
-    try:
-        val = getattr(obj, name)
-    except Exception:
-        return "—"
-    if val is None or val == "":
-        return "—"
-    if hasattr(val, "pk") and not isinstance(val, (str, int, float, bool)):
-        return str(val)
-    if isinstance(val, bool):
-        return "بله" if val else "خیر"
-    return str(val)
-
-
 @login_required
 def system_section(request: HttpRequest, key: str) -> HttpResponse:
-    """In-app list/edit for a system-data section (same chrome as the rest of the app)."""
-    from django.forms import modelform_factory
+    """Legacy route: redirect into the matching admin changelist."""
+    from django.urls import NoReverseMatch, reverse
 
-    from .system_sections import get_section_spec
+    from .system_sections import build_system_groups
 
-    spec = get_section_spec(key)
-    if not spec:
-        messages.error(request, "بخش یافت نشد.")
-        return redirect("system_data")
-
-    model = spec["model"]
-    profile = get_profile(request.user)
-    can_mutate = bool(profile and profile.can_enter_data)
-    edit_fields = list(spec.get("edit_fields") or [])
-    Form = None
-    if edit_fields:
-        Form = modelform_factory(model, fields=edit_fields)
-
-    instance = None
-    pk = request.GET.get("id") or request.POST.get("id")
-    if pk:
-        try:
-            instance = model.objects.get(pk=int(pk))
-        except (model.DoesNotExist, TypeError, ValueError):
-            instance = None
-
-    want_new = request.GET.get("new") == "1" or request.POST.get("action") == "create"
-    form = None
-    if Form and can_mutate and (want_new or instance):
-        if request.method == "POST" and request.POST.get("action") in {"create", "update"}:
-            form = Form(request.POST, instance=instance)
-            if form.is_valid():
-                form.save()
-                messages.success(request, "ذخیره شد.")
-                return redirect("system_section", key=key)
-        else:
-            form = Form(instance=instance)
-
-    if (
-        request.method == "POST"
-        and request.POST.get("action") == "delete"
-        and instance
-        and spec.get("can_delete")
-        and can_mutate
-    ):
-        instance.delete()
-        messages.success(request, "حذف شد.")
-        return redirect("system_section", key=key)
-
-    qs = model.objects.all()
-    select_related = spec.get("select_related") or []
-    if select_related:
-        qs = qs.select_related(*select_related)
-    rows = []
-    fields = list(spec.get("fields") or ["id"])
-    labels = spec.get("labels") or {}
-    columns = [{"key": f, "label": labels.get(f, f)} for f in fields]
-    for obj in qs[:500]:
-        rows.append(
-            {
-                "id": obj.pk,
-                "cells": [_field_display(obj, f) for f in fields],
-            }
-        )
-
-    return render(
-        request,
-        "catalog/system_section.html",
-        {
-            "section_key": key,
-            "title": spec["title"],
-            "columns": columns,
-            "rows": rows,
-            "form": form,
-            "instance": instance,
-            "can_add": bool(spec.get("can_add") and can_mutate and Form),
-            "can_edit": bool(spec.get("can_edit") and can_mutate and Form),
-            "can_delete": bool(spec.get("can_delete") and can_mutate),
-            "editing": bool(form is not None),
-            "is_new": bool(want_new and instance is None),
-        },
-    )
+    for group in build_system_groups():
+        for item in group.items:
+            if item.key == key:
+                try:
+                    return redirect(reverse(item.admin_changelist))
+                except NoReverseMatch:
+                    break
+    messages.error(request, "بخش یافت نشد.")
+    return redirect("system_data")
 
 
 @login_required

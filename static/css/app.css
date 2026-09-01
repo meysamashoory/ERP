@@ -322,8 +322,28 @@ body:has(> .layout) {
   list-style: none;
   background: #eef3f9;
   font-weight: 700;
+  user-select: none;
 }
 .system-acc-summary::-webkit-details-marker { display: none; }
+.system-acc-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.system-acc-arrow {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 7px solid #334155; /* points left in RTL = closed (collapsed toward content) */
+  transition: transform .15s ease;
+  flex-shrink: 0;
+}
+.system-acc-group[open] > .system-acc-summary .system-acc-arrow {
+  transform: rotate(-90deg); /* points down when open */
+}
 .system-acc-title { font-size: 15px; }
 .system-acc-count { font-weight: 500; font-size: 12px; }
 .system-acc-body { padding: 0; }
@@ -334,6 +354,25 @@ body:has(> .layout) {
   background: #f8fafc;
   color: #334155;
   cursor: default;
+}
+/* View mode: show plain text cells (no input frames) */
+.product-data-table.view-mode td .cell-view {
+  display: block;
+  padding: 4px 2px;
+  min-height: 1.4em;
+}
+.product-data-table.view-mode td .cell-edit {
+  display: none !important;
+}
+.product-data-table.edit-mode td .cell-view {
+  display: none !important;
+}
+.product-data-table.edit-mode td .cell-edit {
+  display: block;
+  width: 100%;
+}
+.product-data-table.view-mode .col-ops .btn {
+  display: none;
 }
 .entity-heading {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
