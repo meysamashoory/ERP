@@ -49,7 +49,8 @@ a { color: var(--brand); }
   font-size: 14px;
   color: #fff;
   line-height: 1.35;
-  white-space: pre-line;
+  display: inline-block;
+  max-width: 11.5rem;
 }
 .sidebar-user {
   padding: 0 14px 14px;
