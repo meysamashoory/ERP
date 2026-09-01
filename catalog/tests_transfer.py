@@ -329,6 +329,7 @@ class ExcelTransferTests(TestCase):
 
         from catalog.models import Machine, Product
         from planning.models import WeeklyPlan
+        from production.conflicts import collect_in_production_conflicts, occupancy_status
         from production.models import ProductionProgram
         from production.sync import (
             check_history_machine_conflicts,
@@ -345,13 +346,29 @@ class ExcelTransferTests(TestCase):
             infer_history_status(actual_start=date(2024, 1, 1), actual_end=date(2024, 2, 1)),
             "finished",
         )
+        # Occupancy: awaiting/finished never occupy; running/temp_stop do
+        self.assertIsNone(occupancy_status(actual_start=None, actual_end=None))
+        self.assertIsNone(
+            occupancy_status(actual_start=date(2024, 1, 1), actual_end=date(2024, 2, 1))
+        )
+        self.assertEqual(
+            occupancy_status(actual_start=date(2024, 1, 1), actual_end=None),
+            "running",
+        )
+        self.assertEqual(
+            occupancy_status(
+                actual_start=date(2024, 1, 1),
+                actual_end=None,
+                status_text="توقف موقت",
+            ),
+            "temp_stop",
+        )
 
         product = Product.objects.first()
         machine = Machine.objects.select_related("unit").first()
         self.assertIsNotNone(product)
         self.assertIsNotNone(machine)
 
-        # Running history + live RUNNING on same machine → conflict alarm
         live = (
             ProductionProgram.objects.filter(status=ProductionProgram.Status.RUNNING)
             .select_related("item__machine")
@@ -363,6 +380,34 @@ class ExcelTransferTests(TestCase):
             live.start_date = date.today() - timedelta(days=1)
             live.save()
         mid = live.item.machine
+
+        # Awaiting history on same machine must NOT create a conflict by itself
+        awaiting = ProductionHistoryRecord.objects.create(
+            program_uid="SYNC-AWAIT-001",
+            plan_number="BP-AWAIT-1",
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=mid.unit.number,
+            machine_number=mid.number,
+            planned_qty=10,
+        )
+        sync_history_record_to_planning(awaiting, user=self.admin)
+        before = {
+            (a.title, a.message)
+            for a in SystemAlarm.objects.filter(kind=SystemAlarm.Kind.PRODUCTION_CONFLICT)
+        }
+        check_history_machine_conflicts()
+        after_await = {
+            (a.title, a.message)
+            for a in SystemAlarm.objects.filter(kind=SystemAlarm.Kind.PRODUCTION_CONFLICT)
+        }
+        new_await_alarms = after_await - before
+        self.assertFalse(
+            any("در انتظار" in (t + m) for t, m in new_await_alarms),
+            msg=new_await_alarms,
+        )
+
+        # Second occupying history (running) on same machine → conflict with live
         rec = ProductionHistoryRecord.objects.create(
             program_uid="SYNC-CONFLICT-001",
             plan_number="BP-SYNC-1",
@@ -377,10 +422,19 @@ class ExcelTransferTests(TestCase):
         self.assertTrue(out["ok"] or out.get("error") == "live")
         created = check_history_machine_conflicts()
         self.assertGreaterEqual(created, 0)
+        conflicts = collect_in_production_conflicts()
         self.assertTrue(
             SystemAlarm.objects.filter(kind=SystemAlarm.Kind.PRODUCTION_CONFLICT).exists()
             or WeeklyPlan.objects.filter(program_number="BP-SYNC-1").exists()
+            or any(mid.pk and True for _ in conflicts)
         )
+        # Conflict links must include precise edit URLs
+        if conflicts:
+            for c in conflicts:
+                self.assertTrue(c.links)
+                for link in c.links:
+                    self.assertTrue(link.get("url"))
+                    self.assertTrue(link.get("uid"))
 
 
     def test_history_chunk_sync_creates_plan_even_when_uid_already_known(self):

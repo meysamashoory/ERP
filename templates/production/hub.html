@@ -7,16 +7,23 @@
 {% if production_conflicts %}
 <div class="panel panel-compact conflict-banner">
   <div class="panel-head panel-head-compact">
-    <h2>هشدار تداخل برنامه‌های در حال تولید</h2>
+    <h2>هشدار تداخل — فقط «در حال تولید» / «توقف موقت»</h2>
   </div>
+  <p class="panel-hint" style="margin:0 12px 8px">
+    روی یک دستگاه نباید هم‌زمان بیش از یک قالب در وضعیت در حال تولید یا توقف موقت باشد.
+    موارد سالم در فهرست پایین جداگانه دیده می‌شوند؛ فقط موارد متداخل زیر را اصلاح کنید.
+  </p>
   <ul class="conflict-list">
     {% for c in production_conflicts %}
     <li>
       <div class="conflict-msg">{{ c.message }}</div>
       <div class="conflict-links">
         {% for link in c.links %}
-        <a class="link-edit" href="{{ link.url }}">{{ link.label }}</a>
-        {% if not forloop.last %}<span class="muted">·</span>{% endif %}
+        <a class="btn btn-sm btn-ghost link-edit" href="{{ link.url }}" title="{{ link.status }}">
+          ویرایش {% if link.kind == 'live' %}برنامه زنده{% else %}سابقه{% endif %}
+          «{{ link.uid }}»
+          {% if link.status %}<span class="muted">({{ link.status }})</span>{% endif %}
+        </a>
         {% endfor %}
       </div>
     </li>

@@ -360,6 +360,7 @@
       let lastMessage = "";
       let allAlarms = [];
       let allGroups = [];
+      let allConflicts = [];
       let done = false;
       let guard = 0;
 
@@ -391,7 +392,8 @@
           const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
           const earlyDetail = formatAlarmDetail(
             Array.isArray(data.alarm_groups) ? data.alarm_groups : [],
-            Array.isArray(data.alarms) ? data.alarms : []
+            Array.isArray(data.alarms) ? data.alarms : [],
+            Array.isArray(data.conflicts) ? data.conflicts : []
           );
           const earlyMsg = (data.error || data.message || failLabel) + earlyDetail;
           setTableTransferStatus(activeTableId, failLabel, false, earlyMsg);
@@ -406,6 +408,9 @@
         if (Array.isArray(data.alarm_groups) && data.alarm_groups.length) {
           allGroups = mergeAlarmGroups(allGroups, data.alarm_groups);
         }
+        if (Array.isArray(data.conflicts) && data.conflicts.length) {
+          allConflicts = data.conflicts;
+        }
 
         if (chunkSize == null || progress.done !== false) {
           done = true;
@@ -418,10 +423,11 @@
       if (!allGroups.length && allAlarms.length) {
         allGroups = synthesizeGroupsFromAlarms(allAlarms);
       }
-      const detail = formatAlarmDetail(allGroups, allAlarms);
+      const detail = formatAlarmDetail(allGroups, allAlarms, allConflicts);
       const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
       const partialLabel = isUpdate ? "بروزرسانی ناقص" : "انتقال ناقص";
       const okLabel = isUpdate ? "بروزرسانی موفق" : "انتقال موفق";
+      const hasIssues = totalFailed > 0 || (allConflicts && allConflicts.length);
 
       if (totalFailed > 0 && totalTransferred === 0) {
         setTableTransferStatus(
@@ -430,12 +436,20 @@
           false,
           (lastMessage || failLabel) + detail
         );
-      } else if (totalFailed > 0) {
+      } else if (hasIssues) {
+        const label =
+          totalFailed > 0
+            ? "⚠ " + (lastMessage || partialLabel) + " — ۱۰۰٪"
+            : "⚠ " +
+              (lastMessage || okLabel) +
+              " — تداخل تولید (" +
+              allConflicts.length +
+              ") — ۱۰۰٪";
         setTableTransferStatus(
           activeTableId,
-          "⚠ " + (lastMessage || partialLabel) + " — ۱۰۰٪",
+          label,
           false,
-          (lastMessage || partialLabel + " انجام شد.") + detail
+          (lastMessage || (totalFailed ? partialLabel : okLabel)) + detail
         );
       } else {
         setTableTransferStatus(activeTableId, "✓ " + (lastMessage || okLabel) + " — ۱۰۰٪", true);
@@ -527,9 +541,10 @@
     ];
   }
 
-  function formatAlarmDetail(groups, alarms) {
+  function formatAlarmDetail(groups, alarms, conflicts) {
+    let out = "";
     if (groups && groups.length) {
-      let out = "\n\nخلاصه انواع خطا (" + groups.length + " نوع):\n";
+      out += "\n\nخطاهای ردیف اکسل (" + groups.length + " نوع) — جدا از تداخل تولید:\n";
       groups.forEach(function (g, i) {
         out +=
           "\n" +
@@ -549,12 +564,33 @@
           });
         }
       });
-      return out;
+    } else if (alarms && alarms.length) {
+      out += "\n\nجزئیات خطای ردیف:\n• " + alarms.slice(0, 8).join("\n• ");
     }
-    if (alarms && alarms.length) {
-      return "\n\nجزئیات خطا:\n• " + alarms.slice(0, 8).join("\n• ");
+    if (conflicts && conflicts.length) {
+      out +=
+        "\n\nتداخل‌های تولید (" +
+        conflicts.length +
+        " دستگاه) — فقط وضعیت در حال تولید/توقف موقت:\n";
+      out +=
+        "توجه: ردیف‌های بدون تداخل منتقل شده‌اند و در سوابق قابل مشاهده‌اند.\n";
+      conflicts.forEach(function (c, i) {
+        out += "\n" + (i + 1) + ") " + (c.machine_label || "دستگاه") + "\n";
+        out += "   " + (c.message || "") + "\n";
+        (c.links || []).forEach(function (link) {
+          out +=
+            "   ← ویرایش «" +
+            (link.uid || "") +
+            "» (" +
+            (link.status || "") +
+            "): " +
+            (link.url || "") +
+            "\n";
+        });
+      });
+      out += "\nبرای فیلتر جداگانه به صفحه «سوابق تولید» بروید.\n";
     }
-    return "";
+    return out;
   }
 
 })();

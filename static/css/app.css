@@ -331,6 +331,23 @@ body:has(> .layout) {
 .conflict-list li { margin: 0 0 10px; }
 .conflict-msg { font-weight: 600; margin-bottom: 4px; }
 .conflict-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.conflict-banner {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+.conflict-tag {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+}
+tr.is-conflict-row > td {
+  background: #fff7ed;
+}
 .system-accordion {
   display: flex;
   flex-direction: column;

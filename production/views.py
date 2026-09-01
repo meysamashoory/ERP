@@ -211,14 +211,29 @@ def production_history(request):
 
     Sync/conflict checks run during Excel transfer/update — not on every page load.
     """
+    from .conflicts import collect_in_production_conflicts, history_conflict_uids
     from .history import build_history_rows
 
     profile = _profile(request)
     rows = build_history_rows()
+    conflict_uids = history_conflict_uids()
+    for row in rows:
+        uid = str(row.get("change_uid") or row.get("unique_code") or "").strip()
+        if uid in ("—", "-"):
+            uid = ""
+        row["has_conflict"] = bool(uid and uid in conflict_uids)
+    conflicts = collect_in_production_conflicts()
     return render(
         request,
         "production/history.html",
-        {"rows": rows, "profile": profile},
+        {
+            "rows": rows,
+            "profile": profile,
+            "production_conflicts": conflicts,
+            "conflict_count": len(conflicts),
+            "ok_count": sum(1 for r in rows if not r.get("has_conflict")),
+            "conflict_row_count": sum(1 for r in rows if r.get("has_conflict")),
+        },
     )
 
 

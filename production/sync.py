@@ -856,107 +856,34 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
 
 
 def check_history_machine_conflicts() -> int:
-    """Raise alarms for running conflicts between history and live molds.
+    """Raise alarms only for true occupancy conflicts (running / temp_stop).
 
-    1) History (or live) row inferred running on a machine that already has
-       another RUNNING program → alarm until one is finished.
-    2) History awaiting (no actual start) while a RUNNING mold on same machine
-       has a later start date → alarm.
+    Awaiting and finished rows never create a machine conflict. Two molds on the
+    same machine are conflicting only when both occupy it (در حال تولید or توقف موقت).
     """
-    from production.models import ProductionHistoryRecord, ProductionProgram
+    from production.conflicts import collect_in_production_conflicts
 
     created = 0
-
-    running_by_machine: dict[int, list] = {}
-    for prog in ProductionProgram.objects.filter(
-        status=ProductionProgram.Status.RUNNING
-    ).select_related("item__machine__unit", "item__product"):
-        mid = prog.item.machine_id
-        running_by_machine.setdefault(mid, []).append(prog)
-
-    # Live programs inferred running via dates but status may differ — also check archives
-    for rec in ProductionHistoryRecord.objects.all():
-        status = infer_history_status(
-            actual_start=rec.actual_start_date, actual_end=rec.actual_end_date
-        )
-        machine = resolve_machine(
-            unit_number=rec.unit_number, machine_number=rec.machine_number
-        )
-        if not machine:
-            continue
-        uid = (rec.program_uid or "").strip()
-        runners = running_by_machine.get(machine.pk, [])
-
-        if status == "running":
-            for prog in runners:
-                other_uid = (prog.resolved_uid or "").strip()
-                if other_uid and uid and other_uid == uid:
-                    continue
-                alarm = register_alarm(
-                    title="تداخل: دو تولید هم‌زمان روی یک دستگاه",
-                    message=(
-                        f"در سوابق، شناسه «{uid or '—'}» با تاریخ راه‌اندازی واقعی "
-                        f"به‌عنوان در حال تولید است و هم‌زمان برنامه «{other_uid}» "
-                        f"روی {prog.machine_label} نیز در حال تولید است."
-                    ),
-                    suggestion=(
-                        f"یکی را اصلاح کنید: "
-                        f"/production/programs/{prog.pk}/status/ "
-                        f"یا سابقه /production/history/archive/{rec.pk}/"
-                    ),
-                    severity=SystemAlarm.Severity.SERIOUS,
-                    kind=SystemAlarm.Kind.PRODUCTION_CONFLICT,
-                    details={
-                        "history_uid": uid,
-                        "live_uid": other_uid,
-                        "machine_id": machine.pk,
-                        "live_fix_url": f"/production/programs/{prog.pk}/status/",
-                        "history_fix_url": f"/production/history/archive/{rec.pk}/",
-                    },
-                    dedupe=True,
-                )
-                if alarm:
-                    created += 1
-
-        if status == "awaiting" and runners:
-            hist_ref = _to_gdate(rec.plan_start_date or rec.mold_change_date or rec.plan_date)
-            for prog in runners:
-                live_start = _to_gdate(prog.start_date)
-                if hist_ref and live_start and live_start > hist_ref:
-                    alarm = register_alarm(
-                        title="تداخل: سابقه در انتظار با تولید جلوتر روی دستگاه",
-                        message=(
-                            f"سابقه اکسل «{uid or '—'}» هنوز راه‌اندازی واقعی ندارد "
-                            f"(در انتظار تولید)، اما قالب «{prog.resolved_uid}» روی "
-                            f"{prog.machine_label} با تاریخ شروع دیرتر در حال تولید است."
-                        ),
-                        suggestion="وضعیت سابقه یا برنامه زنده را اصلاح کنید.",
-                        severity=SystemAlarm.Severity.SERIOUS,
-                        kind=SystemAlarm.Kind.PRODUCTION_CONFLICT,
-                        details={
-                            "history_uid": uid,
-                            "live_uid": prog.resolved_uid,
-                            "machine_id": machine.pk,
-                        },
-                        dedupe=True,
-                    )
-                    if alarm:
-                        created += 1
-
-    # Also: two RUNNING programs on same machine (systemic)
-    for mid, progs in running_by_machine.items():
-        if len(progs) < 2:
-            continue
-        uids = ", ".join(p.resolved_uid for p in progs)
-        register_alarm(
-            title="چند برنامه در حال تولید روی یک دستگاه",
-            message=f"دستگاه شناسه {mid}: {uids}",
-            suggestion="فقط یک برنامه باید در حال تولید باشد؛ بقیه را متوقف یا تمام کنید.",
+    for conflict in collect_in_production_conflicts():
+        fix_bits = []
+        for link in conflict.links:
+            fix_bits.append(f"{link.get('label')}: {link.get('url')}")
+        alarm = register_alarm(
+            title=f"تداخل تولید روی {conflict.machine_label}",
+            message=conflict.message,
+            suggestion=(
+                "فقط وضعیت «در حال تولید» و «توقف موقت» روی یک دستگاه نباید هم‌زمان "
+                "دو قالب داشته باشند. برای اصلاح دقیق از لینک هر مورد استفاده کنید: "
+                + " ؛ ".join(fix_bits[:6])
+            ),
             severity=SystemAlarm.Severity.SERIOUS,
             kind=SystemAlarm.Kind.PRODUCTION_CONFLICT,
-            details={"machine_id": mid, "uids": [p.resolved_uid for p in progs]},
+            details={
+                "machine_label": conflict.machine_label,
+                "links": conflict.links,
+            },
             dedupe=True,
         )
-        created += 1
-
+        if alarm:
+            created += 1
     return created

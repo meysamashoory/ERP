@@ -43,6 +43,7 @@ class TransferResult:
     failed: int = 0
     skipped: int = 0
     alarms: list[str] = field(default_factory=list)
+    conflicts: list[dict] = field(default_factory=list)
     table_deleted: bool = False
     redirect_url: str = ""
     # Chunked transfer progress (optional)
@@ -738,7 +739,13 @@ def transfer_result_message(result: TransferResult) -> str:
         groups = group_transfer_alarms(result.alarms)
         if groups:
             bits = [f"{g['title']} ({g['count']} مورد)" for g in groups[:5]]
-            base += " انواع خطا: " + "؛ ".join(bits) + "."
+            base += " انواع خطای ردیف: " + "؛ ".join(bits) + "."
+    if getattr(result, "conflicts", None):
+        base += (
+            f" همچنین {len(result.conflicts)} تداخل تولید "
+            f"(در حال تولید/توقف موقت روی یک دستگاه) شناسایی شد — "
+            f"ردیف‌های سالم منتقل شده‌اند و جدا از خطا قابل مشاهده‌اند."
+        )
     return base
 
 
@@ -876,7 +883,10 @@ def _transfer_history_list(
         result.transferred += 1
 
     if done:
+        from production.conflicts import conflicts_as_dicts
+
         check_history_machine_conflicts()
+        result.conflicts = conflicts_as_dicts()
     return result
 
 

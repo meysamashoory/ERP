@@ -22,8 +22,39 @@
 {% block nav_history %}active{% endblock %}
 
 {% block content %}
+{% if production_conflicts %}
+<div class="panel panel-compact conflict-banner">
+  <div class="panel-head panel-head-compact">
+    <h2>تداخل‌های تولید ({{ conflict_count }} دستگاه)</h2>
+  </div>
+  <p class="panel-hint" style="margin:0 12px 8px">
+    فقط ردیف‌های متداخل مشخص شده‌اند.
+    ردیف‌های بدون مشکل: {{ ok_count }} · ردیف‌های درگیر تداخل: {{ conflict_row_count }}.
+    فیلتر «فقط تداخل‌ها» را می‌توانید از نوار بالا بزنید.
+  </p>
+  <ul class="conflict-list">
+    {% for c in production_conflicts %}
+    <li>
+      <div class="conflict-msg">{{ c.message }}</div>
+      <div class="conflict-links">
+        {% for link in c.links %}
+        <a class="btn btn-sm btn-ghost" href="{{ link.url }}">ویرایش «{{ link.uid }}»</a>
+        {% endfor %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="panel panel-list">
   {% if rows %}
+  <div class="list-filter-bar list-filter-bar-compact" style="padding:8px 10px;gap:8px;align-items:center">
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-conflicts" data-mode="all">نمایش همه</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-ok-only">فقط بدون تداخل</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-conflict-only">فقط تداخل‌ها</button>
+    <span class="muted" id="history-conflict-filter-count"></span>
+  </div>
   <div class="table-scroll table-scroll-wide">
     <table class="table table-compact table-list-nav" id="history-list-table">
       <thead>
@@ -49,8 +80,11 @@
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr class="list-row" data-href="{{ row.detail_url }}" tabindex="0">
-          <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}"><strong>{{ row.plan_number }}</strong></td>
+        <tr class="list-row{% if row.has_conflict %} is-conflict-row{% endif %}"
+            data-href="{{ row.detail_url }}"
+            data-conflict="{% if row.has_conflict %}1{% else %}0{% endif %}"
+            tabindex="0">
+          <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}"><strong>{{ row.plan_number }}</strong>{% if row.has_conflict %} <span class="conflict-tag">تداخل</span>{% endif %}</td>
           <td class="num cell-nav" data-col="plan_date" data-value="{{ row.plan_date_display }}">{{ row.plan_date_display }}</td>
           <td class="cell-nav" data-col="machine" data-value="{{ row.machine }}">{{ row.machine }}</td>
           <td class="cell-nav" data-col="product_name" data-value="{{ row.product_name }}" title="{{ row.product_name }}">{{ row.product_name }}</td>
@@ -105,6 +139,26 @@
       }
     });
   });
+
+  function applyConflictFilter(mode) {
+    var rows = document.querySelectorAll("#history-list-table tbody tr[data-conflict]");
+    var shown = 0;
+    rows.forEach(function (tr) {
+      var isConflict = tr.getAttribute("data-conflict") === "1";
+      var show = mode === "all" || (mode === "ok" && !isConflict) || (mode === "conflict" && isConflict);
+      tr.style.display = show ? "" : "none";
+      if (show) shown += 1;
+    });
+    var countEl = document.getElementById("history-conflict-filter-count");
+    if (countEl) countEl.textContent = "نمایش " + shown + " از " + rows.length + " ردیف";
+  }
+  var btnAll = document.getElementById("history-filter-conflicts");
+  var btnOk = document.getElementById("history-filter-ok-only");
+  var btnConflict = document.getElementById("history-filter-conflict-only");
+  if (btnAll) btnAll.addEventListener("click", function () { applyConflictFilter("all"); });
+  if (btnOk) btnOk.addEventListener("click", function () { applyConflictFilter("ok"); });
+  if (btnConflict) btnConflict.addEventListener("click", function () { applyConflictFilter("conflict"); });
+  applyConflictFilter("all");
 })();
 </script>
 {% endblock %}

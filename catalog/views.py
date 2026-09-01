@@ -446,6 +446,7 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         "mode": result.mode,
         "alarms": result.alarms[:40],
         "alarm_groups": group_transfer_alarms(result.alarms),
+        "conflicts": getattr(result, "conflicts", []) or [],
         "table_deleted": False,
         "redirect_url": result.redirect_url,
         "message": transfer_result_message(result),
