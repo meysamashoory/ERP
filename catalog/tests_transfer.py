@@ -1175,6 +1175,81 @@ class ProductDataTests(TestCase):
         self.assertContains(hub, uid)
         self.assertContains(hub, "توقف موقت")
 
+    def test_ensure_running_infers_machine_from_uid_without_unit_fields(self):
+        """Archives missing unit/machine columns still enter ثبت تولید via UID."""
+        from datetime import date
+
+        from catalog.models import Product
+        from production.models import ProductionProgram
+        from production.sync import ensure_running_history_in_production
+
+        product = Product.objects.first()
+        # 14-digit-ish UID: year/program/unit/machine encoded — decode_unit_machine_from_uid
+        uid = "25001106001001"
+        ProductionHistoryRecord.objects.filter(program_uid=uid).delete()
+        ProductionHistoryRecord.objects.create(
+            program_uid=uid,
+            plan_number="BP-ENSURE-UID",
+            plan_date=date(1405, 6, 10),
+            actual_start_date=date(1405, 6, 11),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=None,
+            machine_number="",
+            status="در حال تولید",
+        )
+        stats = ensure_running_history_in_production(user=self.admin)
+        self.assertGreaterEqual(stats["ok"] + stats["refreshed"], 1, msg=stats)
+        prog = ProductionProgram.objects.filter(item__lines__uid=uid).first()
+        self.assertIsNotNone(prog)
+        self.assertIn(
+            prog.status,
+            {
+                ProductionProgram.Status.RUNNING,
+                ProductionProgram.Status.AWAITING,
+                ProductionProgram.Status.TEMP_STOP,
+            },
+        )
+
+    def test_deleting_archive_from_system_data_removes_history_list_row(self):
+        """Admin delete of archive must also remove live twin so سوابق stays clean."""
+        from datetime import date
+
+        from catalog.models import Machine, Product
+        from production.history import build_history_rows
+        from production.models import ProductionHistoryRecord, ProductionProgram
+        from production.sync import (
+            delete_history_archive_and_live,
+            sync_history_record_to_planning,
+        )
+
+        product = Product.objects.first()
+        machine = Machine.objects.select_related("unit").first()
+        uid = "36008888001888"
+        rec = ProductionHistoryRecord.objects.create(
+            program_uid=uid,
+            plan_number="BP-DEL-HIST",
+            plan_date=date(1405, 6, 10),
+            actual_start_date=date(1405, 6, 11),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            status="در حال تولید",
+        )
+        out = sync_history_record_to_planning(rec, user=self.admin)
+        self.assertTrue(out.get("ok"), msg=out)
+        self.assertTrue(ProductionProgram.objects.filter(item__lines__uid=uid).exists())
+        before = [r for r in build_history_rows() if (r.get("change_uid") or r.get("uid") or "") == uid or uid in str(r)]
+        # Soft check: uid appears somewhere in history payload
+        blob = str(build_history_rows())
+        self.assertIn(uid, blob)
+
+        delete_history_archive_and_live(rec)
+        self.assertFalse(ProductionHistoryRecord.objects.filter(program_uid=uid).exists())
+        self.assertFalse(ProductionProgram.objects.filter(item__lines__uid=uid).exists())
+        self.assertNotIn(uid, str(build_history_rows()))
+
     def test_transfer_error_cells_are_returned(self):
         from catalog.transfer import (
             DESTINATION_PRODUCT_DATA,

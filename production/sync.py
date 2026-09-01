@@ -822,7 +822,7 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
 
 def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
     """Push awaiting / running / temp_stop archive rows into ثبت و کنترل تولید."""
-    from production.models import ProductionHistoryRecord, ProductionProgram
+    from production.models import ProductionHistoryRecord
 
     stats = {"ok": 0, "failed": 0, "skipped": 0, "refreshed": 0}
     live_uids = _live_program_uids()
@@ -837,22 +837,25 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
         if inferred == "finished":
             stats["skipped"] += 1
             continue
-        if not (rec.product_code or rec.product_name):
+        if not (rec.product_code or rec.product_name or (rec.program_uid or "").strip()):
             stats["skipped"] += 1
             continue
-        if rec.unit_number is None or not str(rec.machine_number or "").strip():
-            stats["skipped"] += 1
-            continue
+        # Do NOT require unit/machine here — sync_history_record_to_planning /
+        # ensure_machine_for_history can infer them from UID / labels.
         uid = (rec.program_uid or "").strip()
         if uid and uid in live_uids:
             prog = _find_program_by_uid(uid)
             if prog is not None:
-                # Revive finished → temp_stop/running when Excel status says so
                 _apply_program_state_from_history(rec, prog)
                 _sync_history_quantities_to_program(rec, prog, user=user)
                 stats["refreshed"] += 1
             else:
-                stats["skipped"] += 1
+                # UID marked live but program missing — try recreate
+                out = sync_history_record_to_planning(rec, user=user, live_uids=set())
+                if out.get("ok"):
+                    stats["ok"] += 1
+                else:
+                    stats["skipped"] += 1
             continue
         out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
         if out.get("ok"):
@@ -862,6 +865,60 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
         else:
             stats["failed"] += 1
     return stats
+
+
+def delete_history_archive_and_live(rec) -> dict[str, int]:
+    """Delete an archive history row and its matching live ProductionProgram (by UID).
+
+    «سوابق تولید» merges live programs + archives. Deleting only the archive leaves
+    the live twin visible in سوابق — so remove both.
+    """
+    from production.models import ProductionProgram
+
+    removed = {"archive": 0, "programs": 0, "items": 0}
+    uid = (getattr(rec, "program_uid", "") or "").strip()
+    pk = getattr(rec, "pk", None)
+    if pk:
+        rec.delete()
+        removed["archive"] = 1
+    if not uid:
+        return removed
+    programs = list(
+        ProductionProgram.objects.select_related("item", "item__plan")
+        .filter(item__lines__uid=uid)
+        .distinct()
+    )
+    # Also match via resolved_uid scan when line UID filter misses
+    if not programs:
+        for p in ProductionProgram.objects.select_related("item", "item__plan").prefetch_related(
+            "item__lines"
+        ):
+            if (p.resolved_uid or "").strip() == uid:
+                programs.append(p)
+    for prog in programs:
+        item = prog.item
+        plan = item.plan if item else None
+        prog.delete()
+        removed["programs"] += 1
+        if item is not None:
+            # Remove orphan plan item if no other programs hang on it
+            if not ProductionProgram.objects.filter(item=item).exists():
+                item.delete()
+                removed["items"] += 1
+                if plan is not None and not plan.items.exists():
+                    # Keep weekly plan shell if it has a real program_number from planning;
+                    # only delete empty Excel-stub plans with no remaining items.
+                    plan.delete()
+    return removed
+
+
+def delete_history_archives_queryset(queryset) -> dict[str, int]:
+    totals = {"archive": 0, "programs": 0, "items": 0}
+    for rec in list(queryset):
+        out = delete_history_archive_and_live(rec)
+        for k in totals:
+            totals[k] += out.get(k, 0)
+    return totals
 
 
 def check_history_machine_conflicts() -> int:

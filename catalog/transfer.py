@@ -1049,6 +1049,9 @@ def _transfer_history_daily(
         sync_history_record_to_planning(rec, user=user)
         result.transferred += 1
 
+    from production.sync import ensure_running_history_in_production
+
+    ensure_running_history_in_production(user=user)
     return result
 
 

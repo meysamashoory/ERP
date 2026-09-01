@@ -1,8 +1,11 @@
 /**
- * Shared keyboard navigation for data tables.
+ * Shared keyboard + click navigation for data tables.
  * - Arrow keys move between cells/rows
  * - Selected row: blue highlight (.is-row-selected)
  * - Current cell: non-blue background (.is-cell-focus)
+ * - First click selects; second click on the SAME selected row enters next level
+ *   (data-href or data-drill-index / erp-row-activate)
+ * - Cursor: default on unselected rows; pointer on the selected row
  */
 (function () {
   function isEditableTarget(el) {
@@ -12,13 +15,14 @@
     if (tag === "input" || tag === "textarea" || tag === "select" || tag === "button") {
       return true;
     }
-    return !!el.closest(".ts-wrapper, .excel-grid-wrap, [data-editing='1']");
+    return !!el.closest(".ts-wrapper, .excel-grid-wrap, [data-editing='1'], .col-ops, a.btn, button, select");
   }
 
   function bodyRows(table) {
     return Array.prototype.slice.call(
       table.querySelectorAll("tbody tr")
     ).filter(function (tr) {
+      if (tr.style.display === "none") return false;
       return tr.querySelectorAll("td").length > 0 && !tr.classList.contains("empty-row");
     });
   }
@@ -30,6 +34,25 @@
       if (td.classList.contains("excel-row-head") || td.classList.contains("excel-corner")) return false;
       return true;
     });
+  }
+
+  function rowCanActivate(tr) {
+    if (!tr) return false;
+    return !!(tr.getAttribute("data-href") || tr.hasAttribute("data-drill-index"));
+  }
+
+  function activateRow(tr) {
+    if (!tr) return false;
+    var href = tr.getAttribute("data-href");
+    if (href) {
+      window.location.href = href;
+      return true;
+    }
+    if (tr.hasAttribute("data-drill-index")) {
+      tr.dispatchEvent(new CustomEvent("erp-row-activate", { bubbles: true }));
+      return true;
+    }
+    return false;
   }
 
   function paint(table, selRow, selCol) {
@@ -57,11 +80,12 @@
     if (!table || table.dataset.tableNavBound === "1") return;
     if (table.classList.contains("excel-grid")) return;
     if (table.classList.contains("plan-matrix-table")) return;
+    if (table.getAttribute("data-erp-nav") === "off") return;
     table.dataset.tableNavBound = "1";
     table.classList.add("js-table-nav");
     if (!table.hasAttribute("tabindex")) table.setAttribute("tabindex", "0");
 
-    var selRow = 0;
+    var selRow = -1;
     var selCol = 0;
     var rtl = (table.getAttribute("dir") || document.documentElement.getAttribute("dir") || "rtl") === "rtl";
 
@@ -75,18 +99,25 @@
     }
 
     table.addEventListener("click", function (e) {
-      if (isEditableTarget(e.target) && e.target.tagName !== "TD") {
-        // Still allow selecting the row when clicking plain text in cell
-      }
+      if (e.target.closest(".col-ops, button, select, a, input, textarea, label")) return;
       var td = e.target.closest("td, th");
       if (!td || !table.contains(td)) return;
-      var tr = td.parentElement;
+      var tr = td.closest("tr");
+      if (!tr || !table.contains(tr)) return;
       var rows = bodyRows(table);
       var ri = rows.indexOf(tr);
       if (ri < 0) return;
       var cells = focusableCells(tr);
       var ci = cells.indexOf(td);
       if (ci < 0) ci = 0;
+
+      // Second click on the already-selected row → enter next level
+      if (ri === selRow && tr.classList.contains("is-row-selected") && rowCanActivate(tr)) {
+        e.preventDefault();
+        activateRow(tr);
+        return;
+      }
+
       selectAt(ri, ci);
       table.focus({ preventScroll: true });
     });
@@ -96,6 +127,13 @@
       if (table.getAttribute("data-editing") === "1") return;
       var rows = bodyRows(table);
       if (!rows.length) return;
+      if (selRow < 0) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          selectAt(0, 0);
+        }
+        return;
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         selectAt(selRow + 1, selCol);
@@ -110,26 +148,20 @@
         selectAt(selRow, rtl ? selCol - 1 : selCol + 1);
       } else if (e.key === "Enter" || e.key === " ") {
         var tr = rows[selRow];
-        if (!tr) return;
-        var href = tr.getAttribute("data-href");
-        if (href) {
-          e.preventDefault();
-          window.location.href = href;
-        }
+        if (!tr || !rowCanActivate(tr)) return;
+        e.preventDefault();
+        activateRow(tr);
       }
     });
-
-    if (bodyRows(table).length) selectAt(0, 0);
   }
 
   function init(root) {
     var scope = root || document;
     scope.querySelectorAll(".table-scroll table.table, table.table.js-table-nav, table.table-nav-cells, table.table-list-nav").forEach(bindTable);
-    // Also common list tables not wrapped the same way
     scope.querySelectorAll("main table.table").forEach(bindTable);
   }
 
-  window.ERPTableNav = { init: init, bind: bindTable };
+  window.ERPTableNav = { init: init, bind: bindTable, activateRow: activateRow };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () { init(); });

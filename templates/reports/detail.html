@@ -73,7 +73,7 @@
   {% if headers %}
   <div class="table-scroll">
     <table class="table table-nav-cells {% if deeper %}table-drill{% endif %}" id="report-data-table" tabindex="0"
-           data-editing="0">
+           data-editing="0" data-erp-nav="off">
       <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
       <tbody>
         {% for row in rows %}
@@ -279,35 +279,28 @@
     return (td.textContent || "").trim();
   }
 
+  function drillFromRow(tr) {
+    if (editing) return;
+    if (!tr || !tr.hasAttribute("data-drill-index")) return;
+    var deeper = {{ deeper|yesno:"true,false" }};
+    if (!deeper) return;
+    var payloads = JSON.parse(document.getElementById("report-payloads").textContent);
+    var filters = JSON.parse(document.getElementById("report-filters").textContent || "{}");
+    var level = {{ level }};
+    var idx = parseInt(tr.getAttribute("data-drill-index"), 10);
+    var payload = payloads[idx] || {};
+    var params = new URLSearchParams();
+    params.set("level", String(level + 1));
+    Object.keys(filters).forEach(function (k) { params.set("f_" + k, filters[k]); });
+    Object.keys(payload).forEach(function (k) {
+      if (k === "_entry_sig" || k === "_row_index" || k === "_sheet") return;
+      params.set("f_" + k, payload[k]);
+    });
+    window.location = "?" + params.toString();
+  }
+
   function bindRowEvents(tr) {
-    tr.addEventListener("click", function (e) {
-      if (editing) return;
-      refreshRows();
-      var ri = rows.indexOf(tr);
-      var td = e.target.closest("td");
-      var ci = td ? Array.prototype.indexOf.call(tr.children, td) : 0;
-      selectAt(ri, ci);
-      table.focus();
-    });
-    tr.addEventListener("dblclick", function () {
-      if (editing) return;
-      if (!tr.hasAttribute("data-drill-index")) return;
-      var deeper = {{ deeper|yesno:"true,false" }};
-      if (!deeper) return;
-      var payloads = JSON.parse(document.getElementById("report-payloads").textContent);
-      var filters = JSON.parse(document.getElementById("report-filters").textContent || "{}");
-      var level = {{ level }};
-      var idx = parseInt(tr.getAttribute("data-drill-index"), 10);
-      var payload = payloads[idx] || {};
-      var params = new URLSearchParams();
-      params.set("level", String(level + 1));
-      Object.keys(filters).forEach(function (k) { params.set("f_" + k, filters[k]); });
-      Object.keys(payload).forEach(function (k) {
-        if (k === "_entry_sig" || k === "_row_index" || k === "_sheet") return;
-        params.set("f_" + k, payload[k]);
-      });
-      window.location = "?" + params.toString();
-    });
+    // Clicks handled by delegated table listener (select then activate).
   }
 
   function makeEditableCell(td, meta, val) {
@@ -501,18 +494,41 @@
   dataRows().forEach(function (tr) { bindRowEvents(tr); });
   refreshRows();
 
+  // Own selection (table_nav disabled via data-erp-nav=off): first click selects,
+  // second click on same selected row drills.
+  var armedRow = -1;
+  table.addEventListener("click", function (e) {
+    if (editing) return;
+    if (e.target.closest("button, select, input, a, .col-ops")) return;
+    refreshRows();
+    var td = e.target.closest("td");
+    var tr = e.target.closest("tr.data-row");
+    if (!tr) return;
+    var ri = rows.indexOf(tr);
+    if (ri < 0) return;
+    var ci = td ? Array.prototype.indexOf.call(tr.children, td) : 0;
+    if (ri === armedRow && tr.classList.contains("is-row-selected") && tr.hasAttribute("data-drill-index")) {
+      drillFromRow(tr);
+      return;
+    }
+    armedRow = ri;
+    selectAt(ri, ci);
+    table.focus();
+  });
+
   table.addEventListener("keydown", function (e) {
     if (!rows.length || editing) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); selectAt(selRow + 1, selCol); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); selectAt(selRow - 1, selCol); }
+    if (e.key === "ArrowDown") { e.preventDefault(); selectAt(selRow + 1, selCol); armedRow = selRow; }
+    else if (e.key === "ArrowUp") { e.preventDefault(); selectAt(selRow - 1, selCol); armedRow = selRow; }
     else if (e.key === "ArrowLeft") { e.preventDefault(); selectAt(selRow, selCol + 1); }
     else if (e.key === "ArrowRight") { e.preventDefault(); selectAt(selRow, selCol - 1); }
     else if (e.key === "Enter" && rows[selRow] && rows[selRow].hasAttribute("data-drill-index")) {
-      rows[selRow].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      e.preventDefault();
+      drillFromRow(rows[selRow]);
     }
   });
 
-  if (rows.length) selectAt(0, 0);
+  // Do not auto-select first row — first click should only select.
   table.focus();
 })();
 </script>

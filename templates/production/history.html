@@ -127,15 +127,12 @@
     });
   }
   document.querySelectorAll("#history-list-table tbody tr[data-href]").forEach(function (tr) {
-    tr.addEventListener("click", function () {
-      var href = tr.getAttribute("data-href");
-      if (href) window.location = href;
-    });
+    // First click selects (table_nav); second click on same selected row opens detail.
     tr.addEventListener("keydown", function (e) {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         var href = tr.getAttribute("data-href");
-        if (href) window.location = href;
+        if (href && tr.classList.contains("is-row-selected")) window.location = href;
       }
     });
   });

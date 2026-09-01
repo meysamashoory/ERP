@@ -65,6 +65,16 @@ class ProductionHistoryRecordAdmin(admin.ModelAdmin):
     search_fields = ("program_uid", "product_code", "product_name", "mold_name")
     list_filter = ("status",)
 
+    def delete_model(self, request, obj):
+        from production.sync import delete_history_archive_and_live
+
+        delete_history_archive_and_live(obj)
+
+    def delete_queryset(self, request, queryset):
+        from production.sync import delete_history_archives_queryset
+
+        delete_history_archives_queryset(queryset)
+
 
 @admin.register(FittingProduction)
 class FittingProductionAdmin(admin.ModelAdmin):

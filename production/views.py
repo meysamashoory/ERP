@@ -133,11 +133,17 @@ def program_list(request):
     Injection tab shows awaiting (to start), running, and temporarily stopped
     programs. Finished programs appear only under «سوابق تولید».
 
-    Heavy Excel→live sync is *not* run on every page load (it made the hub
-    slow); transfer/sync buttons handle that. Overlaps are detected cheaply
-    and surfaced with fix links.
+    Light backfill: push active Excel archive rows that are still missing a live
+    ProductionProgram so ثبت و کنترل تولید stays in sync after imports.
     """
+    from production.sync import ensure_running_history_in_production
+
     from .conflicts import collect_in_production_conflicts
+
+    try:
+        ensure_running_history_in_production(user=request.user)
+    except Exception:  # noqa: BLE001
+        pass
 
     profile = _profile(request)
     programs = list(

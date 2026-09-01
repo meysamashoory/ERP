@@ -143,11 +143,7 @@
   if (filterBtn) filterBtn.addEventListener("click", function () { filterPanel.hidden = !filterPanel.hidden; });
 
   document.querySelectorAll("#form-list-table tbody tr").forEach(function (tr) {
-    tr.addEventListener("click", function (e) {
-      if (e.target.closest(".col-ops") || e.target.closest("select") || e.target.closest("button")) return;
-      var href = tr.getAttribute("data-href");
-      if (href) window.location = href;
-    });
+    // Navigation: first click selects, second click on same row opens (handled by table_nav.js)
   });
 
   document.querySelectorAll("[data-ops]").forEach(function (sel) {
