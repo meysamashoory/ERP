@@ -41,8 +41,7 @@ ALLOWED_HOSTS = env_list(
 
 CSRF_TRUSTED_ORIGINS = env_list(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
-    # Port 80 is the HTTP default (http://planning.poliran/). Keep :8000 for legacy.
-    "http://planning.poliran,http://planning.poliran:80,https://planning.poliran,http://planning.poliran:8000",
+    "http://planning.poliran:8000,http://planning.poliran,https://planning.poliran",
 )
 
 

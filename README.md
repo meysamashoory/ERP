@@ -77,25 +77,19 @@ scripts\windows_serve.bat
 پس از اجرا، از سایر سیستم‌های شبکه با یکی از آدرس‌های زیر وارد شوید:
 
 ```
-http://planning.poliran/
-http://<آی‌پیِ-سرور>/
+http://planning.poliran:8000/
+http://<آی‌پیِ-سرور>:8000/
 ```
-
-> پورت پیش‌فرض روی ویندوز **۸۰** است (بدون نوشتن پورت در آدرس).
-> تغییر پورت: `set ERP_PORT=8080` قبل از اجرای اسکریپت.
-> پورت ۸۰ سرعت را کم نمی‌کند؛ فقط درگاه استاندارد HTTP است.
-> روی ویندوز معمولاً باید اسکریپت را **Run as administrator** اجرا کنید.
-> اگر IIS یا برنامهٔ دیگری پورت ۸۰ را گرفته باشد، یا bind خطا داد، از `ERP_PORT=8080` استفاده کنید.
 
 ### دسترسی با نام `planning.poliran` (شبکه داخلی)
 `127.0.0.1` فقط روی همان سیستمی که برنامه روی آن اجرا می‌شود کار می‌کند.
 برای ورود بقیه کاربران با نام دامنهٔ داخلی:
 
-1. **سرور را روی همه کارت‌های شبکه و پورت ۸۰ گوش کنید** (نه فقط localhost):
+1. **سرور را روی همه کارت‌های شبکه گوش کنید** (نه فقط localhost):
    ```bat
-   python manage.py runserver 0.0.0.0:80
+   python manage.py runserver 0.0.0.0:8000
    ```
-   یا از `scripts\windows_serve.bat` (با Run as administrator) استفاده کنید.
+   یا از `scripts\windows_serve.bat` استفاده کنید.
 2. **آی‌پی داخلی سرور را پیدا کنید** (مثلاً `192.168.1.50`).
 3. **نام `planning.poliran` را به همان آی‌پی وصل کنید** — یکی از دو راه:
    - **DNS داخلی شرکت** (بهترین راه): از واحد IT بخواهید رکورد A برای `planning.poliran` → آی‌پی سرور بسازند.
@@ -107,7 +101,7 @@ http://<آی‌پیِ-سرور>/
        (به‌جای `192.168.1.50` آی‌پی واقعی سرور را بگذارید.)
 4. در مرورگر کلاینت‌ها باز کنید:
    ```
-   http://planning.poliran/
+   http://planning.poliran:8000/
    ```
 
 > نکته: خود برنامه از قبل `planning.poliran` را در `ALLOWED_HOSTS` می‌پذیرد.
@@ -116,21 +110,21 @@ http://<آی‌پیِ-سرور>/
 ### دسترسی از شبکه (فایروال و هاست‌ها)
 1. **باز کردن پورت در فایروال ویندوز** (یک‌بار، در PowerShell با دسترسی Administrator):
    ```powershell
-   New-NetFirewallRule -DisplayName "ERP 80" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+   New-NetFirewallRule -DisplayName "ERP 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow
    ```
 2. **تعیین هاست‌های مجاز** برای حالت پروداکشن:
    ```bat
    set DJANGO_ALLOWED_HOSTS=planning.poliran,192.168.1.50,localhost
-   set DJANGO_CSRF_TRUSTED_ORIGINS=http://planning.poliran
+   set DJANGO_CSRF_TRUSTED_ORIGINS=http://planning.poliran:8000,http://planning.poliran
    set DJANGO_SECRET_KEY=یک-کلید-تصادفی-و-طولانی
    scripts\windows_serve.bat
    ```
 
 ### اجرای دائمی به‌صورت سرویس (اختیاری)
 برای این‌که برنامه با روشن‌شدن ویندوز به‌صورت خودکار بالا بیاید، دو راه ساده هست:
-- **Task Scheduler**: یک Task با تریگر «At startup» بسازید که `scripts\windows_serve.bat` را اجرا کند (با بالاترین دسترسی اگر پورت ۸۰ است).
+- **Task Scheduler**: یک Task با تریگر «At startup» بسازید که `scripts\windows_serve.bat` را اجرا کند.
 - **NSSM** (پیشنهادی برای سرویس واقعی): با [nssm](https://nssm.cc/) دستور
-  `.venv\Scripts\waitress-serve.exe --listen=0.0.0.0:80 erp.wsgi:application` را به‌عنوان یک سرویس ویندوزی ثبت کنید
+  `.venv\Scripts\waitress-serve.exe --listen=0.0.0.0:8000 erp.wsgi:application` را به‌عنوان یک سرویس ویندوزی ثبت کنید
   (و متغیرهای محیطی `DJANGO_DEBUG=False`، `DJANGO_SECRET_KEY` و `DJANGO_ALLOWED_HOSTS` را در تنظیمات سرویس قرار دهید).
 
 ### پایگاه‌داده روی ویندوز
@@ -144,8 +138,7 @@ http://<آی‌پیِ-سرور>/
 | `DJANGO_SECRET_KEY` | کلید توسعه (در تولید تغییر دهید) |
 | `DJANGO_DEBUG` | `True` |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0,planning.poliran` |
-| `DJANGO_CSRF_TRUSTED_ORIGINS` | `http://planning.poliran,...` |
-| `ERP_PORT` | `80` (فقط اسکریپت‌های ویندوز؛ پورت جایگزین مثلاً `8080`) |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | `http://planning.poliran:8000,...` |
 | `DJANGO_TIME_ZONE` | `Asia/Tehran` |
 
 پایگاه داده پیش‌فرض SQLite است (بدون نیاز به سرویس جانبی). برای تولید می‌توان به
