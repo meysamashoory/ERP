@@ -21,9 +21,10 @@ from catalog.models import Product
 
 @login_required
 def plan_list(request):
-    from django.db.models import Count
+    from django.db.models import Count, Q
 
     from core.natsort import natural_key
+    from production.models import ProductionProgram
     from reports.form_purposes import PURPOSE_WEEKLY, forms_for_purpose
 
     profile = get_profile(request.user)
@@ -36,9 +37,20 @@ def plan_list(request):
     if direction not in {"asc", "desc"}:
         direction = "asc"
 
+    active_statuses = [
+        ProductionProgram.Status.RUNNING,
+        ProductionProgram.Status.TEMP_STOP,
+    ]
     plans = list(
         WeeklyPlan.objects.select_related("created_by", "approved_by")
-        .annotate(mold_count=Count("items", distinct=True))
+        .annotate(
+            mold_count=Count("items", distinct=True),
+            active_mold_count=Count(
+                "items__program",
+                filter=Q(items__program__status__in=active_statuses),
+                distinct=True,
+            ),
+        )
     )
     reverse = direction == "desc"
     if sort == "number":
