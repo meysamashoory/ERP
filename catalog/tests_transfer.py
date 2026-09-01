@@ -1137,3 +1137,75 @@ class ProductDataTests(TestCase):
         self.assertNotContains(listing, 'data-col="product_code"')
         self.assertNotContains(listing, 'data-col="status"')
         self.assertContains(listing, 'data-col="plan_number"')
+
+    def test_temp_stop_history_appears_in_production_hub(self):
+        """توقف موقت must stay on ثبت تولید even if Excel also has an end date."""
+        from datetime import date
+
+        from catalog.models import Machine, Product
+        from production.models import ProductionProgram
+        from production.sync import sync_history_record_to_planning
+
+        product = Product.objects.first()
+        machine = Machine.objects.select_related("unit").first()
+        uid = "36008888001999"
+        rec = ProductionHistoryRecord.objects.create(
+            program_uid=uid,
+            plan_number="BP-TEMP-STOP",
+            plan_date=date(1405, 6, 10),
+            actual_start_date=date(1405, 6, 11),
+            actual_end_date=date(1405, 6, 20),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            status="توقف موقت",
+        )
+        out = sync_history_record_to_planning(rec, user=self.admin)
+        self.assertTrue(out.get("ok"), msg=out)
+        prog = ProductionProgram.objects.filter(item__lines__uid=uid).first()
+        self.assertIsNotNone(prog)
+        self.assertEqual(prog.status, ProductionProgram.Status.TEMP_STOP)
+        rec.refresh_from_db()
+        self.assertIsNone(rec.actual_end_date)
+
+        self.client.login(username="admin", password="erp12345")
+        hub = self.client.get(reverse("program_list"))
+        self.assertEqual(hub.status_code, 200)
+        self.assertContains(hub, uid)
+        self.assertContains(hub, "توقف موقت")
+
+    def test_transfer_error_cells_are_returned(self):
+        from catalog.transfer import (
+            DESTINATION_PRODUCT_DATA,
+            LEVEL_PRODUCT_INFO,
+            transfer_excel_table,
+        )
+
+        upload = ExcelUpload.objects.create(title="err-cells", uploaded_by=self.admin)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="t-err",
+            headers=["کد کالا", "نام", "وزن هر واحد"],
+            rows=[["C1", "نام۱", "abc"], ["C2", "نام۲", "10"]],
+        )
+        mapping = {
+            "code": 0,
+            "name": 1,
+            "unit_weight_grams": 2,
+        }
+        result = transfer_excel_table(
+            table=table,
+            destination_id=DESTINATION_PRODUCT_DATA,
+            level_id=LEVEL_PRODUCT_INFO,
+            mapping={
+                "code": 0,
+                "name": 1,
+                "unit_weight_grams": 2,
+            },
+            user=self.admin,
+        )
+        self.assertGreaterEqual(result.failed, 1, msg=result.alarms)
+        self.assertTrue(result.error_cells)
+        self.assertEqual(result.error_cells[0]["col"], 2)
+        self.assertEqual(result.error_cells[0]["row"], 1)

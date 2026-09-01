@@ -52,14 +52,16 @@ def occupancy_status(
 ) -> str | None:
     """Return ``running`` / ``temp_stop`` if the mold occupies the machine, else None."""
     hinted = _normalize_status_label(status_text or "")
+    # Explicit temp_stop occupies even if Excel also has an end date (messy rows).
+    if hinted == "temp_stop":
+        return "temp_stop"
     if actual_end or hinted == "finished":
         return None
-    if hinted == "temp_stop":
-        # Temp stop occupies the machine even if start is missing in messy Excel rows.
-        return "temp_stop"
     if hinted == "awaiting" and not actual_start:
         return None
     if actual_start and not actual_end:
+        return "running"
+    if hinted == "running":
         return "running"
     return None
 

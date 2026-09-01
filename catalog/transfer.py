@@ -44,6 +44,8 @@ class TransferResult:
     skipped: int = 0
     alarms: list[str] = field(default_factory=list)
     conflicts: list[dict] = field(default_factory=list)
+    # Cells that failed parsing/transfer: {row: 1-based data row, col: 0-based}
+    error_cells: list[dict] = field(default_factory=list)
     table_deleted: bool = False
     redirect_url: str = ""
     # Chunked transfer progress (optional)
@@ -66,6 +68,7 @@ HISTORY_LIST_FIELDS: list[DestField] = [
     DestField("product_name", "نام جنس", "string"),
     DestField("mold_number", "شماره قالب", "string"),
     DestField("unique_code", "کد یکتا", "string"),
+    DestField("status", "وضعیت", "string"),
     DestField("plan_start_date", "تاریخ شروع برنامه", "date"),
     DestField("actual_start_date", "تاریخ شروع واقعی", "date"),
     DestField("actual_end_date", "تاریخ پایان تولید", "date"),
@@ -443,9 +446,23 @@ def _row_alarm(
     row_i: int,
     msg: str,
     field_label: str = "",
+    error_cols: list[int] | None = None,
 ) -> None:
     result.failed += 1
     result.alarms.append(msg)
+    seen = {(c.get("row"), c.get("col")) for c in result.error_cells}
+    for col in error_cols or []:
+        try:
+            ci = int(col)
+        except (TypeError, ValueError):
+            continue
+        if ci < 0:
+            continue
+        key = (row_i, ci)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.error_cells.append({"row": row_i, "col": ci})
     register_alarm(
         title="خطا در انتقال داده اکسل",
         message=msg,
@@ -477,8 +494,11 @@ def _parse_row(
     col_map: dict[str, int | None],
     fields: list[DestField],
     headers: list | None = None,
-) -> tuple[dict[str, Any], list[str]]:
-    """Parse mapped cells. Empty cells are skipped (not errors)."""
+) -> tuple[dict[str, Any], list[str], list[int]]:
+    """Parse mapped cells. Empty cells are skipped (not errors).
+
+    Returns (values, errors, error_col_indexes).
+    """
     from catalog.qty_parse import (
         apply_production_type_to_name,
         extract_qty_and_production_type,
@@ -487,7 +507,14 @@ def _parse_row(
 
     values: dict[str, Any] = {}
     errors: list[str] = []
+    error_cols: list[int] = []
     prod_type = ""
+
+    def _mark_col(f_key: str) -> None:
+        idx = col_map.get(f_key)
+        if idx is not None and idx not in error_cols:
+            error_cols.append(idx)
+
     for f in fields:
         # Unmapped destination field → leave empty, no error
         if col_map.get(f.key) is None:
@@ -501,6 +528,7 @@ def _parse_row(
             qty, ptype, err = extract_qty_and_production_type(raw)
             if err:
                 errors.append(f"فیلد «{f.label}»{col_hint}: {err}")
+                _mark_col(f.key)
             else:
                 values[f.key] = qty
                 if ptype:
@@ -520,6 +548,7 @@ def _parse_row(
                     if err.startswith(f"فیلد «{f.label}»"):
                         err = err.replace(f"فیلد «{f.label}»", f"فیلد «{f.label}»{col_hint}", 1)
                     errors.append(err)
+                    _mark_col(f.key)
                 elif parsed is not None:
                     values["unit_number"] = parsed
             else:
@@ -534,6 +563,7 @@ def _parse_row(
             if err.startswith(f"فیلد «{f.label}»"):
                 err = err.replace(f"فیلد «{f.label}»", f"فیلد «{f.label}»{col_hint}", 1)
             errors.append(err)
+            _mark_col(f.key)
         else:
             values[f.key] = parsed
 
@@ -542,7 +572,19 @@ def _parse_row(
         if name:
             values["product_name"] = apply_production_type_to_name(name, prod_type)
         values["_production_type"] = prod_type
-    return values, errors
+    return values, errors, error_cols
+
+
+def _normalize_temp_stop_dates(values: dict[str, Any]) -> None:
+    """توقف موقت must not keep an end date (that would mark the mold finished)."""
+    from production.sync import _normalize_status_label
+
+    status_raw = str(values.get("status") or "").strip()
+    if not status_raw:
+        return
+    if _normalize_status_label(status_raw) == "temp_stop":
+        values["actual_end_date"] = None
+
 
 
 def _format_row_errors(row_i: int, table_name: str, errors: list[str]) -> str:
@@ -800,7 +842,7 @@ def _transfer_history_list(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, HISTORY_LIST_FIELDS, headers)
+        values, row_errors, error_cols = _parse_row(row, col_map, HISTORY_LIST_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
@@ -808,6 +850,7 @@ def _transfer_history_list(
                 row_i=row_i,
                 msg=_format_row_errors(row_i, table.name, row_errors),
                 field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
             )
             continue
         uid = str(values.get("program_uid") or "").strip()
@@ -828,6 +871,7 @@ def _transfer_history_list(
         }
         defaults.setdefault("scrap_qty", 0)
         defaults.setdefault("produced_qty", 0)
+        _normalize_temp_stop_dates(defaults)
 
         # Keep catalog product display name in sync when code is known
         code = str(defaults.get("product_code") or "").strip()
@@ -884,7 +928,9 @@ def _transfer_history_list(
 
     if done:
         from production.conflicts import conflicts_as_dicts
+        from production.sync import ensure_running_history_in_production
 
+        ensure_running_history_in_production(user=user)
         check_history_machine_conflicts()
         result.conflicts = conflicts_as_dicts()
     return result
@@ -914,13 +960,15 @@ def _transfer_history_daily(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, HISTORY_DAILY_FIELDS, headers)
+        values, row_errors, error_cols = _parse_row(row, col_map, HISTORY_DAILY_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
                 table=table,
                 row_i=row_i,
                 msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
             )
             continue
         uid = str(values.get("program_uid") or "").strip()
@@ -961,6 +1009,11 @@ def _transfer_history_daily(
                 rec.actual_end_date = work
             if normalized == "running" and not rec.actual_start_date and work:
                 rec.actual_start_date = work
+            if normalized == "temp_stop":
+                # توقف موقت is still occupying — clear end date so hub keeps it.
+                rec.actual_end_date = None
+                if not rec.actual_start_date and work:
+                    rec.actual_start_date = work
 
         extra = rec.extra if isinstance(rec.extra, dict) else {}
         entries = list(extra.get("day_entries") or [])
@@ -1017,13 +1070,15 @@ def _transfer_product_info(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, PRODUCT_INFO_FIELDS, headers)
+        values, row_errors, error_cols = _parse_row(row, col_map, PRODUCT_INFO_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
                 table=table,
                 row_i=row_i,
                 msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
             )
             continue
         if not str(values.get("code") or "").strip():
@@ -1066,13 +1121,15 @@ def _transfer_product_bom(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, PRODUCT_BOM_FIELDS, headers)
+        values, row_errors, error_cols = _parse_row(row, col_map, PRODUCT_BOM_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
                 table=table,
                 row_i=row_i,
                 msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
             )
             continue
         if not str(values.get("parent_code") or "").strip():
@@ -1118,13 +1175,15 @@ def _transfer_product_consumables(
         if not any(str(c).strip() for c in row if c is not None):
             result.skipped += 1
             continue
-        values, row_errors = _parse_row(row, col_map, PRODUCT_CONSUMABLE_FIELDS, headers)
+        values, row_errors, error_cols = _parse_row(row, col_map, PRODUCT_CONSUMABLE_FIELDS, headers)
         if row_errors:
             _row_alarm(
                 result,
                 table=table,
                 row_i=row_i,
                 msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
             )
             continue
         if not str(values.get("product_code") or "").strip():

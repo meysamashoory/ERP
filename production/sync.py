@@ -13,8 +13,15 @@ from catalog.alarms import register_alarm
 from catalog.models import Machine, Product, ProductionUnit, SystemAlarm
 
 
-def infer_history_status(*, actual_start, actual_end) -> str:
-    """Status from dates: end → finished; start only → running; else awaiting."""
+def infer_history_status(*, actual_start, actual_end, status_text: str = "") -> str:
+    """Resolve archive status.
+
+    Explicit Excel status (especially توقف موقت) wins over date inference so
+    temporarily-stopped molds stay visible in ثبت و کنترل تولید.
+    """
+    hinted = _normalize_status_label(status_text or "")
+    if hinted in {"finished", "running", "awaiting", "temp_stop"}:
+        return hinted
     if actual_end:
         return "finished"
     if actual_start:
@@ -291,19 +298,11 @@ def _apply_program_state_from_history(rec, program) -> None:
     """Update live ProductionProgram status/dates from archive history row."""
     from production.models import ProductionProgram
 
-    status_hint = _normalize_status_label(getattr(rec, "status", "") or "")
-    if status_hint in {
-        ProductionProgram.Status.FINISHED,
-        ProductionProgram.Status.RUNNING,
-        ProductionProgram.Status.AWAITING,
-        ProductionProgram.Status.TEMP_STOP,
-    }:
-        inferred = status_hint
-    else:
-        inferred = infer_history_status(
-            actual_start=rec.actual_start_date,
-            actual_end=rec.actual_end_date,
-        )
+    inferred = infer_history_status(
+        actual_start=rec.actual_start_date,
+        actual_end=rec.actual_end_date,
+        status_text=getattr(rec, "status", "") or "",
+    )
     if inferred == "finished":
         program.status = ProductionProgram.Status.FINISHED
     elif inferred == "running":
@@ -321,7 +320,18 @@ def _apply_program_state_from_history(rec, program) -> None:
             from datetime import time as dtime
 
             program.start_time = dtime(8, 0)
-    if end_j:
+    # Temp-stop occupies the machine like running — do not treat Excel end date
+    # as production completion (that would hide the mold from ثبت تولید).
+    if inferred == "temp_stop":
+        if rec.actual_end_date is not None:
+            rec.actual_end_date = None
+            try:
+                rec.save(update_fields=["actual_end_date", "updated_at"])
+            except Exception:  # noqa: BLE001
+                pass
+        program.stop_date = None
+        program.stop_time = None
+    elif end_j:
         program.stop_date = end_j
         if not program.stop_time:
             from datetime import time as dtime
@@ -764,14 +774,11 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
         uid = (rec.program_uid or "").strip()
         plan_no = normalize_plan_number(rec.plan_number)
         inferred = infer_history_status(
-            actual_start=rec.actual_start_date, actual_end=rec.actual_end_date
+            actual_start=rec.actual_start_date,
+            actual_end=rec.actual_end_date,
+            status_text=rec.status or "",
         )
-        status_hint = _normalize_status_label(rec.status or "")
-        is_active = inferred in ("running", "awaiting") or status_hint in (
-            "running",
-            "awaiting",
-            "temp_stop",
-        )
+        is_active = inferred in ("running", "awaiting", "temp_stop")
 
         if uid and uid in known and plan_no and plan_no in existing_plans:
             # Refresh live/running programs so ثبت و کنترل stays up to date
@@ -814,7 +821,7 @@ def ensure_history_synced_to_planning(*, user=None) -> dict[str, int]:
 
 
 def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
-    """Push «در حال تولید» / awaiting archive rows into ثبت و کنترل تولید."""
+    """Push awaiting / running / temp_stop archive rows into ثبت و کنترل تولید."""
     from production.models import ProductionHistoryRecord, ProductionProgram
 
     stats = {"ok": 0, "failed": 0, "skipped": 0, "refreshed": 0}
@@ -823,10 +830,11 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
         chunk_size=200
     ):
         inferred = infer_history_status(
-            actual_start=rec.actual_start_date, actual_end=rec.actual_end_date
+            actual_start=rec.actual_start_date,
+            actual_end=rec.actual_end_date,
+            status_text=rec.status or "",
         )
-        status_hint = _normalize_status_label(rec.status or "")
-        if inferred == "finished" or status_hint == "finished":
+        if inferred == "finished":
             stats["skipped"] += 1
             continue
         if not (rec.product_code or rec.product_name):
@@ -838,7 +846,8 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
         uid = (rec.program_uid or "").strip()
         if uid and uid in live_uids:
             prog = _find_program_by_uid(uid)
-            if prog is not None and prog.status != ProductionProgram.Status.FINISHED:
+            if prog is not None:
+                # Revive finished → temp_stop/running when Excel status says so
                 _apply_program_state_from_history(rec, prog)
                 _sync_history_quantities_to_program(rec, prog, user=user)
                 stats["refreshed"] += 1
