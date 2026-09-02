@@ -673,16 +673,25 @@ def system_naming_keys(request: HttpRequest) -> HttpResponse:
     from django.db.models import Q
 
     from .models import SystemNamingKey
-    from .naming_registry import ensure_registry_seeded, section_choices, sync_naming_registry
+    from .naming_registry import (
+        SOURCE_CHOICES,
+        ensure_registry_seeded,
+        key_source,
+        section_choices,
+        sync_naming_registry,
+    )
 
     ensure_registry_seeded()
     if request.method == "POST" and request.POST.get("action") == "resync":
         if not _can_edit_naming(request.user):
             return HttpResponseForbidden("مجاز نیستید.")
-        stats = sync_naming_registry(refresh_defaults=False)
+        stats = sync_naming_registry(refresh_defaults=True)
         messages.success(
             request,
-            f"همگام‌سازی انجام شد: {stats['created']} جدید، {stats['updated']} به‌روز.",
+            (
+                f"همگام‌سازی انجام شد: {stats['created']} جدید، "
+                f"{stats['updated']} به‌روز، {stats.get('deactivated', 0)} پنهان‌شده."
+            ),
         )
         return redirect("system_naming_keys")
 
@@ -690,9 +699,15 @@ def system_naming_keys(request: HttpRequest) -> HttpResponse:
     category = (request.GET.get("category") or "").strip()
     section = (request.GET.get("section") or "").strip()
     table = (request.GET.get("table") or "").strip()
+    source = (request.GET.get("source") or "app").strip()
+    if source not in {c[0] for c in SOURCE_CHOICES}:
+        source = "app"
     only_renamed = request.GET.get("renamed") == "1"
+    show_inactive = request.GET.get("inactive") == "1"
 
     qs = SystemNamingKey.objects.all()
+    if not show_inactive:
+        qs = qs.filter(is_active=True)
     if q:
         qs = qs.filter(
             Q(key__icontains=q)
@@ -713,8 +728,25 @@ def system_naming_keys(request: HttpRequest) -> HttpResponse:
 
         qs = qs.exclude(default_label="").exclude(label=F("default_label"))
 
+    # Source filter — default "app" hides admin technical keys users rarely see
+    if source == "app":
+        qs = qs.exclude(key__startswith="admin.")
+    elif source == "ui":
+        qs = qs.filter(key__startswith="ui.")
+    elif source == "transfer":
+        qs = qs.filter(key__startswith="transfer.")
+    elif source == "report":
+        qs = qs.filter(key__startswith="report.")
+    elif source == "section":
+        qs = qs.filter(key__startswith="system.")
+    elif source == "admin":
+        qs = qs.filter(key__startswith="admin.")
+    # "all" → no extra filter
+
     filtered_count = qs.count()
     rows = list(qs.order_by("category", "table_key", "order", "key")[:250])
+    for row in rows:
+        row.source_bucket = key_source(row.key)  # type: ignore[attr-defined]
     tables = (
         SystemNamingKey.objects.exclude(table_key="")
         .values_list("table_key", flat=True)
@@ -730,12 +762,15 @@ def system_naming_keys(request: HttpRequest) -> HttpResponse:
             "category": category,
             "section": section,
             "table": table,
+            "source": source,
+            "source_choices": SOURCE_CHOICES,
             "only_renamed": only_renamed,
+            "show_inactive": show_inactive,
             "categories": SystemNamingKey.Category.choices,
             "section_choices": section_choices(),
             "table_choices": list(tables),
             "can_edit": _can_edit_naming(request.user),
-            "total_count": SystemNamingKey.objects.count(),
+            "total_count": SystemNamingKey.objects.filter(is_active=True).count(),
             "filtered_count": filtered_count,
             "shown_count": len(rows),
         },

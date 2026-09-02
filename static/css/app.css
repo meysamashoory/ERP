@@ -459,6 +459,12 @@ tr.is-conflict-row > td {
   background: #e2e8f0; color: #334155;
 }
 .naming-badge-renamed { background: #fef3c7; color: #92400e; }
+.naming-badge-admin { background: #fee2e2; color: #991b1b; }
+.naming-badge-ui { background: #dbeafe; color: #1e40af; }
+.naming-source-legend {
+  margin: 0 0 10px; padding-inline-start: 1.2em; color: #475569; font-size: 13px; line-height: 1.55;
+}
+.naming-source-legend li { margin-bottom: 4px; }
 .naming-keys-table tr.is-renamed td:nth-child(3) .naming-label-input {
   border-color: #f59e0b;
 }

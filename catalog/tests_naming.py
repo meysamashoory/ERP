@@ -29,7 +29,53 @@ class SystemNamingRegistryTests(TestCase):
         col = SystemNamingKey.objects.get(key="ui.table.planning.plan_list.col.program_number")
         self.assertIn("plan_list.html", col.address)
         self.assertIn("data-col=program_number", col.address)
+        self.assertIn("صفحات کاربری", col.address)
         self.assertEqual(col.category, SystemNamingKey.Category.COLUMN)
+
+    def test_admin_harvest_skips_technical_id_fields(self):
+        from catalog.naming_registry import harvest_specs
+
+        specs = harvest_specs()
+        admin_field_keys = [s["key"] for s in specs if s["key"].startswith("admin.field.")]
+        self.assertTrue(admin_field_keys)
+        self.assertFalse(any(k.endswith(".id") for k in admin_field_keys))
+        # list_display columns like created_by remain (visible in /admin/), but
+        # addresses must clearly say they are from the admin panel.
+        created_by = [
+            s for s in specs if s["key"].endswith(".created_by") and s["key"].startswith("admin.")
+        ]
+        if created_by:
+            self.assertIn("پنل مدیریت", created_by[0]["address"])
+
+    def test_resync_deactivates_obsolete_admin_fields(self):
+        sync_naming_registry()
+        obsolete = SystemNamingKey.objects.create(
+            key="admin.field.catalog.unit.id",
+            label="ID",
+            default_label="ID",
+            address="old technical field",
+            category=SystemNamingKey.Category.COLUMN,
+            table_key="admin.catalog.unit",
+            column_key="id",
+            is_custom=False,
+            is_active=True,
+        )
+        stats = sync_naming_registry(refresh_defaults=True)
+        obsolete.refresh_from_db()
+        self.assertFalse(obsolete.is_active)
+        self.assertGreaterEqual(stats.get("deactivated", 0), 1)
+
+    def test_naming_keys_default_source_hides_admin(self):
+        sync_naming_registry()
+        self.client.login(username="admin", password="erp12345")
+        page = self.client.get(reverse("system_naming_keys"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "صفحات کاربری")
+        self.assertNotContains(page, "admin.field.")
+        admin_page = self.client.get(reverse("system_naming_keys"), {"source": "admin"})
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertContains(admin_page, "admin.field.")
+        self.assertContains(admin_page, "list_display=")
 
     def test_rename_persists_and_resolve_label(self):
         sync_naming_registry()

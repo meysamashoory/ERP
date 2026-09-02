@@ -99,7 +99,7 @@ def _harvest_sections() -> list[dict[str, Any]]:
             _spec(
                 key=f"system.group.{group.key}",
                 label=group.title,
-                address=f"catalog/system_sections.py#group={group.key}",
+                address=f"داده‌های سیستم ← گروه «{group.title}»",
                 category=SystemNamingKey.Category.SECTION,
                 section_key=group.key,
                 order=gi * 100,
@@ -112,7 +112,7 @@ def _harvest_sections() -> list[dict[str, Any]]:
                     key=f"system.section.{item.key}",
                     label=item.title,
                     address=(
-                        f"catalog/system_sections.py#item={item.key}"
+                        f"داده‌های سیستم ← {group.title} ← «{item.title}»"
                         + (f" → {target}" if target else "")
                     ),
                     category=SystemNamingKey.Category.SECTION,
@@ -134,7 +134,7 @@ def _harvest_ui_columns() -> list[dict[str, Any]]:
             [
                 ("row", "ردیف"),
                 ("program_number", "شماره برنامه"),
-                    ("date", "تاریخ برنامه"),
+                ("date", "تاریخ برنامه"),
                 ("weekday", "روز برنامه"),
                 ("mode", "نحوه"),
                 ("creator", "ایجاد کننده"),
@@ -203,7 +203,7 @@ def _harvest_ui_columns() -> list[dict[str, Any]]:
             _spec(
                 key=f"ui.table.{table_key}",
                 label=table_label,
-                address=template,
+                address=f"صفحات کاربری ← {table_label} ← {template}",
                 category=SystemNamingKey.Category.TABLE,
                 section_key=section_key,
                 table_key=table_key,
@@ -215,7 +215,10 @@ def _harvest_ui_columns() -> list[dict[str, Any]]:
                 _spec(
                     key=f"ui.table.{table_key}.col.{col_key}",
                     label=label,
-                    address=f"{template}#data-col={col_key}",
+                    address=(
+                        f"صفحات کاربری ← {table_label} ← ستون «{label}» "
+                        f"({template}#data-col={col_key})"
+                    ),
                     category=SystemNamingKey.Category.COLUMN,
                     section_key=section_key,
                     table_key=table_key,
@@ -237,7 +240,7 @@ def _harvest_transfer() -> list[dict[str, Any]]:
             _spec(
                 key=f"transfer.dest.{dest_id}",
                 label=dest_label,
-                address=f"catalog/transfer.py#destination={dest_id}",
+                address=f"انتقال داده ← مقصد «{dest_label}»",
                 category=SystemNamingKey.Category.TRANSFER,
                 table_key=f"transfer.{dest_id}",
                 order=0,
@@ -251,9 +254,7 @@ def _harvest_transfer() -> list[dict[str, Any]]:
                 _spec(
                     key=f"transfer.level.{dest_id}.{level_id}",
                     label=level_label,
-                    address=(
-                        f"catalog/transfer.py#destination={dest_id}&level={level_id}"
-                    ),
+                    address=f"انتقال داده ← {dest_label} ← سطح «{level_label}»",
                     category=SystemNamingKey.Category.TRANSFER,
                     table_key=table_key,
                     order=li,
@@ -269,8 +270,7 @@ def _harvest_transfer() -> list[dict[str, Any]]:
                         key=f"transfer.field.{dest_id}.{level_id}.{fkey}",
                         label=flabel,
                         address=(
-                            f"catalog/transfer.py#DestField"
-                            f"[{dest_id}/{level_id}/{fkey}]"
+                            f"انتقال داده ← {dest_label} ← {level_label} ← فیلد «{flabel}»"
                         ),
                         category=SystemNamingKey.Category.COLUMN,
                         section_key="excel_tables",
@@ -293,7 +293,7 @@ def _harvest_reports() -> list[dict[str, Any]]:
             _spec(
                 key=f"report.source.{gid}",
                 label=glabel,
-                address=f"reports/columns.py#source={gid}",
+                address=f"گزارش‌ها ← منبع «{glabel}»",
                 category=SystemNamingKey.Category.REPORT,
                 table_key=f"report.{gid}",
                 order=gi,
@@ -308,7 +308,7 @@ def _harvest_reports() -> list[dict[str, Any]]:
                 _spec(
                     key=f"report.col.{source}.{col_key}",
                     label=str(label),
-                    address=f"reports/columns.py#COLUMNS_BY_SOURCE[{source}].{col_key}",
+                    address=f"گزارش‌ها ← منبع {source} ← ستون «{label}»",
                     category=SystemNamingKey.Category.COLUMN,
                     section_key="saved_reports",
                     table_key=f"report.{source}",
@@ -319,8 +319,47 @@ def _harvest_reports() -> list[dict[str, Any]]:
     return out
 
 
+# Technical / internal columns that appear in some admin list_display but are
+# not meaningful for end-user renaming in the ERP UI.
+_ADMIN_SKIP_FIELDS = frozenset(
+    {
+        "id",
+        "pk",
+        "password",
+        "last_login",
+        "date_joined",
+        "is_superuser",
+        "is_staff",
+        "user_permissions",
+        "groups",
+        "download_link",
+    }
+)
+
+
+def _admin_display_label(model, model_admin, name: str) -> str:
+    """Human label for a ModelAdmin list_display entry."""
+    opts = model._meta
+    try:
+        field = opts.get_field(name)
+        return str(getattr(field, "verbose_name", None) or name)
+    except Exception:  # noqa: BLE001 — not a concrete DB field
+        pass
+    attr = getattr(model_admin, name, None)
+    if attr is None:
+        attr = getattr(model, name, None)
+    short = getattr(attr, "short_description", None)
+    if short:
+        return str(short)
+    return name.replace("_", " ")
+
+
 def _harvest_admin_models() -> list[dict[str, Any]]:
-    """Admin changelist models exposed via system data hub."""
+    """Only columns visible in admin changelist (list_display), not every model field.
+
+    Previously every Django model field (id, created_by, timestamps, …) was
+    harvested — those do not appear in the main ERP screens, which confused users.
+    """
     from django.contrib import admin as dj_admin
 
     from catalog.system_sections import build_system_groups
@@ -343,40 +382,55 @@ def _harvest_admin_models() -> list[dict[str, Any]]:
                 continue
             seen.add(model_label)
             model = None
-            for m, _ma in dj_admin.site._registry.items():
+            model_admin = None
+            for m, ma in dj_admin.site._registry.items():
                 opts = m._meta
                 if f"{opts.app_label}_{opts.model_name}" == model_label:
                     model = m
+                    model_admin = ma
                     break
-            if model is None:
+            if model is None or model_admin is None:
                 continue
             opts = model._meta
+            table_label = str(opts.verbose_name_plural or opts.verbose_name or model_label)
             table_key = f"admin.{opts.app_label}.{opts.model_name}"
+            admin_path = f"/admin/{opts.app_label}/{opts.model_name}/"
             out.append(
                 _spec(
                     key=f"admin.table.{opts.app_label}.{opts.model_name}",
-                    label=str(opts.verbose_name_plural or opts.verbose_name or model_label),
-                    address=f"admin:{item.admin_changelist} · {opts.label}",
+                    label=table_label,
+                    address=(
+                        f"پنل مدیریت (ادمین) ← {table_label} ← فهرست "
+                        f"({admin_path})"
+                    ),
                     category=SystemNamingKey.Category.TABLE,
                     section_key=item.key,
                     table_key=table_key,
                     order=0,
                 )
             )
-            for i, field in enumerate(opts.fields, start=1):
+            display = getattr(model_admin, "list_display", None) or ()
+            order_i = 0
+            for col in display:
+                if not isinstance(col, str):
+                    continue
+                if col in _ADMIN_SKIP_FIELDS or col.startswith("__"):
+                    continue
+                order_i += 1
+                label = _admin_display_label(model, model_admin, col)
                 out.append(
                     _spec(
-                        key=f"admin.field.{opts.app_label}.{opts.model_name}.{field.name}",
-                        label=str(getattr(field, "verbose_name", None) or field.name),
+                        key=f"admin.field.{opts.app_label}.{opts.model_name}.{col}",
+                        label=label,
                         address=(
-                            f"{opts.app_label}.{opts.object_name}.{field.name}"
-                            f" · admin/{opts.app_label}/{opts.model_name}/"
+                            f"پنل مدیریت (ادمین) ← {table_label} ← ستون فهرست «{label}» "
+                            f"({admin_path} · list_display={col})"
                         ),
                         category=SystemNamingKey.Category.COLUMN,
                         section_key=item.key,
                         table_key=table_key,
-                        column_key=field.name,
-                        order=i,
+                        column_key=col,
+                        order=order_i,
                     )
                 )
     return out
@@ -404,15 +458,45 @@ def harvest_specs() -> list[dict[str, Any]]:
     return unique
 
 
+SOURCE_CHOICES: list[tuple[str, str]] = [
+    ("app", "صفحات کاربری و انتقال/گزارش (پیشنهادی)"),
+    ("ui", "فقط صفحات کاربری"),
+    ("transfer", "فقط انتقال داده"),
+    ("report", "فقط گزارش‌ها"),
+    ("section", "فقط بخش‌های سیستم"),
+    ("admin", "فقط پنل مدیریت (ادمین)"),
+    ("all", "همه منابع"),
+]
+
+
+def key_source(key: str) -> str:
+    """Map a naming key to a high-level source bucket."""
+    k = (key or "").strip()
+    if k.startswith("admin."):
+        return "admin"
+    if k.startswith("ui."):
+        return "ui"
+    if k.startswith("transfer."):
+        return "transfer"
+    if k.startswith("report."):
+        return "report"
+    if k.startswith("system."):
+        return "section"
+    return "other"
+
+
 @transaction.atomic
 def sync_naming_registry(*, refresh_defaults: bool = False) -> dict[str, int]:
     """Insert missing keys; optionally refresh default_label from harvest.
 
     Never overwrites a user-edited ``label`` unless it still matches the old default.
+    Non-custom keys that disappear from harvest are marked inactive (e.g. old
+    admin.* technical fields that are no longer collected).
     """
     specs = harvest_specs()
+    harvested_keys = {s["key"] for s in specs}
     existing = {r.key: r for r in SystemNamingKey.objects.all()}
-    created = updated = skipped = 0
+    created = updated = skipped = deactivated = 0
     for spec in specs:
         row = existing.get(spec["key"])
         if row is None:
@@ -427,6 +511,7 @@ def sync_naming_registry(*, refresh_defaults: bool = False) -> dict[str, int]:
                 column_key=spec["column_key"],
                 order=spec["order"],
                 is_custom=False,
+                is_active=True,
             )
             created += 1
             continue
@@ -453,7 +538,22 @@ def sync_naming_registry(*, refresh_defaults: bool = False) -> dict[str, int]:
                 skipped += 1
         else:
             skipped += 1
-    return {"created": created, "updated": updated, "skipped": skipped, "total": len(specs)}
+
+    for key, row in existing.items():
+        if row.is_custom or not row.is_active:
+            continue
+        if key not in harvested_keys:
+            row.is_active = False
+            row.save(update_fields=["is_active", "updated_at"])
+            deactivated += 1
+
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "deactivated": deactivated,
+        "total": len(specs),
+    }
 
 
 def ensure_registry_seeded() -> dict[str, int] | None:
