@@ -192,17 +192,29 @@ def _delete_party(ref: str) -> dict[str, Any]:
 
     if rec is not None:
         delete_history_archive_and_live(rec)
-        return {"ok": True, "message": "ردیف از سوابق تولید، ثبت تولید و برنامه‌ریزی حذف شد."}
+        return {
+            "ok": True,
+            "message": "ردیف از تمام سوابق تولید، ثبت تولید و برنامه‌ریزی حذف شد "
+            "(انگار از ابتدا برنامه‌ریزی نشده است).",
+        }
 
     if prog is not None:
         item = prog.item
         plan = item.plan if item else None
+        # Also drop any archive twin by UID so nothing remains in سوابق
+        uid = (prog.resolved_uid or "").strip()
+        if uid:
+            for twin in ProductionHistoryRecord.objects.filter(program_uid=uid):
+                twin.delete()
         prog.delete()
         if item is not None and not ProductionProgram.objects.filter(item=item).exists():
             item.delete()
             if plan is not None and not plan.items.exists():
-                # Keep weekly plan shell (date unique) — only remove empty excel stubs optionally
-                pass
-        return {"ok": True, "message": "ردیف از ثبت تولید و برنامه‌ریزی حذف شد."}
+                plan.delete()
+        return {
+            "ok": True,
+            "message": "ردیف از تمام سوابق تولید، ثبت تولید و برنامه‌ریزی حذف شد "
+            "(انگار از ابتدا برنامه‌ریزی نشده است).",
+        }
 
     return {"ok": False, "message": "موردی برای حذف یافت نشد."}

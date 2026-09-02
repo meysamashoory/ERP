@@ -873,6 +873,10 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
             if inferred == "finished":
                 stats["skipped"] += 1
                 continue
+            # کد یکتا خالی از اکسل نباید وارد سوابق/ثبت تولید شود
+            if not (getattr(rec, "unique_code", "") or "").strip():
+                stats["skipped"] += 1
+                continue
             if not (rec.product_code or rec.product_name or (rec.program_uid or "").strip()):
                 stats["skipped"] += 1
                 continue

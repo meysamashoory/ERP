@@ -7,11 +7,24 @@ Replaces the old machine-occupancy-only rules.
 Same ``unique_code`` (کد یکتا) across different plan numbers, with the same or
 unknown mold type, cannot sit unresolved in more than one program.
 
+Conflict when:
+- both awaiting
+- both running / temp_stop
+- older awaiting + newer occupying
+NOT conflict when: older occupying + newer awaiting (until newer starts producing)
+
+Live planning: existing occupying → block add; existing awaiting → allow with warning.
+Status change: blocked while any conflict involves the program (message names conflict type).
+
 تقدم/تاخر
 ---------
-Different products on the same machine: conflict when the later mold (by actual
-start, else planned start) occupies the machine while an earlier one is still
-awaiting / running / temp_stop. Both awaiting, or later still awaiting → OK.
+Different products on the same machine: order by actual start, else planned start.
+Conflict when the later mold occupies while an earlier one is still active.
+Both awaiting, or later still awaiting → OK.
+
+Excel
+-----
+Empty ``unique_code`` rows must not transfer into history; re-import replaces by UID.
 """
 
 from __future__ import annotations
@@ -627,23 +640,56 @@ def evaluate_duplicate_for_new_item(
     return {"blocked": False, "warn": False, "message": ""}
 
 
-def evaluate_status_change_block(program: ProductionProgram, new_status: str) -> str | None:
-    """If changing ``program`` to ``new_status`` would create/keep a conflict, return message."""
-    if new_status not in OCCUPYING and new_status != ProductionProgram.Status.RUNNING:
-        # finishing / awaiting transitions are not blocked here
-        if new_status == ProductionProgram.Status.FINISHED:
-            return None
-        if new_status == ProductionProgram.Status.TEMP_STOP:
-            new_status = "temp_stop"
-        elif new_status == ProductionProgram.Status.AWAITING:
-            return None
-        else:
-            return None
+def _message_for_party_conflicts(
+    *,
+    ref: str,
+    uid: str,
+    dups: list[ConflictGroup],
+    prec: list[ConflictGroup],
+) -> str | None:
+    for g in dups:
+        if any(p.ref == ref or (uid and p.uid == uid) for p in g.parties):
+            return f"ابتدا خطای موجود رفع شود — نوع تداخل: قالب تکراری. {g.message}"
+    for g in prec:
+        if any(p.ref == ref or (uid and p.uid == uid) for p in g.parties):
+            return f"ابتدا خطای موجود رفع شود — نوع تداخل: تقدم/تاخر. {g.message}"
+    return None
 
-    target = "temp_stop" if new_status == ProductionProgram.Status.TEMP_STOP else "running"
-    # Simulate
-    parties = collect_active_parties()
+
+def evaluate_status_change_block(program: ProductionProgram, new_status: str) -> str | None:
+    """Block status changes while this program is in conflict, or if the new status would create one.
+
+    اتمام تولید always allowed (helps clear occupancy). Transitions into running/temp_stop
+    are blocked when a قالب تکراری / تقدم‌تاخر error already exists or would appear.
+    """
+    if new_status == ProductionProgram.Status.FINISHED:
+        return None
+    if new_status == ProductionProgram.Status.AWAITING:
+        return None
+
+    if new_status in (ProductionProgram.Status.TEMP_STOP, "temp_stop"):
+        target = "temp_stop"
+    elif new_status in (ProductionProgram.Status.RUNNING, "running"):
+        target = "running"
+    else:
+        return None
+
     uid = (program.resolved_uid or "").strip()
+    ref = f"live:{program.pk}"
+
+    # 1) Existing unresolved conflict involving this program → block immediately
+    existing = collect_all_conflicts()
+    existing_msg = _message_for_party_conflicts(
+        ref=ref,
+        uid=uid,
+        dups=existing[KIND_DUPLICATE],
+        prec=existing[KIND_PRECEDENCE],
+    )
+    if existing_msg:
+        return existing_msg
+
+    # 2) Simulate after the status change
+    parties = collect_active_parties()
     simulated: list[ConflictParty] = []
     found = False
     for p in parties:
@@ -662,12 +708,10 @@ def evaluate_status_change_block(program: ProductionProgram, new_status: str) ->
                 )
             )
         elif uid and p.uid == uid and p.kind == "history":
-            # skip archive twin
             continue
         else:
             simulated.append(p)
     if not found:
-        # program not in active list yet — build from program
         try:
             product = program.item.product
             mold = program.mold or program.item.mold
@@ -675,7 +719,7 @@ def evaluate_status_change_block(program: ProductionProgram, new_status: str) ->
             machine = program.item.machine
             simulated.append(
                 ConflictParty(
-                    ref=f"live:{program.pk}",
+                    ref=ref,
                     kind="live",
                     pk=program.pk,
                     unique_code=_norm_code(product.code),
@@ -702,21 +746,12 @@ def evaluate_status_change_block(program: ProductionProgram, new_status: str) ->
         except Exception:  # noqa: BLE001
             return None
 
-    dups = collect_duplicate_conflicts(simulated)
-    prec = collect_precedence_conflicts(simulated)
-    # Only care about groups that include this program
-    ref = f"live:{program.pk}"
-    for g in dups:
-        if any(p.ref == ref or (uid and p.uid == uid) for p in g.parties):
-            return (
-                f"ابتدا خطای موجود رفع شود — نوع تداخل: قالب تکراری. {g.message}"
-            )
-    for g in prec:
-        if any(p.ref == ref or (uid and p.uid == uid) for p in g.parties):
-            return (
-                f"ابتدا خطای موجود رفع شود — نوع تداخل: تقدم/تاخر. {g.message}"
-            )
-    return None
+    return _message_for_party_conflicts(
+        ref=ref,
+        uid=uid,
+        dups=collect_duplicate_conflicts(simulated),
+        prec=collect_precedence_conflicts(simulated),
+    )
 
 
 def party_from_ref(ref: str) -> ConflictParty | None:

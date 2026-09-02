@@ -94,6 +94,44 @@ class ConflictRulesTests(TestCase):
         )
         self.assertTrue(_pair_precedence_conflict(a, b))
 
+    def test_evaluate_duplicate_occupying_blocks_awaiting_warns(self):
+        from production.models import ProductionHistoryRecord
+
+        ProductionHistoryRecord.objects.create(
+            program_uid="dup-live-block-1",
+            plan_number="PLAN-OCC",
+            unique_code="CODE-LIVE-1",
+            product_code="CODE-LIVE-1",
+            product_name="تست",
+            status="در حال تولید",
+            actual_start_date=date(2026, 1, 1),
+        )
+        blocked = evaluate_duplicate_for_new_item(
+            unique_code="CODE-LIVE-1",
+            mold_id=None,
+            plan_number="PLAN-NEW",
+            plan_start=date(2026, 2, 1),
+        )
+        self.assertTrue(blocked["blocked"])
+
+        ProductionHistoryRecord.objects.filter(program_uid="dup-live-block-1").delete()
+        ProductionHistoryRecord.objects.create(
+            program_uid="dup-live-warn-1",
+            plan_number="PLAN-AWAIT",
+            unique_code="CODE-LIVE-2",
+            product_code="CODE-LIVE-2",
+            product_name="تست۲",
+            status="در انتظار تولید",
+        )
+        warned = evaluate_duplicate_for_new_item(
+            unique_code="CODE-LIVE-2",
+            mold_id=None,
+            plan_number="PLAN-NEW2",
+            plan_start=date(2026, 2, 1),
+        )
+        self.assertFalse(warned["blocked"])
+        self.assertTrue(warned["warn"])
+
     def test_conflict_pages_manager_ok_viewer_denied(self):
         self.client.login(username="admin", password="erp12345")
         hub = self.client.get(reverse("production_conflicts"))
@@ -111,3 +149,9 @@ class ConflictRulesTests(TestCase):
         self.client.force_login(viewer)
         denied = self.client.get(reverse("production_conflicts"))
         self.assertEqual(denied.status_code, 403)
+
+    def test_delete_button_label_on_resolve_page(self):
+        self.client.login(username="admin", password="erp12345")
+        resp = self.client.get(reverse("production_conflicts_kind", args=["duplicate"]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "حذف از سوابق")

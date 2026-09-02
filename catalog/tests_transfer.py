@@ -1029,6 +1029,43 @@ class ProductDataTests(TestCase):
             ProductionHistoryRecord.objects.filter(program_uid="36001888001999").exists()
         )
 
+    def test_empty_unique_code_does_not_transfer_to_history(self):
+        from catalog.transfer import transfer_excel_table
+        from production.models import ProductionHistoryRecord
+
+        before = ProductionHistoryRecord.objects.count()
+        upload = ExcelUpload.objects.create(title="empty-uid", uploaded_by=self.expert)
+        table = ExcelTable.objects.create(
+            upload=upload,
+            name="سوابق",
+            headers=["شناسه", "برنامه", "نام", "کد یکتا"],
+            rows=[
+                ["36001999001001", "BP-E1", "بدون کد یکتا", ""],
+                ["36001999001002", "BP-E2", "با کد یکتا", "U-OK-1"],
+            ],
+        )
+        result = transfer_excel_table(
+            table=table,
+            destination_id="production_history",
+            level_id="history_list",
+            mapping={
+                "program_uid": 0,
+                "plan_number": 1,
+                "product_name": 2,
+                "unique_code": 3,
+            },
+            user=self.expert,
+        )
+        self.assertFalse(
+            ProductionHistoryRecord.objects.filter(program_uid="36001999001001").exists()
+        )
+        self.assertTrue(
+            ProductionHistoryRecord.objects.filter(program_uid="36001999001002").exists()
+        )
+        self.assertEqual(ProductionHistoryRecord.objects.count(), before + 1)
+        alarm_text = " ".join(result.alarms)
+        self.assertIn("کد یکتا", alarm_text)
+
     def test_update_mode_product_skips_missing_codes(self):
         from catalog.models import Product
         from catalog.transfer import MODE_UPDATE, transfer_excel_table
@@ -1122,6 +1159,7 @@ class ProductDataTests(TestCase):
             actual_start_date=date(1405, 6, 11),
             product_code=product.code,
             product_name=product.name,
+            unique_code=product.code,
             unit_number=machine.unit.number,
             machine_number=machine.number,
             planned_qty=200,
@@ -1190,6 +1228,7 @@ class ProductDataTests(TestCase):
             actual_end_date=date(1405, 6, 20),
             product_code=product.code,
             product_name=product.name,
+            unique_code=product.code,
             unit_number=machine.unit.number,
             machine_number=machine.number,
             status="توقف موقت",
@@ -1227,6 +1266,7 @@ class ProductDataTests(TestCase):
             actual_start_date=date(1405, 6, 11),
             product_code=product.code,
             product_name=product.name,
+            unique_code=product.code,
             unit_number=None,
             machine_number="",
             status="در حال تولید",
@@ -1263,6 +1303,7 @@ class ProductDataTests(TestCase):
             actual_start_date=date(1405, 6, 11),
             product_code=product.code,
             product_name=product.name,
+            unique_code=product.code,
             unit_number=machine.unit.number,
             machine_number=machine.number,
             status="در حال تولید",
