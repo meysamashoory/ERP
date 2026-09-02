@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}بارگذاری{% endblock %}
+{% block heading %}بارگذاری فایل اکسل{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_excel %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  {% if can_import %}
+  <a class="btn btn-sm btn-primary-soft" href="{% url 'excel_import' %}">+ وارد کردن فایل اکسل</a>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="panel panel-list">
+  <p class="panel-hint">پس از ورود Table، از «انتقال داده» برای ارسال ستون‌ها به بخش‌های سامانه استفاده کنید.</p>
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>نام فایل</th>
+          <th>تعداد جدول</th>
+          <th>جمع ردیف</th>
+          <th>جداول</th>
+          <th>بارگذارنده</th>
+          <th>تاریخ</th>
+          <th style="width:200px" class="col-ops">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <a class="excel-file-link" href="{% url 'excel_detail' row.upload.pk %}">{{ row.upload.title }}</a>
+            {% if row.upload.original_name and row.upload.original_name != row.upload.title %}
+            <div class="muted" style="font-size:12px">{{ row.upload.original_name }}</div>
+            {% endif %}
+          </td>
+          <td class="num">{{ row.table_count }}</td>
+          <td class="num">{{ row.row_total }}</td>
+          <td class="muted" style="font-size:13px;max-width:280px">{{ row.table_names|default:"—" }}</td>
+          <td>{{ row.upload.uploaded_by.username|default:"—" }}</td>
+          <td class="num">{{ row.upload.created_at|date:"Y/m/d H:i" }}</td>
+          <td class="col-ops">
+            <div class="ops-inline row-actions-ops">
+              <a class="btn btn-sm btn-ghost" href="{% url 'excel_detail' row.upload.pk %}">مشاهده</a>
+              {% if can_delete %}
+              <form method="post" action="{% url 'excel_file_delete' row.upload.pk %}" class="inline"
+                    onsubmit="return confirm('کل فایل و جداول آن حذف شود؟');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-danger-soft" type="submit">حذف</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">هنوز فایلی وارد نشده است.{% if can_import %} از «وارد کردن فایل اکسل» شروع کنید.{% endif %}</p>
+  {% endif %}
+</div>
+{% endblock %}

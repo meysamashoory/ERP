@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}تداخل {{ kind_label }}{% endblock %}
+{% block heading %}نوع تداخل: {{ kind_label }} ({{ group_count }}){% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'production_conflicts' %}">بازگشت به دسته‌بندی تداخل</a>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if not groups %}
+<div class="panel"><p class="empty">تداخلی در این دسته نیست.</p></div>
+{% else %}
+{% for g in groups %}
+<div class="panel panel-compact conflict-group-panel">
+  <div class="panel-head panel-head-compact">
+    <h2>{{ g.title }}</h2>
+  </div>
+  <p class="panel-hint" style="margin:0 12px 10px">{{ g.message }}</p>
+  <div class="table-scroll">
+    <table class="table table-compact" data-erp-nav="off">
+      <thead>
+        <tr>
+          <th>شماره برنامه</th>
+          <th>تاریخ برنامه</th>
+          <th>روز</th>
+          <th>نام کالا</th>
+          <th>کد یکتا</th>
+          <th>نوع قالب</th>
+          <th>واحد دستگاه</th>
+          <th>وضعیت</th>
+          <th>شروع واقعی</th>
+          <th>پایان واقعی</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in g.parties %}
+        <tr>
+          <td>{{ p.plan_number }}</td>
+          <td class="num">{{ p.plan_date_display }}</td>
+          <td>{{ p.weekday_name }}</td>
+          <td>{{ p.product_name|default:p.product_code }}</td>
+          <td dir="ltr">{{ p.unique_code }}</td>
+          <td>{{ p.mold_label }}</td>
+          <td>{{ p.machine_label }}</td>
+          <td><span class="badge status-{{ p.status }}">{{ p.status_display }}</span></td>
+          <td class="num">{{ p.actual_start_display }}</td>
+          <td class="num">{{ p.actual_end_display }}</td>
+          <td class="col-ops">
+            {% if can_resolve %}
+            <button type="button" class="btn btn-sm"
+              data-conflict-fix
+              data-ref="{{ p.ref }}"
+              data-kind="{{ kind }}"
+              data-plan="{{ p.plan_number }}"
+              data-product="{{ p.product_name }}"
+              data-unique="{{ p.unique_code }}"
+              data-mold-id="{{ p.mold_id|default_if_none:'' }}"
+              data-mold-label="{{ p.mold_label }}"
+              data-unit="{{ p.unit_number|default_if_none:'' }}"
+              data-machine="{{ p.machine_number }}"
+              data-start="{{ p.actual_start_display }}"
+              data-end="{{ p.actual_end_display }}">رفع / ویرایش</button>
+            {% else %}
+            <span class="muted">فقط مشاهده</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if can_resolve %}
+<dialog id="conflict-fix-dialog" class="dialog conflict-fix-dialog">
+  <form method="post" action="{% url 'production_conflict_resolve' %}" id="conflict-fix-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save" id="conflict-fix-action">
+    <input type="hidden" name="ref" id="conflict-fix-ref" value="">
+    <input type="hidden" name="conflict_kind" value="{{ kind }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <div class="dialog-head"><h3 id="conflict-fix-title">رفع تداخل</h3></div>
+    <p class="muted" id="conflict-fix-meta" style="margin:0 0 10px"></p>
+    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field">
+        <label for="conflict-mold">نوع قالب</label>
+        <select class="input" name="mold_id" id="conflict-mold">
+          <option value="">— نامشخص / بدون تغییر —</option>
+          {% for m in mold_options %}
+          <option value="{{ m.pk }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="conflict-unit">شماره واحد</label>
+        <input class="input" name="unit_number" id="conflict-unit" placeholder="مثلاً ۱">
+      </div>
+      <div class="field">
+        <label for="conflict-machine">شماره دستگاه</label>
+        <input class="input" name="machine_number" id="conflict-machine" placeholder="مثلاً ۶ یا ۶/۱">
+      </div>
+      <div class="field">
+        <label for="conflict-start">تاریخ شروع واقعی</label>
+        <input class="input" name="actual_start" id="conflict-start" data-jdp placeholder="۱۴۰۵/۰۵/۱۲">
+      </div>
+      <div class="field">
+        <label for="conflict-end">تاریخ پایان واقعی</label>
+        <input class="input" name="actual_end" id="conflict-end" data-jdp placeholder="خالی = بدون پایان">
+      </div>
+    </div>
+    <div class="dialog-actions" style="display:flex;gap:8px;justify-content:flex-start;margin-top:16px;flex-wrap:wrap">
+      <button type="submit" class="btn" id="conflict-save-btn">ثبت تغییرات</button>
+      <button type="submit" class="btn btn-warn" id="conflict-delete-btn"
+        onclick="document.getElementById('conflict-fix-action').value='delete'; return confirm('این ردیف از تمام سوابق تولید، ثبت تولید و برنامه‌ریزی حذف شود؟');">
+        حذف از سوابق
+      </button>
+      <button type="button" class="btn btn-ghost" data-close-conflict>انصراف</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if can_resolve %}
+<script>
+(function () {
+  var dlg = document.getElementById("conflict-fix-dialog");
+  if (!dlg) return;
+  function dash(v) { return (!v || v === "—" || v === "None") ? "" : v; }
+  document.querySelectorAll("[data-conflict-fix]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.getElementById("conflict-fix-action").value = "save";
+      document.getElementById("conflict-fix-ref").value = btn.getAttribute("data-ref") || "";
+      document.getElementById("conflict-fix-title").textContent =
+        "رفع تداخل — برنامه " + (btn.getAttribute("data-plan") || "");
+      document.getElementById("conflict-fix-meta").textContent =
+        (btn.getAttribute("data-product") || "") + " · کد یکتا " + (btn.getAttribute("data-unique") || "");
+      var moldId = btn.getAttribute("data-mold-id") || "";
+      var moldSel = document.getElementById("conflict-mold");
+      if (moldSel) moldSel.value = moldId;
+      document.getElementById("conflict-unit").value = dash(btn.getAttribute("data-unit"));
+      document.getElementById("conflict-machine").value = dash(btn.getAttribute("data-machine"));
+      var start = dash(btn.getAttribute("data-start"));
+      var end = dash(btn.getAttribute("data-end"));
+      document.getElementById("conflict-start").value = start;
+      document.getElementById("conflict-end").value = end;
+      if (typeof dlg.showModal === "function") dlg.showModal();
+      else dlg.setAttribute("open", "open");
+    });
+  });
+  document.querySelectorAll("[data-close-conflict]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (typeof dlg.close === "function") dlg.close();
+      else dlg.removeAttribute("open");
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

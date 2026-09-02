@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% block title %}برنامه‌های تولید{% endblock %}
-{% block heading %}برنامه‌های تولید — تعیین وضعیت{% endblock %}
+{% block title %}ثبت و کنترل تولید{% endblock %}
+{% block heading %}ثبت و کنترل تولید — تعیین وضعیت{% endblock %}
 {% block nav_programs %}active{% endblock %}
 
 {% block content %}
-<div class="panel">
+<div class="panel panel-list">
   {% if rows %}
+  <div class="table-scroll">
   <table class="table">
     <thead><tr>
       <th>شناسه</th><th>شماره برنامه</th><th>دستگاه/واحد</th><th>کد کالا</th><th>نام محصول</th>
@@ -14,7 +15,7 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td>{{ row.program.item.uid }}</td>
+        <td>{{ row.program.resolved_uid }}</td>
         <td>{{ row.program.item.plan.program_number }}</td>
         <td>{{ row.program.machine_label }}</td>
         <td>{{ row.program.item.product.code }}</td>
@@ -41,6 +42,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}<p class="empty">برنامه‌ای تأیید نشده است. پس از تأیید برنامه هفتگی، کالاها اینجا ظاهر می‌شوند.</p>{% endif %}
 </div>
 {% endblock %}
