@@ -19,6 +19,8 @@ class SystemItem:
     # Optional named URL (non-admin) — preferred when set
     url_name: str | None = None
     add_url_name: str | None = None
+    # Optional query string without leading «?», e.g. "source=transfer"
+    url_query: str = ""
 
 
 @dataclass
@@ -255,6 +257,21 @@ def build_system_groups() -> list[SystemGroup]:
                     count_fn=_count(ExcelUpload),
                     can_add=True,
                     add_url_name="excel_import",
+                ),
+                SystemItem(
+                    key="transfer_dialog_labels",
+                    title="عناوین دیالوگ و مقاصد انتقال داده",
+                    admin_changelist="",
+                    url_name="system_naming_keys",
+                    url_query="source=transfer",
+                    description=(
+                        "عنوان دیالوگ انتقال/بروزرسانی، بخش مقصد، سطح‌ها و فیلدهای نگاشت. "
+                        "پنهان کردن مقصد یا فیلد، آن را از دیالوگ انتقال حذف می‌کند."
+                    ),
+                    count_fn=lambda: SystemNamingKey.objects.filter(
+                        key__startswith="transfer.", is_active=True
+                    ).count(),
+                    can_add=False,
                 ),
                 SystemItem(
                     key="product_data_hub",

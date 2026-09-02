@@ -58,12 +58,15 @@
   <p class="muted" id="excel-import-hint" style="margin-top:12px;font-size:13px"></p>
 </div>
 
-<dialog id="excel-import-dialog" class="dialog excel-import-dialog">
+<dialog id="excel-import-dialog" class="dialog excel-import-dialog"
+        data-title-pick-table="{{ transfer_ui_labels.import_pick_table }}"
+        data-title-view-table="{{ transfer_ui_labels.import_view_table }}"
+        data-title-view-sheet="{{ transfer_ui_labels.import_view_sheet }}">
   <div data-dialog-body>
     <div class="dialog-head">
       <div class="excel-dialog-title-wrap">
         <span class="excel-dialog-mode-badge" id="excel-dialog-mode-badge">TABLE</span>
-        <h3 id="excel-dialog-title">انتخاب Table برای ورود</h3>
+        <h3 id="excel-dialog-title">{{ transfer_ui_labels.import_pick_table }}</h3>
       </div>
       <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
     </div>
@@ -228,7 +231,9 @@
     var items = isTable ? (data.tables || []) : (data.sheets || []);
     modeBadge.textContent = isTable ? "TABLE" : "SHEETS";
     modeBadge.className = "excel-dialog-mode-badge " + (isTable ? "is-table" : "is-sheet");
-    dialogTitle.textContent = isTable ? "مشاهده و انتخاب Table" : "مشاهده و انتخاب Sheet";
+    dialogTitle.textContent = isTable
+      ? (dialog.getAttribute("data-title-view-table") || "مشاهده و انتخاب Table")
+      : (dialog.getAttribute("data-title-view-sheet") || "مشاهده و انتخاب Sheet");
     selectAllLabel.textContent = isTable ? "انتخاب همه Tableها" : "انتخاب همه Sheetها";
     var subParts = [];
     if (data.file_kind === "csv") {

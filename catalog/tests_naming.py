@@ -11,6 +11,7 @@ from django.urls import reverse
 
 from catalog.models import SystemNamingKey
 from catalog.naming_registry import resolve_label, sync_naming_registry
+from catalog.transfer import list_destinations_for_ui
 
 User = get_user_model()
 
@@ -39,8 +40,6 @@ class SystemNamingRegistryTests(TestCase):
         admin_field_keys = [s["key"] for s in specs if s["key"].startswith("admin.field.")]
         self.assertTrue(admin_field_keys)
         self.assertFalse(any(k.endswith(".id") for k in admin_field_keys))
-        # list_display columns like created_by remain (visible in /admin/), but
-        # addresses must clearly say they are from the admin panel.
         created_by = [
             s for s in specs if s["key"].endswith(".created_by") and s["key"].startswith("admin.")
         ]
@@ -76,6 +75,62 @@ class SystemNamingRegistryTests(TestCase):
         self.assertEqual(admin_page.status_code, 200)
         self.assertContains(admin_page, "admin.field.")
         self.assertContains(admin_page, "list_display=")
+
+    def test_transfer_dialog_titles_are_harvested(self):
+        sync_naming_registry()
+        self.assertTrue(
+            SystemNamingKey.objects.filter(
+                key="transfer.ui.dialog.title_transfer"
+            ).exists()
+        )
+        self.assertTrue(
+            SystemNamingKey.objects.filter(key="transfer.dest.production_history").exists()
+        )
+        row = SystemNamingKey.objects.get(key="transfer.ui.dialog.title_transfer")
+        self.assertIn("دیالوگ انتقال", row.address)
+        self.assertEqual(row.section_key, "transfer_dialog_labels")
+
+    def test_hide_transfer_destination_removes_from_dialog(self):
+        sync_naming_registry()
+        dest = SystemNamingKey.objects.get(key="transfer.dest.production_history")
+        dest.is_active = False
+        dest.save(update_fields=["is_active"])
+        ids = [d["id"] for d in list_destinations_for_ui()]
+        self.assertNotIn("production_history", ids)
+        self.assertIn("product_data", ids)
+
+    def test_hide_transfer_field_removes_from_dialog(self):
+        sync_naming_registry()
+        field = SystemNamingKey.objects.get(
+            key="transfer.field.production_history.history_list.scrap_qty"
+        )
+        field.is_active = False
+        field.save(update_fields=["is_active"])
+        hist = next(
+            d for d in list_destinations_for_ui() if d["id"] == "production_history"
+        )
+        level = next(lv for lv in hist["levels"] if lv["id"] == "history_list")
+        keys = [f["key"] for f in level["fields"]]
+        self.assertNotIn("scrap_qty", keys)
+        self.assertIn("unique_code", keys)
+
+    def test_system_data_lists_transfer_dialog_section(self):
+        sync_naming_registry()
+        self.client.login(username="admin", password="erp12345")
+        hub = self.client.get(reverse("system_data"))
+        self.assertEqual(hub.status_code, 200)
+        self.assertContains(hub, "عناوین دیالوگ و مقاصد انتقال داده")
+        self.assertContains(hub, "source=transfer")
+
+    def test_system_data_hides_inactive_section(self):
+        sync_naming_registry()
+        row = SystemNamingKey.objects.get(key="system.section.transfer_dialog_labels")
+        row.is_active = False
+        row.save(update_fields=["is_active"])
+        self.client.login(username="admin", password="erp12345")
+        hub = self.client.get(reverse("system_data"))
+        self.assertEqual(hub.status_code, 200)
+        self.assertNotContains(hub, "عناوین دیالوگ و مقاصد انتقال داده")
 
     def test_rename_persists_and_resolve_label(self):
         sync_naming_registry()
@@ -152,3 +207,14 @@ class SystemNamingRegistryTests(TestCase):
         page = self.client.get(reverse("plan_list"))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "نام کاربر ایجادکننده")
+
+    def test_transfer_source_filter_shows_dialog_titles(self):
+        sync_naming_registry()
+        self.client.login(username="admin", password="erp12345")
+        page = self.client.get(
+            reverse("system_naming_keys"),
+            {"source": "transfer", "q": "انتقال داده جدول"},
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "transfer.ui.dialog.title_transfer")
+        self.assertContains(page, "دیالوگ انتقال")

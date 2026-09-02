@@ -14,6 +14,8 @@
   const transferTpl = root.dataset.transferUrlTemplate || "";
   const destEl = document.getElementById("excel-transfer-destinations");
   const destinations = destEl ? JSON.parse(destEl.textContent || "[]") : [];
+  const uiLabelsEl = document.getElementById("excel-transfer-ui-labels");
+  const uiLabels = uiLabelsEl ? JSON.parse(uiLabelsEl.textContent || "{}") : {};
   const tablesEl = document.getElementById("excel-tables-data");
   const tables = tablesEl ? JSON.parse(tablesEl.textContent || "[]") : [];
   const byId = {};
@@ -277,16 +279,23 @@
     activeMode = mode === "update" ? "update" : "transfer";
     if (dialogTitle) {
       dialogTitle.textContent =
-        activeMode === "update" ? "بروزرسانی داده جدول" : "انتقال داده جدول";
+        activeMode === "update"
+          ? uiLabels.title_update || "بروزرسانی داده جدول"
+          : uiLabels.title_transfer || "انتقال داده جدول";
     }
     if (dialogHint) {
       dialogHint.textContent =
         activeMode === "update"
-          ? "فقط ردیف‌های از قبل موجود در سامانه اصلاح می‌شوند؛ ردیف جدید اضافه نمی‌شود. نگاشت ستون‌ها مانند انتقال است و جدول اکسل حذف نمی‌شود."
-          : "بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند. هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.";
+          ? uiLabels.hint_update ||
+            "فقط ردیف‌های از قبل موجود در سامانه اصلاح می‌شوند؛ ردیف جدید اضافه نمی‌شود. نگاشت ستون‌ها مانند انتقال است و جدول اکسل حذف نمی‌شود."
+          : uiLabels.hint_transfer ||
+            "بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند. هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.";
     }
     if (submitBtn) {
-      submitBtn.textContent = activeMode === "update" ? "بروزرسانی" : "انتقال";
+      submitBtn.textContent =
+        activeMode === "update"
+          ? uiLabels.btn_update || "بروزرسانی"
+          : uiLabels.btn_transfer || "انتقال";
     }
   }
 

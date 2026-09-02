@@ -230,7 +230,7 @@ def _harvest_ui_columns() -> list[dict[str, Any]]:
 
 
 def _harvest_transfer() -> list[dict[str, Any]]:
-    from catalog.transfer import list_destinations
+    from catalog.transfer import TRANSFER_UI_LABELS, list_destinations
 
     out: list[dict[str, Any]] = []
     for dest in list_destinations():
@@ -240,8 +240,12 @@ def _harvest_transfer() -> list[dict[str, Any]]:
             _spec(
                 key=f"transfer.dest.{dest_id}",
                 label=dest_label,
-                address=f"انتقال داده ← مقصد «{dest_label}»",
+                address=(
+                    f"دیالوگ انتقال داده ← بخش مقصد «{dest_label}» "
+                    f"(templates/catalog/excel_detail.html#excel-transfer-dialog)"
+                ),
                 category=SystemNamingKey.Category.TRANSFER,
+                section_key="transfer_dialog_labels",
                 table_key=f"transfer.{dest_id}",
                 order=0,
             )
@@ -254,8 +258,11 @@ def _harvest_transfer() -> list[dict[str, Any]]:
                 _spec(
                     key=f"transfer.level.{dest_id}.{level_id}",
                     label=level_label,
-                    address=f"انتقال داده ← {dest_label} ← سطح «{level_label}»",
+                    address=(
+                        f"دیالوگ انتقال داده ← {dest_label} ← سطح «{level_label}»"
+                    ),
                     category=SystemNamingKey.Category.TRANSFER,
+                    section_key="transfer_dialog_labels",
                     table_key=table_key,
                     order=li,
                 )
@@ -270,15 +277,45 @@ def _harvest_transfer() -> list[dict[str, Any]]:
                         key=f"transfer.field.{dest_id}.{level_id}.{fkey}",
                         label=flabel,
                         address=(
-                            f"انتقال داده ← {dest_label} ← {level_label} ← فیلد «{flabel}»"
+                            f"دیالوگ انتقال داده ← {dest_label} ← {level_label} "
+                            f"← فیلد «{flabel}»"
                         ),
                         category=SystemNamingKey.Category.COLUMN,
-                        section_key="excel_tables",
+                        section_key="transfer_dialog_labels",
                         table_key=table_key,
                         column_key=fkey,
                         order=fi,
                     )
                 )
+
+    # Dialog / page chrome (titles, labels, buttons)
+    chrome_order = 0
+    for key, label in TRANSFER_UI_LABELS.items():
+        chrome_order += 1
+        if key.startswith("transfer.ui.import."):
+            address = (
+                f"دیالوگ ورود اکسل ← «{label}» "
+                f"(templates/catalog/excel_import.html#excel-import-dialog)"
+            )
+        elif key.startswith("transfer.ui.page."):
+            address = f"صفحه جزئیات فایل اکسل ← «{label}» (templates/catalog/excel_detail.html)"
+        else:
+            address = (
+                f"دیالوگ انتقال داده ← «{label}» "
+                f"(templates/catalog/excel_detail.html#excel-transfer-dialog)"
+            )
+        out.append(
+            _spec(
+                key=key,
+                label=label,
+                address=address,
+                category=SystemNamingKey.Category.TRANSFER,
+                section_key="transfer_dialog_labels",
+                table_key="transfer.ui",
+                column_key=key.rsplit(".", 1)[-1],
+                order=100 + chrome_order,
+            )
+        )
     return out
 
 

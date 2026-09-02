@@ -178,6 +178,7 @@ def _fields_payload(fields: list[DestField]) -> list[dict[str, Any]]:
 
 
 def list_destinations() -> list[dict[str, Any]]:
+    """Static destination tree (labels from DestField literals). Used by harvest."""
     return [
         {
             "id": DESTINATION_PRODUCTION_HISTORY,
@@ -243,6 +244,134 @@ def list_destinations() -> list[dict[str, Any]]:
             ],
         },
     ]
+
+
+# Dialog / page chrome for Excel transfer — harvested into SystemNamingKey.
+TRANSFER_UI_LABELS: dict[str, str] = {
+    "transfer.ui.dialog.title_transfer": "انتقال داده جدول",
+    "transfer.ui.dialog.title_update": "بروزرسانی داده جدول",
+    "transfer.ui.dialog.hint_transfer": (
+        "بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند. "
+        "هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود."
+    ),
+    "transfer.ui.dialog.hint_update": (
+        "فقط ردیف‌های از قبل موجود در سامانه اصلاح می‌شوند؛ ردیف جدید اضافه نمی‌شود. "
+        "نگاشت ستون‌ها مانند انتقال است و جدول اکسل حذف نمی‌شود."
+    ),
+    "transfer.ui.dialog.errors_title": "جزئیات خطای انتقال",
+    "transfer.ui.label.destination": "بخش مقصد",
+    "transfer.ui.label.level": "انتخاب سطح",
+    "transfer.ui.col.dest_field": "ستون مقصد سامانه",
+    "transfer.ui.col.type": "نوع",
+    "transfer.ui.col.excel_col": "ستون متناظر اکسل",
+    "transfer.ui.btn.transfer": "انتقال",
+    "transfer.ui.btn.update": "بروزرسانی",
+    "transfer.ui.btn.cancel": "انصراف",
+    "transfer.ui.btn.close": "بستن",
+    "transfer.ui.btn.open_transfer": "انتقال داده",
+    "transfer.ui.btn.open_update": "بروزرسانی",
+    "transfer.ui.page.tables_heading": "جداول فایل",
+    "transfer.ui.import.dialog_pick_table": "انتخاب Table برای ورود",
+    "transfer.ui.import.dialog_view_table": "مشاهده و انتخاب Table",
+    "transfer.ui.import.dialog_view_sheet": "مشاهده و انتخاب Sheet",
+}
+
+
+def list_destinations_for_ui() -> list[dict[str, Any]]:
+    """Destinations with naming-registry labels; inactive dest/level/field omitted."""
+    from catalog.models import SystemNamingKey
+
+    base = list_destinations()
+    keys: list[str] = []
+    for dest in base:
+        dest_id = dest["id"]
+        keys.append(f"transfer.dest.{dest_id}")
+        for level in dest.get("levels") or []:
+            level_id = level["id"]
+            keys.append(f"transfer.level.{dest_id}.{level_id}")
+            for field in level.get("fields") or []:
+                keys.append(f"transfer.field.{dest_id}.{level_id}.{field['key']}")
+
+    rows = {
+        r.key: r
+        for r in SystemNamingKey.objects.filter(key__in=keys).only("key", "label", "is_active")
+    }
+
+    def _resolve(key: str, default: str) -> tuple[bool, str]:
+        row = rows.get(key)
+        if row is None:
+            return True, default
+        return bool(row.is_active), (row.label or default)
+
+    out: list[dict[str, Any]] = []
+    for dest in base:
+        dest_id = dest["id"]
+        dest_ok, dest_label = _resolve(f"transfer.dest.{dest_id}", dest["label"])
+        if not dest_ok:
+            continue
+        levels_out: list[dict[str, Any]] = []
+        for level in dest.get("levels") or []:
+            level_id = level["id"]
+            level_ok, level_label = _resolve(
+                f"transfer.level.{dest_id}.{level_id}", level["label"]
+            )
+            if not level_ok:
+                continue
+            fields_out: list[dict[str, Any]] = []
+            for field in level.get("fields") or []:
+                fkey = field["key"]
+                field_ok, field_label = _resolve(
+                    f"transfer.field.{dest_id}.{level_id}.{fkey}", field["label"]
+                )
+                if not field_ok:
+                    continue
+                fields_out.append({**field, "label": field_label})
+            levels_out.append({**level, "label": level_label, "fields": fields_out})
+        if levels_out:
+            out.append({**dest, "label": dest_label, "levels": levels_out})
+    return out
+
+
+def transfer_ui_labels_resolved() -> dict[str, str]:
+    """Resolved chrome labels for the transfer/import dialogs."""
+    from catalog.models import SystemNamingKey
+
+    keys = list(TRANSFER_UI_LABELS.keys())
+    rows = {
+        r.key: r
+        for r in SystemNamingKey.objects.filter(key__in=keys).only("key", "label", "is_active")
+    }
+    out: dict[str, str] = {}
+    for key, default in TRANSFER_UI_LABELS.items():
+        row = rows.get(key)
+        if row is not None and not row.is_active:
+            # Hidden chrome still needs a fallback string in the DOM; keep default.
+            out[key] = default
+            continue
+        out[key] = (row.label if row and row.label else default)
+    # Short aliases used by JS / templates
+    return {
+        "title_transfer": out["transfer.ui.dialog.title_transfer"],
+        "title_update": out["transfer.ui.dialog.title_update"],
+        "hint_transfer": out["transfer.ui.dialog.hint_transfer"],
+        "hint_update": out["transfer.ui.dialog.hint_update"],
+        "errors_title": out["transfer.ui.dialog.errors_title"],
+        "label_destination": out["transfer.ui.label.destination"],
+        "label_level": out["transfer.ui.label.level"],
+        "col_dest_field": out["transfer.ui.col.dest_field"],
+        "col_type": out["transfer.ui.col.type"],
+        "col_excel_col": out["transfer.ui.col.excel_col"],
+        "btn_transfer": out["transfer.ui.btn.transfer"],
+        "btn_update": out["transfer.ui.btn.update"],
+        "btn_cancel": out["transfer.ui.btn.cancel"],
+        "btn_close": out["transfer.ui.btn.close"],
+        "btn_open_transfer": out["transfer.ui.btn.open_transfer"],
+        "btn_open_update": out["transfer.ui.btn.open_update"],
+        "tables_heading": out["transfer.ui.page.tables_heading"],
+        "import_pick_table": out["transfer.ui.import.dialog_pick_table"],
+        "import_view_table": out["transfer.ui.import.dialog_view_table"],
+        "import_view_sheet": out["transfer.ui.import.dialog_view_sheet"],
+    }
 
 
 def _fields_for(destination_id: str, level_id: str) -> list[DestField]:
@@ -1483,18 +1612,27 @@ def transfer_excel_table(
     if mode not in (MODE_TRANSFER, MODE_UPDATE):
         raise ValueError("حالت عملیات نامعتبر است (انتقال یا بروزرسانی).")
 
-    destinations = {d["id"]: d for d in list_destinations()}
+    destinations = {d["id"]: d for d in list_destinations_for_ui()}
     if destination_id not in destinations:
-        raise ValueError("مقصد انتقال نامعتبر است.")
+        raise ValueError("مقصد انتقال نامعتبر است یا پنهان شده است.")
 
     dest = destinations[destination_id]
     levels = {lv["id"]: lv for lv in dest.get("levels") or []}
     if not level_id:
         level_id = next(iter(levels), LEVEL_HISTORY_LIST)
     if level_id not in levels:
-        raise ValueError("سطح انتقال نامعتبر است.")
+        raise ValueError("سطح انتقال نامعتبر است یا پنهان شده است.")
 
-    fields = _fields_for(destination_id, level_id)
+    # Only map onto fields that remain active in the naming registry
+    ui_fields = levels[level_id].get("fields") or []
+    allowed_keys = {f["key"] for f in ui_fields}
+    fields = [f for f in _fields_for(destination_id, level_id) if f.key in allowed_keys]
+    # Apply resolved labels onto DestField copies for error messages
+    label_by_key = {f["key"]: f["label"] for f in ui_fields}
+    fields = [
+        DestField(key=f.key, label=label_by_key.get(f.key, f.label), type=f.type, required=f.required)
+        for f in fields
+    ]
     headers = table.headers if isinstance(table.headers, list) else []
     col_map, map_errors = _normalize_mapping(mapping, fields, len(headers))
     if map_errors:

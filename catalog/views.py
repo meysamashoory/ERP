@@ -19,9 +19,10 @@ from .models import ExcelTable, ExcelUpload, SystemAlarm
 
 from .transfer import (
     group_transfer_alarms,
-    list_destinations,
+    list_destinations_for_ui,
     transfer_excel_table,
     transfer_result_message,
+    transfer_ui_labels_resolved,
 )
 
 
@@ -49,15 +50,40 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     """Accordion hub — each item opens full Django-admin capabilities in app chrome."""
     from django.urls import NoReverseMatch, reverse
 
-    from .naming_registry import ensure_registry_seeded
+    from .models import SystemNamingKey
+    from .naming_registry import ensure_registry_seeded, resolve_label
     from .system_sections import build_system_groups
 
     ensure_registry_seeded()
 
+    # Preload section/group naming rows for title resolve + hide
+    naming_keys: list[str] = []
+    for group in build_system_groups():
+        naming_keys.append(f"system.group.{group.key}")
+        for item in group.items:
+            naming_keys.append(f"system.section.{item.key}")
+    naming_rows = {
+        r.key: r
+        for r in SystemNamingKey.objects.filter(key__in=naming_keys).only(
+            "key", "label", "is_active"
+        )
+    }
+
     groups_out = []
     for group in build_system_groups():
+        group_row = naming_rows.get(f"system.group.{group.key}")
+        if group_row is not None and not group_row.is_active:
+            continue
+        group_title = (
+            group_row.label
+            if group_row and group_row.label
+            else resolve_label(f"system.group.{group.key}", group.title)
+        )
         items_out = []
         for item in group.items:
+            item_row = naming_rows.get(f"system.section.{item.key}")
+            if item_row is not None and not item_row.is_active:
+                continue
             url = ""
             add_url = ""
             if getattr(item, "url_name", None):
@@ -70,6 +96,8 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
                     url = reverse(item.admin_changelist)
                 except NoReverseMatch:
                     url = ""
+            if url and getattr(item, "url_query", ""):
+                url = f"{url}?{item.url_query}"
             if item.can_add and getattr(item, "add_url_name", None):
                 try:
                     add_url = reverse(item.add_url_name)
@@ -80,10 +108,15 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
                     add_url = reverse(item.admin_add)
                 except NoReverseMatch:
                     add_url = ""
+            item_title = (
+                item_row.label
+                if item_row and item_row.label
+                else resolve_label(f"system.section.{item.key}", item.title)
+            )
             items_out.append(
                 {
                     "key": item.key,
-                    "title": item.title,
+                    "title": item_title,
                     "description": item.description,
                     "count": item.count_fn() if item.count_fn else 0,
                     "url": url,
@@ -91,8 +124,10 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
                     "add_url": add_url,
                 }
             )
+        if not items_out:
+            continue
         groups_out.append(
-            {"key": group.key, "title": group.title, "items": items_out}
+            {"key": group.key, "title": group_title, "items": items_out}
         )
     return render(
         request,
@@ -160,8 +195,11 @@ def excel_list(request: HttpRequest) -> HttpResponse:
 def excel_import(request: HttpRequest) -> HttpResponse:
     if not _can_import_excel(request.user):
         return HttpResponseForbidden("مجاز به وارد کردن فایل نیستید.")
-    return render(request, "catalog/excel_import.html")
-
+    return render(
+        request,
+        "catalog/excel_import.html",
+        {"transfer_ui_labels": transfer_ui_labels_resolved()},
+    )
 
 @login_required
 @require_POST
@@ -346,7 +384,8 @@ def excel_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "can_edit": _can_edit_excel(request.user),
             "can_delete": _can_delete_excel(request.user),
             "can_transfer": _can_edit_excel(request.user),
-            "transfer_destinations": list_destinations(),
+            "transfer_destinations": list_destinations_for_ui(),
+            "transfer_ui_labels": transfer_ui_labels_resolved(),
         },
     )
 

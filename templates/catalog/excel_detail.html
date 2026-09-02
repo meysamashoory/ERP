@@ -21,7 +21,7 @@
 {% block content %}
 <div class="panel">
   <div class="panel-head panel-head-compact">
-    <h2>جداول فایل</h2>
+    <h2>{{ transfer_ui_labels.tables_heading }}</h2>
     <span class="muted" style="font-size:13px">
       {{ tables|length }} جدول
       {% if upload.original_name %} · {{ upload.original_name }}{% endif %}
@@ -34,6 +34,7 @@
   {% else %}
   {{ tables_json|json_script:"excel-tables-data" }}
   {{ transfer_destinations|json_script:"excel-transfer-destinations" }}
+  {{ transfer_ui_labels|json_script:"excel-transfer-ui-labels" }}
   <div class="excel-detail-layout" id="excel-editor"
        data-save-url-template="{% url 'excel_table_save' 0 %}"
        data-delete-url-template="{% url 'excel_table_delete' 0 %}"
@@ -71,8 +72,8 @@
         </div>
         <div class="actions excel-pane-actions">
           {% if can_transfer %}
-          <button type="button" class="btn btn-sm btn-primary-soft btn-transfer-table" data-transfer-mode="transfer">انتقال داده</button>
-          <button type="button" class="btn btn-sm btn-ghost btn-transfer-table" data-transfer-mode="update">بروزرسانی</button>
+          <button type="button" class="btn btn-sm btn-primary-soft btn-transfer-table" data-transfer-mode="transfer">{{ transfer_ui_labels.btn_open_transfer }}</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-transfer-table" data-transfer-mode="update">{{ transfer_ui_labels.btn_open_update }}</button>
           {% endif %}
           {% if can_edit %}
           <button type="button" class="btn btn-sm btn-ghost btn-delete-selection" disabled title="ابتدا یک ردیف یا ستون را انتخاب کنید">حذف انتخاب‌شده</button>
@@ -101,21 +102,20 @@
 <dialog id="excel-transfer-dialog" class="dialog dialog-wide dialog-transfer">
   <div class="dialog-transfer-layout">
     <div class="dialog-head">
-      <h3 id="transfer-dialog-title">انتقال داده جدول</h3>
-      <button type="button" class="btn btn-sm btn-ghost" data-transfer-close>بستن</button>
+      <h3 id="transfer-dialog-title">{{ transfer_ui_labels.title_transfer }}</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-transfer-close>{{ transfer_ui_labels.btn_close }}</button>
     </div>
     <div class="dialog-transfer-body">
       <p class="muted" id="transfer-dialog-hint" style="margin:0 0 10px;font-size:13px">
-        بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند.
-        هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.
+        {{ transfer_ui_labels.hint_transfer }}
       </p>
       <div class="transfer-dest-row">
         <div class="field">
-          <label for="transfer-destination">بخش مقصد</label>
+          <label for="transfer-destination" id="transfer-label-destination">{{ transfer_ui_labels.label_destination }}</label>
           <select id="transfer-destination" class="input"></select>
         </div>
         <div class="field">
-          <label for="transfer-level">انتخاب سطح</label>
+          <label for="transfer-level" id="transfer-label-level">{{ transfer_ui_labels.label_level }}</label>
           <select id="transfer-level" class="input"></select>
         </div>
       </div>
@@ -123,9 +123,9 @@
         <table class="transfer-map-table">
           <thead>
             <tr>
-              <th>ستون مقصد سامانه</th>
-              <th>نوع</th>
-              <th>ستون متناظر اکسل</th>
+              <th id="transfer-th-dest">{{ transfer_ui_labels.col_dest_field }}</th>
+              <th id="transfer-th-type">{{ transfer_ui_labels.col_type }}</th>
+              <th id="transfer-th-excel">{{ transfer_ui_labels.col_excel_col }}</th>
             </tr>
           </thead>
           <tbody id="transfer-map-body"></tbody>
@@ -134,27 +134,27 @@
       <div id="transfer-result" hidden></div>
     </div>
     <div class="dialog-transfer-footer form-actions">
-      <button type="button" class="btn" id="transfer-submit">انتقال</button>
-      <button type="button" class="btn btn-ghost" data-transfer-close>انصراف</button>
+      <button type="button" class="btn" id="transfer-submit">{{ transfer_ui_labels.btn_transfer }}</button>
+      <button type="button" class="btn btn-ghost" data-transfer-close>{{ transfer_ui_labels.btn_cancel }}</button>
     </div>
   </div>
 </dialog>
 
 <dialog id="excel-transfer-errors-dialog" class="dialog dialog-wide">
   <div class="dialog-head">
-    <h3>جزئیات خطای انتقال</h3>
-    <button type="button" class="btn btn-sm btn-ghost" data-transfer-errors-close>بستن</button>
+    <h3 id="transfer-errors-title">{{ transfer_ui_labels.errors_title }}</h3>
+    <button type="button" class="btn btn-sm btn-ghost" data-transfer-errors-close>{{ transfer_ui_labels.btn_close }}</button>
   </div>
   <div class="dialog-body" style="padding:16px 18px">
     <pre id="excel-transfer-errors-body" class="excel-transfer-errors-body"></pre>
   </div>
   <div class="form-actions" style="padding:0 18px 16px">
-    <button type="button" class="btn btn-ghost" data-transfer-errors-close>بستن</button>
+    <button type="button" class="btn btn-ghost" data-transfer-errors-close>{{ transfer_ui_labels.btn_close }}</button>
   </div>
 </dialog>
 {% endblock %}
 
 {% block scripts %}
 <script src="{% static 'js/excel_grid.js' %}?v=8"></script>
-<script src="{% static 'js/excel_transfer.js' %}?v=11"></script>
+<script src="{% static 'js/excel_transfer.js' %}?v=12"></script>
 {% endblock %}
