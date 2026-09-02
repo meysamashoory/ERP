@@ -16,13 +16,17 @@
   </div>
   <button type="button" class="btn btn-sm btn-ghost" id="history-filter-clear">پاک کردن</button>
   <span class="muted list-filter-count" id="history-filter-count"></span>
+  {% if profile and profile.can_view_conflicts %}
   <a class="btn btn-sm {% if conflict_count %}btn-warn{% else %}btn-ghost{% endif %}"
      href="{% url 'production_conflicts' %}">بررسی تداخل برنامه{% if conflict_count %} ({{ conflict_count }}){% endif %}</a>
+  {% endif %}
 </div>
 {% else %}
+{% if profile and profile.can_view_conflicts %}
 <div class="topbar-actions">
   <a class="btn btn-sm btn-ghost" href="{% url 'production_conflicts' %}">بررسی تداخل برنامه</a>
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}
 {% block nav_history %}active{% endblock %}

@@ -104,7 +104,22 @@ class MenuAndHistoryTests(TestCase):
         conflicts_page = self.client.get(reverse("production_conflicts"))
         self.assertEqual(conflicts_page.status_code, 200)
         self.assertContains(conflicts_page, "بررسی تداخل برنامه")
-        self.assertContains(conflicts_page, "بازگشت به سوابق تولید")
+        self.assertContains(conflicts_page, "قالب تکراری")
+        self.assertContains(conflicts_page, "تقدم/تاخر")
+        self.assertContains(conflicts_page, reverse("production_conflicts_kind", args=["duplicate"]))
+        self.assertContains(conflicts_page, reverse("production_conflicts_kind", args=["precedence"]))
+
+        # Viewer cannot open conflicts
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        viewer = User.objects.filter(username="viewer").first()
+        if viewer:
+            self.client.logout()
+            self.client.login(username="viewer", password="erp12345")
+            denied = self.client.get(reverse("production_conflicts"))
+            self.assertIn(denied.status_code, (403, 302))
+            self.client.logout()
+            self.client.login(username="admin", password="erp12345")
 
         products = self.client.get(reverse("product_data"))
         self.assertEqual(products.status_code, 200)
@@ -161,11 +176,11 @@ class ExcelTransferTests(TestCase):
             "upload": upload,
             "name": "سوابق قدیمی",
             "sheet_name": "Sheet1",
-            "headers": ["شناسه", "شماره برنامه", "کد", "نام", "تولید", "تاریخ"],
+            "headers": ["شناسه", "شماره برنامه", "کد", "نام", "تولید", "تاریخ", "کد یکتا"],
             "rows": [
-                ["36001010101001", "BP-9001", "P-1", "قطعه الف", "120", "1403/01/15"],
-                ["36001010101002", "BP-9002", "P-2", "قطعه ب", "abc", "1403/02/01"],  # bad int
-                ["", "BP-9003", "P-3", "بدون شناسه", "10", "1403/03/01"],  # missing required
+                ["36001010101001", "BP-9001", "P-1", "قطعه الف", "120", "1403/01/15", "U-1"],
+                ["36001010101002", "BP-9002", "P-2", "قطعه ب", "abc", "1403/02/01", "U-2"],  # bad int
+                ["", "BP-9003", "P-3", "بدون شناسه", "10", "1403/03/01", "U-3"],  # missing uid
             ],
             "order": 0,
         }
@@ -179,6 +194,7 @@ class ExcelTransferTests(TestCase):
             "product_name": 3,
             "produced_qty": 4,
             "plan_date": 5,
+            "unique_code": 6,
         }
 
     def test_transfer_keeps_table_and_alarms_failures(self):
@@ -289,7 +305,7 @@ class ExcelTransferTests(TestCase):
 
     def test_direct_transfer_helper_updates_existing_archive(self):
         table = self._make_table(
-            rows=[["36001010101999", "BP-991", "X1", "کهنه", "5", "1402/01/01"]],
+            rows=[["36001010101999", "BP-991", "X1", "کهنه", "5", "1402/01/01", "UX-991"]],
         )
         transfer_excel_table(
             table=table,
@@ -305,8 +321,8 @@ class ExcelTransferTests(TestCase):
         table2 = ExcelTable.objects.create(
             upload=upload2,
             name="آپدیت",
-            headers=["شناسه", "شماره برنامه", "کد", "نام", "تولید", "تاریخ"],
-            rows=[["36001010101999", "BP-991", "X1", "تازه‌شده", "50", "1402/01/01"]],
+            headers=["شناسه", "شماره برنامه", "کد", "نام", "تولید", "تاریخ", "کد یکتا"],
+            rows=[["36001010101999", "BP-991", "X1", "تازه‌شده", "50", "1402/01/01", "UX-991"]],
         )
         transfer_excel_table(
             table=table2,
@@ -436,13 +452,13 @@ class ExcelTransferTests(TestCase):
             or WeeklyPlan.objects.filter(program_number="BP-SYNC-1").exists()
             or any(mid.pk and True for _ in conflicts)
         )
-        # Conflict links must include precise edit URLs
+        # Conflict parties are fixed on the dedicated conflict pages (no outbound edit URLs)
         if conflicts:
             for c in conflicts:
                 self.assertTrue(c.links)
                 for link in c.links:
-                    self.assertTrue(link.get("url"))
-                    self.assertTrue(link.get("uid"))
+                    self.assertTrue(link.get("uid") or link.get("plan_number") or link.get("ref"))
+                    self.assertIn("ref", link)
 
 
     def test_history_chunk_sync_creates_plan_even_when_uid_already_known(self):
@@ -558,7 +574,7 @@ class ExcelTransferTests(TestCase):
         table = ExcelTable.objects.create(
             upload=upload,
             name="سوابق",
-            headers=["شناسه", "برنامه", "تاریخ", "کد", "نام", "واحد", "دستگاه"],
+            headers=["شناسه", "برنامه", "تاریخ", "کد", "نام", "واحد", "دستگاه", "کد یکتا"],
             rows=[
                 [
                     "36006666001003",
@@ -568,6 +584,7 @@ class ExcelTransferTests(TestCase):
                     product.name,
                     str(machine.unit.number),
                     machine.number,
+                    f"U-{product.code}",
                 ]
             ],
         )
@@ -582,6 +599,7 @@ class ExcelTransferTests(TestCase):
                 "product_name": 4,
                 "unit_number": 5,
                 "machine_number": 6,
+                "unique_code": 7,
             },
             user=self.expert,
         )
@@ -884,8 +902,8 @@ class ProductDataTests(TestCase):
         table = ExcelTable.objects.create(
             upload=upload,
             name="سوابق",
-            headers=["شناسه", "برنامه", "نام", "مقدار"],
-            rows=[["36001999001001", "BP-Q1", "زانو 45-110", "1000 ضرب جنرال"]],
+            headers=["شناسه", "برنامه", "نام", "مقدار", "کد یکتا"],
+            rows=[["36001999001001", "BP-Q1", "زانو 45-110", "1000 ضرب جنرال", "UQ-ZANO"]],
         )
         result = transfer_excel_table(
             table=table,
@@ -896,6 +914,7 @@ class ProductDataTests(TestCase):
                 "plan_number": 1,
                 "product_name": 2,
                 "produced_qty": 3,
+                "unique_code": 4,
             },
             user=self.expert,
         )
@@ -923,7 +942,7 @@ class ProductDataTests(TestCase):
         table = ExcelTable.objects.create(
             upload=upload,
             name="سوابق",
-            headers=["شناسه", "برنامه", "دستگاه/واحد", "کد", "نام"],
+            headers=["شناسه", "برنامه", "دستگاه/واحد", "کد", "نام", "کد یکتا"],
             rows=[
                 [
                     "36001777001001",
@@ -931,6 +950,7 @@ class ProductDataTests(TestCase):
                     "دستگاه 6 واحد1",
                     "P-MU",
                     "قطعه تست",
+                    "U-MU-1",
                 ]
             ],
         )
@@ -944,6 +964,7 @@ class ProductDataTests(TestCase):
                 "machine_number": 2,
                 "product_code": 3,
                 "product_name": 4,
+                "unique_code": 5,
             },
             user=self.expert,
         )
@@ -970,16 +991,17 @@ class ProductDataTests(TestCase):
             plan_number="BP-U1",
             product_name="قدیمی",
             produced_qty=10,
+            unique_code="U-UPD-1",
         )
         before = ProductionHistoryRecord.objects.count()
         upload = ExcelUpload.objects.create(title="upd", uploaded_by=self.expert)
         table = ExcelTable.objects.create(
             upload=upload,
             name="سوابق",
-            headers=["شناسه", "برنامه", "نام", "مقدار"],
+            headers=["شناسه", "برنامه", "نام", "مقدار", "کد یکتا"],
             rows=[
-                ["36001888001001", "BP-U1", "جدید", "55"],
-                ["36001888001999", "BP-NEW", "ایجاد نشود", "1"],
+                ["36001888001001", "BP-U1", "جدید", "55", "U-UPD-1"],
+                ["36001888001999", "BP-NEW", "ایجاد نشود", "1", "U-NEW"],
             ],
         )
         result = transfer_excel_table(
@@ -991,6 +1013,7 @@ class ProductDataTests(TestCase):
                 "plan_number": 1,
                 "product_name": 2,
                 "produced_qty": 3,
+                "unique_code": 4,
             },
             user=self.expert,
             mode=MODE_UPDATE,

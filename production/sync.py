@@ -960,30 +960,24 @@ def delete_history_archives_queryset(queryset) -> dict[str, int]:
 
 
 def check_history_machine_conflicts() -> int:
-    """Raise alarms only for true occupancy conflicts (running / temp_stop).
-
-    Awaiting and finished rows never create a machine conflict. Two molds on the
-    same machine are conflicting only when both occupy it (در حال تولید or توقف موقت).
-    """
-    from production.conflicts import collect_in_production_conflicts
+    """Register alarms for current قالب تکراری / تقدم‌تاخر conflicts."""
+    from production.conflicts import collect_in_production_conflicts, kind_label
 
     created = 0
     for conflict in collect_in_production_conflicts():
-        fix_bits = []
-        for link in conflict.links:
-            fix_bits.append(f"{link.get('label')}: {link.get('url')}")
+        kind = getattr(conflict, "conflict_kind", "") or ""
         alarm = register_alarm(
-            title=f"تداخل تولید روی {conflict.machine_label}",
+            title=f"تداخل تولید — {kind_label(kind) or conflict.machine_label}",
             message=conflict.message,
             suggestion=(
-                "فقط وضعیت «در حال تولید» و «توقف موقت» روی یک دستگاه نباید هم‌زمان "
-                "دو قالب داشته باشند. برای اصلاح دقیق از لینک هر مورد استفاده کنید: "
-                + " ؛ ".join(fix_bits[:6])
+                "از بخش «بررسی تداخل برنامه» جزئیات را ببینید و رفع کنید. "
+                "اصلاحات فقط توسط مدیر برنامه‌ریزی قابل اعمال است."
             ),
             severity=SystemAlarm.Severity.SERIOUS,
             kind=SystemAlarm.Kind.PRODUCTION_CONFLICT,
             details={
                 "machine_label": conflict.machine_label,
+                "conflict_kind": kind,
                 "links": conflict.links,
             },
             dedupe=True,

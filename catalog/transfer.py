@@ -67,7 +67,7 @@ HISTORY_LIST_FIELDS: list[DestField] = [
     DestField("product_code", "کد کالا", "string"),
     DestField("product_name", "نام جنس", "string"),
     DestField("mold_number", "شماره قالب", "string"),
-    DestField("unique_code", "کد یکتا", "string"),
+    DestField("unique_code", "کد یکتا", "string", required=True),
     DestField("status", "وضعیت", "string"),
     DestField("plan_start_date", "تاریخ شروع برنامه", "date"),
     DestField("actual_start_date", "تاریخ شروع واقعی", "date"),
@@ -858,6 +858,25 @@ def _transfer_history_list(
         if not uid:
             # Empty identity: skip without treating as hard error
             result.skipped += 1
+            continue
+
+        unique_code = str(values.get("unique_code") or "").strip()
+        if not unique_code:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=(
+                    f"ردیف {row_i} جدول «{table.name}» — فیلد «کد یکتا» خالی است؛ "
+                    f"انتقال به سوابق تولید مجاز نیست."
+                ),
+                field_label="کد یکتا",
+                error_cols=(
+                    [col_map["unique_code"]]
+                    if col_map.get("unique_code") is not None
+                    else []
+                ),
+            )
             continue
 
         if uid in live_uids:

@@ -10,29 +10,25 @@
 {% endblock %}
 
 {% block content %}
-<div class="panel panel-compact">
-  <div class="panel-head panel-head-compact">
-    <h2>تداخل‌های تولید{% if conflict_count %} ({{ conflict_count }} دستگاه){% endif %}</h2>
-  </div>
-  <p class="panel-hint" style="margin:0 12px 10px">
-    فقط ردیف‌های متداخل فهرست شده‌اند.
-    ردیف‌های بدون مشکل در سوابق: {{ ok_count }} · ردیف‌های درگیر تداخل: {{ conflict_row_count }}.
-  </p>
-  {% if production_conflicts %}
-  <ul class="conflict-list" style="padding:0 12px 12px">
-    {% for c in production_conflicts %}
-    <li>
-      <div class="conflict-msg">{{ c.message }}</div>
-      <div class="conflict-links">
-        {% for link in c.links %}
-        <a class="btn btn-sm btn-ghost" href="{{ link.url }}">ویرایش «{{ link.uid }}»</a>
-        {% endfor %}
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
+<p class="panel-hint" style="margin:0 0 14px">
+  تداخل‌ها در دو دسته تفکیک شده‌اند. برای دیدن جزئیات و رفع خطا روی هر دسته کلیک کنید.
+  {% if can_resolve %}
+  اعمال تغییرات فقط برای مدیر برنامه‌ریزی فعال است.
   {% else %}
-  <p class="empty" style="padding:12px">تداخلی ثبت نشده است.</p>
+  شما فقط مجوز مشاهده دارید؛ رفع تداخل با مدیر است.
   {% endif %}
+</p>
+
+<div class="conflict-kind-grid">
+  <a class="conflict-kind-card" href="{% url 'production_conflicts_kind' kind_duplicate %}">
+    <div class="conflict-kind-title">نوع تداخل: قالب تکراری</div>
+    <div class="conflict-kind-count">{{ duplicate_count }} تداخل</div>
+    <p class="muted">یک کد یکتا با نوع قالب یکسان/نامشخص در چند برنامه بلاتکلیف مانده است.</p>
+  </a>
+  <a class="conflict-kind-card" href="{% url 'production_conflicts_kind' kind_precedence %}">
+    <div class="conflict-kind-title">نوع تداخل: تقدم/تاخر</div>
+    <div class="conflict-kind-count">{{ precedence_count }} تداخل</div>
+    <p class="muted">قالب‌های متفاوت روی یک دستگاه با ترتیب شروع ناسازگار.</p>
+  </a>
 </div>
 {% endblock %}

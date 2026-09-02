@@ -7,6 +7,16 @@ urlpatterns = [
     path("programs/", views.program_list, name="program_list"),
     path("history/", views.production_history, name="production_history"),
     path("history/conflicts/", views.production_conflicts, name="production_conflicts"),
+    path(
+        "history/conflicts/resolve/",
+        views.production_conflict_resolve,
+        name="production_conflict_resolve",
+    ),
+    path(
+        "history/conflicts/<slug:kind>/",
+        views.production_conflicts_kind,
+        name="production_conflicts_kind",
+    ),
     path("history/<int:pk>/", views.production_history_detail, name="production_history_detail"),
     path(
         "history/archive/<int:pk>/",

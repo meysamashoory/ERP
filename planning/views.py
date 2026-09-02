@@ -403,6 +403,29 @@ def item_save(request, pk):
             ),
         )
 
+    # Cross-plan duplicate mold (کد یکتا / کد کالا) — block or warn
+    from production.conflicts import evaluate_duplicate_for_new_item
+
+    product = form.cleaned_data.get("product")
+    mold = form.cleaned_data.get("mold")
+    dup = evaluate_duplicate_for_new_item(
+        unique_code=getattr(product, "code", "") or "",
+        mold_id=mold.pk if mold else None,
+        plan_number=plan.program_number,
+        plan_start=form.cleaned_data.get("mold_change_date"),
+    )
+    if dup.get("blocked"):
+        form.add_error("product", dup.get("message") or "تداخل قالب تکراری")
+        messages.error(request, dup.get("message") or "تداخل قالب تکراری")
+        return render(
+            request,
+            "planning/plan_detail.html",
+            _plan_item_form_context(
+                request, plan, profile,
+                form=form, formset=formset, editing_item=instance,
+            ),
+        )
+
     with transaction.atomic():
         item = form.save(commit=False)
         item.plan = plan
@@ -433,6 +456,8 @@ def item_save(request, pk):
         collisions = refresh_plan_uids(plan)
 
     item.refresh_from_db(fields=["uid"])
+    if dup.get("warn") and dup.get("message"):
+        messages.warning(request, dup["message"])
     if item.history_alarm:
         messages.warning(
             request,

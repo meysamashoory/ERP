@@ -140,8 +140,6 @@ def program_list(request):
 
     from production.sync import ensure_running_history_in_production
 
-    from .conflicts import collect_in_production_conflicts
-
     try:
         ensure_running_history_in_production(user=request.user)
     except Exception:  # noqa: BLE001
@@ -191,7 +189,9 @@ def program_list(request):
         }
 
     rows = [{"program": p, "totals": _totals_from_prog(p)} for p in programs]
-    conflicts = collect_in_production_conflicts()
+    from .conflicts import conflict_counts
+
+    counts = conflict_counts()
 
     pipes = PipeProduction.objects.select_related("unit", "line", "product", "created_by")[:50]
     for rec in pipes:
@@ -212,7 +212,9 @@ def program_list(request):
                       "active_tab": active_tab,
                       "forms_production": forms_production,
                       "forms_production_json": _json.dumps(forms_production, ensure_ascii=False),
-                      "production_conflicts": conflicts,
+                      "conflict_count": counts.get("total", 0),
+                      "duplicate_count": counts.get("duplicate", 0),
+                      "precedence_count": counts.get("precedence", 0),
                   })
 
 @login_required
@@ -234,6 +236,9 @@ def production_history(request):
             uid = ""
         row["has_conflict"] = bool(uid and uid in conflict_uids)
     conflicts = collect_in_production_conflicts()
+    from .conflicts import conflict_counts
+
+    counts = conflict_counts()
     return render(
         request,
         "production/history.html",
@@ -241,7 +246,7 @@ def production_history(request):
             "rows": rows,
             "profile": profile,
             "production_conflicts": conflicts,
-            "conflict_count": len(conflicts),
+            "conflict_count": counts.get("total", len(conflicts)),
             "ok_count": sum(1 for r in rows if not r.get("has_conflict")),
             "conflict_row_count": sum(1 for r in rows if r.get("has_conflict")),
         },
@@ -250,36 +255,85 @@ def production_history(request):
 
 @login_required
 def production_conflicts(request):
-    """Dedicated page listing occupancy conflicts for history review."""
-    from .conflicts import collect_in_production_conflicts, history_conflict_uids
-    from .history import build_history_rows
-
+    """Conflict review hub — دو دسته قالب تکراری و تقدم/تاخر."""
     profile = _profile(request)
-    rows = build_history_rows()
-    conflict_uids = history_conflict_uids()
-    conflict_row_count = 0
-    ok_count = 0
-    for row in rows:
-        uid = str(row.get("change_uid") or row.get("unique_code") or "").strip()
-        if uid in ("—", "-"):
-            uid = ""
-        has = bool(uid and uid in conflict_uids)
-        if has:
-            conflict_row_count += 1
-        else:
-            ok_count += 1
-    conflicts = collect_in_production_conflicts()
+    if not profile or not profile.can_view_conflicts:
+        raise PermissionDenied("اجازه مشاهده تداخل‌ها را ندارید.")
+    from .conflicts import KIND_DUPLICATE, KIND_PRECEDENCE, collect_all_conflicts, kind_label
+
+    groups = collect_all_conflicts()
     return render(
         request,
         "production/conflicts.html",
         {
             "profile": profile,
-            "production_conflicts": conflicts,
-            "conflict_count": len(conflicts),
-            "ok_count": ok_count,
-            "conflict_row_count": conflict_row_count,
+            "can_resolve": profile.can_resolve_conflicts,
+            "duplicate_groups": groups[KIND_DUPLICATE],
+            "precedence_groups": groups[KIND_PRECEDENCE],
+            "duplicate_count": len(groups[KIND_DUPLICATE]),
+            "precedence_count": len(groups[KIND_PRECEDENCE]),
+            "kind_duplicate": KIND_DUPLICATE,
+            "kind_precedence": KIND_PRECEDENCE,
+            "kind_label": kind_label,
         },
     )
+
+
+@login_required
+def production_conflicts_kind(request, kind: str):
+    """Detail list for one conflict category with in-page fix dialogs."""
+    profile = _profile(request)
+    if not profile or not profile.can_view_conflicts:
+        raise PermissionDenied("اجازه مشاهده تداخل‌ها را ندارید.")
+    from catalog.models import MoldOption
+    from .conflicts import (
+        KIND_DUPLICATE,
+        KIND_PRECEDENCE,
+        collect_all_conflicts,
+        kind_label,
+    )
+
+    if kind not in (KIND_DUPLICATE, KIND_PRECEDENCE):
+        return redirect("production_conflicts")
+    groups = [g.as_dict() for g in collect_all_conflicts()[kind]]
+    return render(
+        request,
+        "production/conflicts_kind.html",
+        {
+            "profile": profile,
+            "can_resolve": profile.can_resolve_conflicts,
+            "kind": kind,
+            "kind_label": kind_label(kind),
+            "groups": groups,
+            "group_count": len(groups),
+            "mold_options": MoldOption.objects.filter(is_active=True).order_by("order", "label"),
+        },
+    )
+
+
+@login_required
+def production_conflict_resolve(request):
+    """Apply manager-only conflict fixes to live + archive + planning."""
+    profile = _profile(request)
+    if not profile or not profile.can_resolve_conflicts:
+        raise PermissionDenied("فقط مدیر برنامه‌ریزی می‌تواند تداخل را رفع کند.")
+    if request.method != "POST":
+        return redirect("production_conflicts")
+
+    from .conflict_resolve import apply_conflict_fix
+
+    result = apply_conflict_fix(request.POST, user=request.user)
+    if result.get("ok"):
+        messages.success(request, result.get("message") or "تغییرات اعمال شد.")
+    else:
+        messages.error(request, result.get("message") or "اعمال تغییرات ممکن نشد.")
+    next_url = request.POST.get("next") or ""
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    kind = request.POST.get("conflict_kind") or ""
+    if kind:
+        return redirect("production_conflicts_kind", kind=kind)
+    return redirect("production_conflicts")
 
 
 @login_required
@@ -344,51 +398,6 @@ def production_history_archive_detail(request, pk):
 ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]
 
 
-def machine_running_conflict(program):
-    """Another program currently occupying the same machine (running / temp stop)."""
-    return (
-        ProductionProgram.objects.filter(
-            item__machine=program.item.machine,
-            status__in=ACTIVE_STATUSES,
-        )
-        .exclude(pk=program.pk)
-        .select_related("item__product", "item__machine__unit")
-        .prefetch_related("item__lines")
-        .first()
-    )
-
-
-def product_mold_conflict(program, mold):
-    """Another active program for the same product with the same mold.
-
-    A product may run on two machines at once only with *different* molds.
-    """
-    qs = (
-        ProductionProgram.objects.filter(
-            item__product=program.item.product, status__in=ACTIVE_STATUSES
-        )
-        .exclude(pk=program.pk)
-        .select_related("item__machine__unit")
-    )
-    for other in qs:
-        if other.mold_id == (mold.id if mold else None):
-            return other
-    return None
-
-
-def _conflict_fix_hint(other) -> str:
-    from django.urls import reverse
-
-    try:
-        url = reverse("program_status", args=[other.pk])
-    except Exception:
-        url = ""
-    uid = getattr(other, "resolved_uid", "") or f"#{other.pk}"
-    if url:
-        return f"برای اصلاح به {url} بروید (شناسه {uid})."
-    return f"شناسه متداخل: {uid}"
-
-
 @login_required
 def program_status(request, pk):
     program = get_object_or_404(
@@ -397,6 +406,8 @@ def program_status(request, pk):
     profile = _profile(request)
     if not profile or not profile.can_enter_data:
         raise PermissionDenied("اجازه تعیین وضعیت ندارید.")
+
+    from .conflicts import evaluate_status_change_block
 
     action = request.POST.get("action") or request.GET.get("action") or "auto"
     status = program.status
@@ -408,6 +419,10 @@ def program_status(request, pk):
         if not profile.is_manager:
             raise PermissionDenied("فقط مدیر می‌تواند برنامهٔ خاتمه‌یافته را باز کند.")
         if request.method == "POST":
+            block = evaluate_status_change_block(program, ProductionProgram.Status.RUNNING)
+            if block:
+                messages.error(request, block)
+                return redirect("production_conflicts")
             program.status = ProductionProgram.Status.RUNNING
             program.stop_date = None
             program.stop_time = None
@@ -425,24 +440,10 @@ def program_status(request, pk):
                 line_idx = production_type - 1
                 line = lines[line_idx] if 0 <= line_idx < len(lines) else None
                 mold = line.mold if line else None
-                machine_conflict = machine_running_conflict(program)
-                if machine_conflict:
-                    messages.error(
-                        request,
-                        f"روی «{program.machine_label}» قالب «{machine_conflict.item.product.name}» "
-                        f"در حال تولید است؛ تا اتمام/توقف آن، راه‌اندازی قالب جدید ممکن نیست. "
-                        f"{_conflict_fix_hint(machine_conflict)}",
-                    )
-                    return redirect("program_status", pk=pk)
-                prod_conflict = product_mold_conflict(program, mold)
-                if prod_conflict:
-                    messages.error(
-                        request,
-                        f"محصول «{program.item.product.name}» هم‌اکنون روی «{prod_conflict.machine_label}» "
-                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی در برنامه‌ریزی انتخاب کنید. "
-                        f"{_conflict_fix_hint(prod_conflict)}",
-                    )
-                    return redirect("program_status", pk=pk)
+                block = evaluate_status_change_block(program, ProductionProgram.Status.RUNNING)
+                if block:
+                    messages.error(request, block)
+                    return redirect("production_conflicts")
                 program.change_type = cd["change_type"]
                 program.change_reason = cd.get("change_reason")
                 program.production_type = production_type
@@ -471,15 +472,15 @@ def program_status(request, pk):
             form = ProgramStatusForm(request.POST, current=status)
             if form.is_valid():
                 new_status = form.cleaned_data["new_status"]
+                if new_status in (
+                    ProductionProgram.Status.RUNNING,
+                    ProductionProgram.Status.TEMP_STOP,
+                ):
+                    block = evaluate_status_change_block(program, new_status)
+                    if block:
+                        messages.error(request, block)
+                        return redirect("production_conflicts")
                 if new_status == ProductionProgram.Status.RUNNING:
-                    conflict = machine_running_conflict(program)
-                    if conflict and status == ProductionProgram.Status.TEMP_STOP:
-                        messages.error(
-                            request,
-                            f"روی «{program.machine_label}» قالب دیگری در حال تولید است؛ ازسرگیری ممکن نیست. "
-                            f"{_conflict_fix_hint(conflict)}",
-                        )
-                        return redirect("program_status", pk=pk)
                     program.status = ProductionProgram.Status.RUNNING
                     program.stop_date = None
                     program.stop_time = None

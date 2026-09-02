@@ -3,16 +3,28 @@
 {% block heading %}ثبت و کنترل تولید{% endblock %}
 {% block nav_programs %}active{% endblock %}
 
+{% block topbar_actions %}
+{% if profile and profile.can_view_conflicts %}
+<div class="topbar-actions">
+  <a class="btn btn-sm {% if conflict_count %}btn-warn{% else %}btn-ghost{% endif %}"
+     href="{% url 'production_conflicts' %}">بررسی تداخل برنامه{% if conflict_count %} ({{ conflict_count }}){% endif %}</a>
+</div>
+{% endif %}
+{% endblock %}
+
 {% block content %}
-{% if production_conflicts %}
+{% if conflict_count and profile and profile.can_view_conflicts %}
 <div class="panel panel-compact conflict-banner conflict-banner-compact">
   <div class="panel-head panel-head-compact" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-    <h2 style="margin:0">هشدار تداخل — {{ production_conflicts|length }} دستگاه</h2>
+    <h2 style="margin:0">هشدار تداخل — {{ conflict_count }} مورد
+      <span class="muted" style="font-weight:600;font-size:13px">
+        (قالب تکراری {{ duplicate_count }} · تقدم/تاخر {{ precedence_count }})
+      </span>
+    </h2>
     <a class="btn btn-sm btn-warn" href="{% url 'production_conflicts' %}">بررسی تداخل برنامه</a>
   </div>
   <p class="panel-hint" style="margin:0 12px 10px">
-    روی یک دستگاه نباید هم‌زمان بیش از یک قالب در وضعیت در حال تولید یا توقف موقت باشد.
-    جزئیات کامل را در صفحه بررسی تداخل ببینید.
+    جزئیات و رفع خطا فقط در صفحه بررسی تداخل انجام می‌شود.
   </p>
 </div>
 {% endif %}
