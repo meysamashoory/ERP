@@ -9,12 +9,13 @@
 <div class="topbar-actions topbar-actions-pair">
   <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بارگذاری / انتقال اکسل</a>
   {% if profile.can_create_plans %}
-  <a class="btn btn-sm" href="{% url 'plan_create' %}?mode=systemic">برنامه سیستمی</a>
+  <button type="button" class="btn btn-sm" data-plan-create-open data-plan-mode="systemic">برنامه سیستمی</button>
   {% endif %}
 </div>
 {% endblock %}
 
 {% block content %}
+{% include "planning/_plan_create_dialog.html" %}
 <p class="muted" style="margin-top:0">
   داده‌های این بخش از طریق «بارگذاری» و انتقال به مقصد
   <strong>بررسی موجودی و سفارشات</strong> به‌روز می‌شوند.
@@ -157,4 +158,8 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% include "planning/_plan_create_dialog_script.html" %}
 {% endblock %}

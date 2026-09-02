@@ -717,10 +717,43 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .field label { font-size: 13px; font-weight: 600; color: #334155; min-height: 1.2em; }
 .field .helptext { font-size: 12px; color: var(--muted); }
 .field .errorlist {
-  /* Hide inline error text — red border signals the problem */
+  /* Hide Django default errorlist when we render .errorlist-visible */
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
 }
+.errorlist-visible {
+  margin: 6px 0 0; padding: 0; list-style: none;
+  color: #b91c1c; font-size: 12px; line-height: 1.5;
+}
+.errorlist-visible li { margin: 0; }
+
+.plan-create-dialog { width: min(560px, 94vw); }
+.plan-create-lead { margin: 0 0 12px; }
+.plan-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 560px) {
+  .plan-mode-cards { grid-template-columns: 1fr; }
+}
+.plan-mode-card {
+  appearance: none; border: 1px solid #cbd5e1; background: #fff;
+  border-radius: 12px; padding: 14px; text-align: right; cursor: pointer;
+  display: grid; gap: 6px; font: inherit; color: #0f172a;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.plan-mode-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, .08);
+}
+.plan-mode-card strong { font-size: 15px; }
+.plan-mode-card span { font-size: 12px; color: #64748b; line-height: 1.55; }
+.plan-create-error {
+  margin: 0 0 10px; color: #b91c1c; font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap;
+}
+.plan-create-step .field { margin-bottom: 12px; }
 .field.has-error .input,
 .field.has-error input,
 .field.has-error select,

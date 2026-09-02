@@ -117,10 +117,58 @@ class InventoryOrdersSystemicTests(TestCase):
         hub = self.client.get(reverse("inventory_orders"))
         self.assertEqual(hub.status_code, 200)
         self.assertContains(hub, "بررسی موجودی و سفارشات")
+        self.assertContains(hub, "plan-create-dialog")
+        self.assertContains(hub, "data-plan-mode=\"systemic\"")
+
+        # Legacy choose/form URLs now open the list dialog
         choose = self.client.get(reverse("plan_create"))
-        self.assertEqual(choose.status_code, 200)
-        self.assertContains(choose, "برنامه‌ریزی هفتگی (دستی)")
-        self.assertContains(choose, "برنامه‌ریزی هفتگی (سیستمی)")
-        form = self.client.get(reverse("plan_create") + "?mode=systemic")
-        self.assertEqual(form.status_code, 200)
-        self.assertContains(form, "ساخت برنامه سیستمی")
+        self.assertEqual(choose.status_code, 302)
+        self.assertIn("create=1", choose["Location"])
+        systemic = self.client.get(reverse("plan_create") + "?mode=systemic")
+        self.assertEqual(systemic.status_code, 302)
+        self.assertIn("create=systemic", systemic["Location"])
+
+        listing = self.client.get(reverse("plan_list") + "?create=systemic")
+        self.assertEqual(listing.status_code, 200)
+        self.assertContains(listing, "plan-create-dialog")
+        self.assertContains(listing, "ساخت برنامه سیستمی")
+
+    def test_systemic_create_json_returns_redirect(self):
+        self.client.login(username="admin", password="erp12345")
+        from datetime import timedelta
+
+        from catalog.jalali_dates import format_jalali_slash
+        from django.utils import timezone
+
+        plan_date = timezone.localdate() + timedelta(days=17)
+        while WeeklyPlan.objects.filter(date=plan_date).exists():
+            plan_date += timedelta(days=1)
+        resp = self.client.post(
+            reverse("plan_create"),
+            {
+                "planning_mode": "systemic",
+                "program_number": "SYS-DIALOG-1",
+                "date": format_jalali_slash(plan_date),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("/planning/", data["redirect_url"])
+        plan = WeeklyPlan.objects.get(program_number="SYS-DIALOG-1")
+        self.assertEqual(plan.planning_mode, WeeklyPlan.PlanningMode.SYSTEMIC)
+
+    def test_systemic_create_validation_errors_json(self):
+        self.client.login(username="admin", password="erp12345")
+        resp = self.client.post(
+            reverse("plan_create"),
+            {"planning_mode": "systemic", "program_number": "", "date": ""},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = resp.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("program_number", data["errors"])

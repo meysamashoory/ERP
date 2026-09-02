@@ -22,7 +22,7 @@
   {% endif %}
   <button type="button" class="btn btn-sm btn-secondary" id="plan-sync-btn">بروزرسانی از سوابق</button>
   {% if profile.can_create_plans %}
-  <a class="btn btn-sm" href="{% url 'plan_create' %}">+ برنامه جدید</a>
+  <button type="button" class="btn btn-sm" id="plan-create-open" data-plan-create-open>＋ برنامه جدید</button>
   {% endif %}
 </div>
 {% endblock %}
@@ -113,6 +113,8 @@
     <div id="calendar-dialog-body" class="calendar-dialog-body muted">در حال بارگذاری…</div>
   </div>
 </dialog>
+
+{% include "planning/_plan_create_dialog.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -257,4 +259,5 @@
   });
 })();
 </script>
+{% include "planning/_plan_create_dialog_script.html" %}
 {% endblock %}

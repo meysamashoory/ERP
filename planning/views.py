@@ -75,8 +75,41 @@ def plan_list(request):
             "forms_weekly_json": __import__("json").dumps(forms_weekly, ensure_ascii=False),
             "sort": sort,
             "dir": direction,
+            **_suggested_plan_defaults(),
         },
     )
+
+
+def _suggested_plan_defaults() -> dict:
+    """Suggest next program number and a free Jalali date for the create dialog."""
+    from datetime import timedelta
+
+    from catalog.jalali_dates import format_jalali_slash
+
+    last = (
+        WeeklyPlan.objects.order_by("-id")
+        .values_list("program_number", flat=True)
+        .first()
+    )
+    suggested = "1"
+    if last:
+        digits = "".join(ch for ch in str(last) if ch.isdigit())
+        if digits:
+            try:
+                suggested = str(int(digits) + 1)
+            except ValueError:
+                suggested = f"{last}-2"
+        else:
+            suggested = f"{last}-2"
+    plan_date = timezone.localdate()
+    for _ in range(60):
+        if not WeeklyPlan.objects.filter(date=plan_date).exists():
+            break
+        plan_date += timedelta(days=1)
+    return {
+        "suggested_program_number": suggested,
+        "suggested_plan_date": format_jalali_slash(plan_date),
+    }
 
 
 @login_required
@@ -121,17 +154,25 @@ def plan_calendar_json(request):
 
 @login_required
 def plan_create(request):
-    """Choose planning mode, then create manual or systemic weekly plan."""
+    """Create manual or systemic weekly plan (dialog POST or legacy form page)."""
     profile = get_profile(request.user)
     if not profile or not profile.can_create_plans:
         raise PermissionDenied("شما اجازه ایجاد برنامه ندارید.")
+
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in (request.headers.get("Accept") or "")
+    )
 
     mode = (request.GET.get("mode") or request.POST.get("planning_mode") or "").strip()
     if mode not in (WeeklyPlan.PlanningMode.MANUAL, WeeklyPlan.PlanningMode.SYSTEMIC, ""):
         mode = ""
 
-    if not mode and request.method == "GET":
-        return render(request, "planning/plan_create_choose.html", {"profile": profile})
+    # Prefer in-page dialog on plan list instead of a separate choose/form page.
+    if request.method == "GET":
+        if mode in (WeeklyPlan.PlanningMode.MANUAL, WeeklyPlan.PlanningMode.SYSTEMIC):
+            return redirect(f"{reverse('plan_list')}?create={mode}")
+        return redirect(f"{reverse('plan_list')}?create=1")
 
     if request.method == "POST":
         form = WeeklyPlanForm(request.POST)
@@ -152,6 +193,7 @@ def plan_create(request):
                     plan_date=form.cleaned_data["date"],
                     user=request.user,
                 )
+                detail_url = f"{reverse('plan_detail', args=[plan.pk])}?mode=edit"
                 if alarms:
                     messages.warning(
                         request,
@@ -162,15 +204,26 @@ def plan_create(request):
                         request,
                         "برنامه سیستمی از روی سفارشات و موجودی ایجاد شد. ردیف‌ها را بررسی کنید.",
                     )
-                return redirect(f"{reverse('plan_detail', args=[plan.pk])}?mode=edit")
+                if wants_json:
+                    return JsonResponse({"ok": True, "redirect_url": detail_url, "plan_id": plan.pk})
+                return redirect(detail_url)
 
             plan = form.save(commit=False)
             plan.created_by = request.user
             plan.status = WeeklyPlan.Status.DRAFT
             plan.planning_mode = WeeklyPlan.PlanningMode.MANUAL
             plan.save()
+            detail_url = f"{reverse('plan_detail', args=[plan.pk])}?mode=edit"
             messages.success(request, "برنامه دستی ایجاد شد. اکنون کالاها را اضافه کنید.")
-            return redirect(f"{reverse('plan_detail', args=[plan.pk])}?mode=edit")
+            if wants_json:
+                return JsonResponse({"ok": True, "redirect_url": detail_url, "plan_id": plan.pk})
+            return redirect(detail_url)
+
+        if wants_json:
+            return JsonResponse(
+                {"ok": False, "errors": form.errors.get_json_data()},
+                status=400,
+            )
     else:
         form = WeeklyPlanForm()
 
@@ -186,6 +239,7 @@ def plan_create(request):
             "form": form,
             "planning_mode": mode or WeeklyPlan.PlanningMode.MANUAL,
             "heading_title": title,
+            **_suggested_plan_defaults(),
         },
     )
 
@@ -215,6 +269,7 @@ def inventory_orders(request):
         "active_tab": tab,
         "order_count": CustomerOrder.objects.filter(is_active=True).count(),
     }
+    ctx.update(_suggested_plan_defaults())
     if tab == TAB_ORDERS:
         ctx["rows"] = order_rows()
     elif tab == TAB_STOCK:
