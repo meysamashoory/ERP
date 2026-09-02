@@ -2371,4 +2371,32 @@ input[type=number].spin {
 }
 .align-btn.active { background: #e0e7ff; border-color: var(--brand, #4f46e5); }
 
+.intel-lead { margin: 0 0 12px; }
+.intel-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin: 0 0 8px;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid var(--line, #e2e8f0);
+}
+.intel-kpi { min-width: 0; }
+.intel-kpi-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: #1c1917;
+  font-variant-numeric: tabular-nums;
+}
+.intel-kpi.is-alert .intel-kpi-value { color: #9a3412; }
+.intel-kpi-label { display: block; margin-top: 4px; font-size: 12px; color: #57534e; }
+.intel-hours { margin: 0 0 16px; font-size: 13px; }
+.intel-row-serious td { background: #fff7ed; }
+.intel-row-watch td { background: #fafaf9; }
+@media (max-width: 900px) {
+  .intel-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
 

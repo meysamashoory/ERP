@@ -25,8 +25,7 @@ INVENTORY_ORDER_TABS: list[dict[str, Any]] = [
         "id": TAB_FORECAST,
         "label": "پیش‌بینی فروش",
         "editable": False,
-        "coming_soon": True,
-        "hint": "فعلاً فقط ذخیره می‌شود؛ در برنامه‌ریزی سیستمی استفاده نمی‌شود.",
+        "hint": "در تراز تقاضا و ساخت برنامه سیستمی به‌عنوان تقاضای تکمیل ظرفیت (MTS) لحاظ می‌شود.",
     },
 ]
 

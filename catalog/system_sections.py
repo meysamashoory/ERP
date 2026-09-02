@@ -163,6 +163,18 @@ def build_system_groups() -> list[SystemGroup]:
                     can_add=False,
                 ),
                 SystemItem(
+                    key="systemic_intelligence",
+                    title="هوش برنامه‌ریزی سیستمی",
+                    admin_changelist="",
+                    url_name="systemic_intelligence",
+                    description=(
+                        "تراز تقاضا و تأمین، کسری BOM، بار دستگاه، انحراف برنامه–واقعی "
+                        "و پیام‌های برنامه‌ریزی متناسب با برنامه هفتگی قالب."
+                    ),
+                    count_fn=lambda: WeeklyPlan.objects.filter(planning_mode="systemic").count(),
+                    can_add=False,
+                ),
+                SystemItem(
                     key="weekly_plans",
                     title="برنامه‌ریزی هفتگی",
                     admin_changelist="admin:planning_weeklyplan_changelist",

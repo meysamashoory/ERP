@@ -80,6 +80,9 @@ class InventoryOrdersSystemicTests(TestCase):
 
     def test_systemic_plan_respects_stock_and_depot(self):
         CustomerOrder.objects.all().delete()
+        from planning.models import WeeklyPlanItem
+
+        WeeklyPlanItem.objects.filter(product=self.product).delete()
         self.product.stock_finished = 30
         self.product.depot_ceiling = 80
         self.product.last_cycle = 40
@@ -93,10 +96,13 @@ class InventoryOrdersSystemicTests(TestCase):
             quantity=100,
             priority=1,
         )
+        from planning.intelligence import open_planned_qty_for_product
+
         proposals = build_systemic_proposals()
         hit = [p for p in proposals if p.product.pk == self.product.pk]
         self.assertEqual(len(hit), 1)
-        # need 70, depot room 50 → produce 50
+        # Isolated product: need 70, depot room 50 → produce 50
+        self.assertEqual(open_planned_qty_for_product(self.product), 0)
         self.assertEqual(hit[0].net_need, 70)
         self.assertEqual(hit[0].produce_qty, 50)
 
@@ -132,6 +138,60 @@ class InventoryOrdersSystemicTests(TestCase):
         self.assertEqual(listing.status_code, 200)
         self.assertContains(listing, "plan-create-dialog")
         self.assertContains(listing, "ساخت برنامه سیستمی")
+
+    def test_intelligence_cockpit_and_forecast_netting(self):
+        from planning.intelligence import demand_balance, material_shortages
+        from planning.models import SalesForecast, WeeklyPlanItem
+        from catalog.models import ProductBomLine
+
+        WeeklyPlanItem.objects.filter(product=self.product).delete()
+        CustomerOrder.objects.filter(product_code=self.product.code).delete()
+        self.product.stock_finished = 10
+        self.product.depot_ceiling = 500
+        self.product.save()
+        CustomerOrder.objects.create(
+            product_code=self.product.code,
+            product_name=self.product.name,
+            product=self.product,
+            quantity=40,
+            priority=1,
+        )
+        SalesForecast.objects.create(
+            product_code=self.product.code,
+            product_name=self.product.name,
+            product=self.product,
+            quantity=20,
+            period_label="هفته جاری",
+        )
+        rows = {r.product_code: r for r in demand_balance()}
+        row = rows[self.product.code]
+        self.assertEqual(row.order_qty, 40)
+        self.assertEqual(row.forecast_qty, 20)
+        self.assertEqual(row.net_gap, 50)  # 60 demand - 10 stock
+
+        other = Product.objects.exclude(pk=self.product.pk).filter(is_active=True).first()
+        if other:
+            other.stock_finished = 1
+            other.save(update_fields=["stock_finished"])
+            ProductBomLine.objects.create(
+                parent=self.product,
+                component_code=other.code,
+                component_name=other.name,
+                quantity=2,
+            )
+            mats = {m.component_code: m for m in material_shortages({self.product.code: 10})}
+            self.assertIn(other.code, mats)
+            self.assertGreater(mats[other.code].gap, 0)
+
+        self.client.login(username="admin", password="erp12345")
+        page = self.client.get(reverse("systemic_intelligence"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "هوش برنامه‌ریزی سیستمی")
+        self.assertContains(page, "تراز تقاضا و تأمین")
+        page2 = self.client.get(reverse("systemic_intelligence"), {"tab": "exceptions"})
+        self.assertEqual(page2.status_code, 200)
+        self.assertContains(page2, "NET_SHORT")
+
 
     def test_systemic_create_json_returns_redirect(self):
         self.client.login(username="admin", password="erp12345")

@@ -1,7 +1,4 @@
-"""Systemic (auto) weekly planning from orders + inventory + BOM + depot ceiling.
-
-Forecast is loaded/stored but intentionally not applied yet.
-"""
+"""Systemic (auto) weekly planning from orders, forecast, inventory, BOM, capacity."""
 
 from __future__ import annotations
 
@@ -12,7 +9,8 @@ from django.db import transaction
 from catalog.models import Machine, Product
 from production.models import FittingProduction
 
-from .models import CustomerOrder, WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
+from .intelligence import HOURS_PER_MACHINE_WEEK, machine_load, open_planned_qty_for_product
+from .models import CustomerOrder, SalesForecast, WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
 from .uid import refresh_plan_uids
 from .utils import mold_change_date_candidates
 
@@ -21,7 +19,9 @@ from .utils import mold_change_date_candidates
 class SystemicProposal:
     product: Product
     order_qty: int
+    forecast_qty: int
     stock: int
+    open_plan_qty: int
     depot_ceiling: int | None
     net_need: int
     produce_qty: int
@@ -63,31 +63,55 @@ def _aggregate_orders() -> dict[str, dict[str, Any]]:
     return agg
 
 
-def _bom_feasible(product: Product, produce_qty: int) -> tuple[bool, str]:
+def _forecast_qty(code: str) -> int:
+    total = 0
+    for row in SalesForecast.objects.filter(is_active=True, product_code=code, quantity__gt=0):
+        total += int(row.quantity or 0)
+    return total
+
+
+def _max_bom_qty(product: Product, wanted: int) -> tuple[int, str]:
+    """Largest produce qty that current BOM + consumable stocks can support."""
     lines = list(product.bom_lines.all())
-    if not lines:
-        return True, "BOM تعریف نشده — بدون محدودیت مواد."
-    shortages: list[str] = []
+    consumables = list(product.consumables.all())
+    if not lines and not consumables:
+        return wanted, "BOM تعریف نشده — بدون محدودیت مواد."
+    max_q = wanted
+    notes: list[str] = []
     for line in lines:
-        need = float(line.quantity or 0) * produce_qty
-        if need <= 0:
+        per = float(line.quantity or 0)
+        if per <= 0:
             continue
-        comp = None
-        if line.component_code:
-            comp = Product.objects.filter(code=line.component_code).first()
+        ccode = (line.component_code or "").strip()
+        comp = Product.objects.filter(code=ccode).first() if ccode else None
         if comp is None:
-            shortages.append(
-                f"جزء «{line.component_code or line.component_name}» در محصولات یافت نشد"
-            )
+            notes.append(f"جزء «{ccode or line.component_name}» در کاتالوگ نیست")
+            max_q = 0
             continue
         have = int(comp.stock_finished or 0) + int(comp.stock_unassembled or 0)
-        if have < need:
-            shortages.append(
-                f"{comp.code}: نیاز {need:g} / موجود {have}"
-            )
-    if shortages:
-        return False, "کسری BOM: " + "؛ ".join(shortages[:4])
-    return True, "مواد BOM کافی است."
+        feasible = int(have // per) if per else wanted
+        if feasible < max_q:
+            notes.append(f"{comp.code}: حداکثر {feasible} (موجود {have})")
+            max_q = max(feasible, 0)
+    for cons in consumables:
+        per = float(cons.quantity_per_unit or 0)
+        if per <= 0:
+            continue
+        ccode = (cons.material_code or "").strip()
+        comp = Product.objects.filter(code=ccode).first() if ccode else None
+        if comp is None:
+            continue
+        have = int(comp.stock_finished or 0) + int(comp.stock_unassembled or 0)
+        feasible = int(have // per)
+        if feasible < max_q:
+            notes.append(f"مصرفی {comp.code}: حداکثر {feasible}")
+            max_q = max(feasible, 0)
+    max_q = max(int(max_q), 0)
+    if max_q >= wanted:
+        return wanted, "مواد کافی است."
+    if max_q == 0:
+        return 0, "کسری مواد: " + ("؛ ".join(notes[:4]) or "موجودی جزء صفر است.")
+    return max_q, "تولید به خاطر مواد به " + str(max_q) + " محدود شد. " + "؛ ".join(notes[:3])
 
 
 def _suggest_machine(product: Product, used: set[int]) -> Machine | None:
@@ -119,20 +143,36 @@ def build_systemic_proposals() -> list[SystemicProposal]:
     agg = _aggregate_orders()
     proposals: list[SystemicProposal] = []
     used_machines: set[int] = set()
+    load_now = {row.machine_id: row.hours for row in machine_load()}
 
-    # Sort by priority then code
-    items = sorted(agg.items(), key=lambda kv: (kv[1]["priority"], kv[0]))
-    for code, data in items:
+    # Codes with forecast-only demand (MTS top-up) also participate
+    forecast_codes = {
+        (r.product_code or "").strip()
+        for r in SalesForecast.objects.filter(is_active=True, quantity__gt=0)
+        if (r.product_code or "").strip()
+    }
+    codes = set(agg.keys()) | forecast_codes
+
+    def sort_key(code: str):
+        data = agg.get(code) or {}
+        return (int(data.get("priority") or 100), code)
+
+    for code in sorted(codes, key=sort_key):
+        data = agg.get(code) or {}
         product = data.get("product") or Product.objects.filter(code=code).first()
         if product is None:
-            # Skip unknown products — cannot place on plan without catalog product
             continue
-        order_qty = int(data["quantity"])
+        order_qty = int(data.get("quantity") or 0)
+        forecast_qty = _forecast_qty(code)
         stock = int(product.stock_finished or 0)
+        open_qty = open_planned_qty_for_product(product)
         ceiling = product.depot_ceiling
-        net = max(order_qty - stock, 0)
+        demand = order_qty + forecast_qty
+        net = max(demand - stock - open_qty, 0)
         produce = net
         warnings: list[str] = []
+        if open_qty:
+            warnings.append(f"{open_qty} عدد از قبل در برنامه‌های باز است.")
         if ceiling is not None:
             room = max(int(ceiling) - stock, 0)
             if produce > room:
@@ -143,22 +183,45 @@ def build_systemic_proposals() -> list[SystemicProposal]:
         if produce <= 0:
             continue
 
-        bom_ok, bom_msg = _bom_feasible(product, produce)
-        if not bom_ok:
-            # Reduce to max feasible by materials (simple: skip if any shortage)
+        capped, bom_msg = _max_bom_qty(product, produce)
+        bom_ok = capped >= produce
+        if capped < produce:
             warnings.append(bom_msg)
-            # Still propose with warning — planner can review; qty kept but flagged
+            produce = capped
+        if produce <= 0:
+            warnings.append(bom_msg or "به‌خاطر کسری مواد ردیف ساخته نشد.")
+            continue
+
         machine = _suggest_machine(product, used_machines)
         if machine:
             used_machines.add(machine.pk)
+            cycle = int(product.last_cycle or 0) or 30
+            cavities = max(int(product.main_cavities or 1), 1)
+            est_hours = (produce / cavities) * cycle / 3600.0
+            remaining = HOURS_PER_MACHINE_WEEK - float(load_now.get(machine.pk, 0) or 0)
+            if est_hours > remaining > 0:
+                max_by_hours = int((remaining * 3600.0 * cavities) / cycle)
+                if max_by_hours < produce:
+                    warnings.append(
+                        f"ظرفیت دستگاه محدود کرد: {produce} → {max(max_by_hours, 0)}."
+                    )
+                    produce = max(max_by_hours, 0)
+                    load_now[machine.pk] = load_now.get(machine.pk, 0) + remaining
+            else:
+                load_now[machine.pk] = load_now.get(machine.pk, 0) + est_hours
         else:
             warnings.append("دستگاه تزریق آزاد یافت نشد.")
+
+        if produce <= 0:
+            continue
 
         proposals.append(
             SystemicProposal(
                 product=product,
                 order_qty=order_qty,
+                forecast_qty=forecast_qty,
                 stock=stock,
+                open_plan_qty=open_qty,
                 depot_ceiling=int(ceiling) if ceiling is not None else None,
                 net_need=net,
                 produce_qty=produce,

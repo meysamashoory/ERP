@@ -280,6 +280,40 @@ def inventory_orders(request):
         ctx["rows"] = forecast_rows()
     return render(request, "planning/inventory_orders.html", ctx)
 
+
+@login_required
+def systemic_intelligence(request):
+    """Native planning cockpit: demand, materials, capacity, variance, exceptions."""
+    from .intelligence import cockpit_payload
+
+    profile = get_profile(request.user)
+    tab = (request.GET.get("tab") or "balance").strip()
+    tabs = [
+        {"id": "balance", "label": "تراز تقاضا و تأمین"},
+        {"id": "materials", "label": "کسری مواد"},
+        {"id": "capacity", "label": "بار دستگاه و قالب"},
+        {"id": "variance", "label": "انحراف برنامه و واقعی"},
+        {"id": "exceptions", "label": "پیام‌های برنامه‌ریزی"},
+    ]
+    if tab not in {t["id"] for t in tabs}:
+        tab = "balance"
+    payload = cockpit_payload()
+    ctx = {
+        "profile": profile,
+        "tabs": tabs,
+        "active_tab": tab,
+        "kpis": payload["kpis"],
+        "hours_per_machine": payload["hours_per_machine"],
+        "balance": payload["balance"],
+        "materials": payload["materials"],
+        "capacity": payload["capacity"],
+        "variance": payload["variance"],
+        "exceptions": payload["exceptions"],
+    }
+    ctx.update(_suggested_plan_defaults())
+    return render(request, "planning/systemic_intelligence.html", ctx)
+
+
 def _is_plan_owner(user, plan) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False

@@ -240,7 +240,7 @@ class CustomerOrder(models.Model):
 
 
 class SalesForecast(models.Model):
-    """Sales forecast snapshot — stored for later Make-to-Stock use (not applied yet)."""
+    """Sales forecast snapshot used as MTS demand in systemic planning."""
 
     product_code = models.CharField("کد کالا", max_length=40, db_index=True)
     product_name = models.CharField("نام کالا", max_length=200, blank=True)
