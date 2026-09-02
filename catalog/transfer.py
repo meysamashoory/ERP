@@ -14,12 +14,17 @@ from django.urls import reverse
 
 DESTINATION_PRODUCTION_HISTORY = "production_history"
 DESTINATION_PRODUCT_DATA = "product_data"
+DESTINATION_INVENTORY_ORDERS = "inventory_orders"
 
 LEVEL_HISTORY_LIST = "history_list"
 LEVEL_HISTORY_DAILY = "history_daily"
 LEVEL_PRODUCT_INFO = "product_info"
 LEVEL_PRODUCT_BOM = "product_bom"
 LEVEL_PRODUCT_CONSUMABLES = "product_consumables"
+LEVEL_IO_ORDERS = "orders"
+LEVEL_IO_STOCK = "stock"
+LEVEL_IO_BOM = "bom"
+LEVEL_IO_FORECAST = "forecast"
 
 
 @dataclass
@@ -136,6 +141,34 @@ PRODUCT_CONSUMABLE_FIELDS: list[DestField] = [
     DestField("order", "ترتیب", "integer"),
 ]
 
+IO_ORDER_FIELDS: list[DestField] = [
+    DestField("order_ref", "شماره سفارش", "string"),
+    DestField("product_code", "کد کالا", "string", required=True),
+    DestField("product_name", "نام کالا", "string"),
+    DestField("quantity", "مقدار سفارش", "integer", required=True),
+    DestField("delivery_date", "تاریخ تحویل", "date"),
+    DestField("priority", "اولویت (عدد کمتر = بالاتر)", "integer"),
+    DestField("is_backlog", "سفارش معوق", "string"),
+    DestField("customer_name", "مشتری", "string"),
+    DestField("notes", "توضیحات", "string"),
+]
+
+IO_STOCK_FIELDS: list[DestField] = [
+    DestField("product_code", "کد کالا", "string", required=True),
+    DestField("product_name", "نام کالا", "string"),
+    DestField("stock_finished", "موجودی محصول", "integer"),
+    DestField("stock_unassembled", "موجودی مونتاژ‌نشده", "integer"),
+    DestField("depot_ceiling", "سقف دپو", "integer"),
+]
+
+IO_FORECAST_FIELDS: list[DestField] = [
+    DestField("product_code", "کد کالا", "string", required=True),
+    DestField("product_name", "نام کالا", "string"),
+    DestField("period_label", "دوره پیش‌بینی", "string"),
+    DestField("quantity", "مقدار پیش‌بینی", "integer"),
+    DestField("notes", "توضیحات", "string"),
+]
+
 
 def _fields_payload(fields: list[DestField]) -> list[dict[str, Any]]:
     return [
@@ -183,6 +216,32 @@ def list_destinations() -> list[dict[str, Any]]:
                 },
             ],
         },
+        {
+            "id": DESTINATION_INVENTORY_ORDERS,
+            "label": "بررسی موجودی و سفارشات",
+            "levels": [
+                {
+                    "id": LEVEL_IO_ORDERS,
+                    "label": "سفارشات هفتگی و معوق",
+                    "fields": _fields_payload(IO_ORDER_FIELDS),
+                },
+                {
+                    "id": LEVEL_IO_STOCK,
+                    "label": "موجودی و سقف دپو",
+                    "fields": _fields_payload(IO_STOCK_FIELDS),
+                },
+                {
+                    "id": LEVEL_IO_BOM,
+                    "label": "ساختار BOM",
+                    "fields": _fields_payload(PRODUCT_BOM_FIELDS),
+                },
+                {
+                    "id": LEVEL_IO_FORECAST,
+                    "label": "پیش‌بینی فروش (ذخیره — فعلاً بدون اجرا)",
+                    "fields": _fields_payload(IO_FORECAST_FIELDS),
+                },
+            ],
+        },
     ]
 
 
@@ -197,6 +256,14 @@ def _fields_for(destination_id: str, level_id: str) -> list[DestField]:
         if level_id == LEVEL_PRODUCT_CONSUMABLES:
             return PRODUCT_CONSUMABLE_FIELDS
         return PRODUCT_INFO_FIELDS
+    if destination_id == DESTINATION_INVENTORY_ORDERS:
+        if level_id == LEVEL_IO_STOCK:
+            return IO_STOCK_FIELDS
+        if level_id == LEVEL_IO_BOM:
+            return PRODUCT_BOM_FIELDS
+        if level_id == LEVEL_IO_FORECAST:
+            return IO_FORECAST_FIELDS
+        return IO_ORDER_FIELDS
     return []
 
 
@@ -1232,12 +1299,167 @@ def _transfer_product_consumables(
     return result
 
 
+def _transfer_io_orders(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
+    from planning.inventory_orders import upsert_order_from_values
+
+    result = TransferResult(
+        destination_id=DESTINATION_INVENTORY_ORDERS,
+        level_id=LEVEL_IO_ORDERS,
+        mode=mode,
+    )
+    update_only = mode == MODE_UPDATE
+    headers = table.headers if isinstance(table.headers, list) else []
+    rows = table.rows if isinstance(table.rows, list) else []
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
+            continue
+        values, row_errors, error_cols = _parse_row(row, col_map, IO_ORDER_FIELDS, headers)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
+            )
+            continue
+        try:
+            obj = upsert_order_from_values(
+                values, update_only=update_only, source_table=table.name or ""
+            )
+            if obj is None:
+                result.skipped += 1
+                continue
+            result.transferred += 1
+        except Exception as exc:  # noqa: BLE001
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i} جدول «{table.name}» — {exc}",
+                field_label="کد کالا",
+            )
+    return result
+
+
+def _transfer_io_stock(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
+    from planning.inventory_orders import upsert_stock_from_values
+
+    result = TransferResult(
+        destination_id=DESTINATION_INVENTORY_ORDERS,
+        level_id=LEVEL_IO_STOCK,
+        mode=mode,
+    )
+    update_only = mode == MODE_UPDATE
+    headers = table.headers if isinstance(table.headers, list) else []
+    rows = table.rows if isinstance(table.rows, list) else []
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
+            continue
+        values, row_errors, error_cols = _parse_row(row, col_map, IO_STOCK_FIELDS, headers)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
+            )
+            continue
+        # Normalize code key for upsert helper
+        if values.get("product_code") and not values.get("code"):
+            values["code"] = values["product_code"]
+        try:
+            obj = upsert_stock_from_values(values, update_only=update_only)
+            if obj is None:
+                result.skipped += 1
+                continue
+            result.transferred += 1
+        except Exception as exc:  # noqa: BLE001
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i} جدول «{table.name}» — {exc}",
+                field_label="کد کالا",
+            )
+    return result
+
+
+def _transfer_io_forecast(
+    *, table: ExcelTable, col_map: dict[str, int | None], user, mode: str = MODE_TRANSFER
+) -> TransferResult:
+    from planning.inventory_orders import upsert_forecast_from_values
+
+    result = TransferResult(
+        destination_id=DESTINATION_INVENTORY_ORDERS,
+        level_id=LEVEL_IO_FORECAST,
+        mode=mode,
+    )
+    update_only = mode == MODE_UPDATE
+    headers = table.headers if isinstance(table.headers, list) else []
+    rows = table.rows if isinstance(table.rows, list) else []
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
+            continue
+        values, row_errors, error_cols = _parse_row(row, col_map, IO_FORECAST_FIELDS, headers)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
+            )
+            continue
+        try:
+            obj = upsert_forecast_from_values(
+                values, update_only=update_only, source_table=table.name or ""
+            )
+            if obj is None:
+                result.skipped += 1
+                continue
+            result.transferred += 1
+        except Exception as exc:  # noqa: BLE001
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=f"ردیف {row_i} جدول «{table.name}» — {exc}",
+                field_label="کد کالا",
+            )
+    return result
+
+
 _HANDLERS = {
     (DESTINATION_PRODUCTION_HISTORY, LEVEL_HISTORY_LIST): _transfer_history_list,
     (DESTINATION_PRODUCTION_HISTORY, LEVEL_HISTORY_DAILY): _transfer_history_daily,
     (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_INFO): _transfer_product_info,
     (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_BOM): _transfer_product_bom,
     (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_CONSUMABLES): _transfer_product_consumables,
+    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_ORDERS): _transfer_io_orders,
+    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_STOCK): _transfer_io_stock,
+    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_BOM): _transfer_product_bom,
+    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_FORECAST): _transfer_io_forecast,
 }
 
 
@@ -1288,7 +1510,16 @@ def transfer_excel_table(
         kwargs["limit"] = limit
     result = handler(**kwargs)
     result.mode = mode
-    result.redirect_url = reverse("excel_detail", args=[table.upload_id]) if table.upload_id else reverse("excel_list")
+    if destination_id == DESTINATION_INVENTORY_ORDERS:
+        result.redirect_url = reverse("inventory_orders")
+        result.destination_id = DESTINATION_INVENTORY_ORDERS
+        result.level_id = level_id
+    else:
+        result.redirect_url = (
+            reverse("excel_detail", args=[table.upload_id])
+            if table.upload_id
+            else reverse("excel_list")
+        )
     result.table_deleted = False
 
     action_label = "بروزرسانی" if mode == MODE_UPDATE else "انتقال"

@@ -48,6 +48,7 @@
             </a>
           </th>
           <th data-col="weekday">روز برنامه</th>
+          <th data-col="mode">نحوه</th>
           <th data-col="creator">ایجاد کننده</th>
           <th data-col="forms">تعداد فرم</th>
           <th data-col="calendar">تقویم برنامه</th>
@@ -63,6 +64,7 @@
           <td data-col="program_number" data-value="{{ plan.program_number|program_no }}">{{ plan.program_number|program_no }}</td>
           <td data-col="date" data-value="{{ plan.date|jdate }}">{{ plan.date|jdate }}</td>
           <td data-col="weekday" data-value="{{ plan.weekday_name }}">{{ plan.weekday_name }}</td>
+          <td data-col="mode" data-value="{{ plan.get_planning_mode_display }}">{{ plan.get_planning_mode_display }}</td>
           <td data-col="creator" data-value="{{ plan.created_by.username|default:'' }}">{{ plan.created_by.username|default:'—' }}</td>
           <td class="forms-cell" data-col="forms" data-value="{{ forms_weekly|length }}">
             <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms

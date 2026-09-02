@@ -121,22 +121,109 @@ def plan_calendar_json(request):
 
 @login_required
 def plan_create(request):
+    """Choose planning mode, then create manual or systemic weekly plan."""
     profile = get_profile(request.user)
     if not profile or not profile.can_create_plans:
         raise PermissionDenied("شما اجازه ایجاد برنامه ندارید.")
+
+    mode = (request.GET.get("mode") or request.POST.get("planning_mode") or "").strip()
+    if mode not in (WeeklyPlan.PlanningMode.MANUAL, WeeklyPlan.PlanningMode.SYSTEMIC, ""):
+        mode = ""
+
+    if not mode and request.method == "GET":
+        return render(request, "planning/plan_create_choose.html", {"profile": profile})
+
     if request.method == "POST":
         form = WeeklyPlanForm(request.POST)
+        planning_mode = (
+            request.POST.get("planning_mode") or WeeklyPlan.PlanningMode.MANUAL
+        ).strip()
+        if planning_mode not in (
+            WeeklyPlan.PlanningMode.MANUAL,
+            WeeklyPlan.PlanningMode.SYSTEMIC,
+        ):
+            planning_mode = WeeklyPlan.PlanningMode.MANUAL
         if form.is_valid():
+            if planning_mode == WeeklyPlan.PlanningMode.SYSTEMIC:
+                from .systemic import create_systemic_plan
+
+                plan, alarms = create_systemic_plan(
+                    program_number=form.cleaned_data["program_number"],
+                    plan_date=form.cleaned_data["date"],
+                    user=request.user,
+                )
+                if alarms:
+                    messages.warning(
+                        request,
+                        "برنامه سیستمی ایجاد شد با هشدار: " + " | ".join(alarms[:3]),
+                    )
+                else:
+                    messages.success(
+                        request,
+                        "برنامه سیستمی از روی سفارشات و موجودی ایجاد شد. ردیف‌ها را بررسی کنید.",
+                    )
+                return redirect(f"{reverse('plan_detail', args=[plan.pk])}?mode=edit")
+
             plan = form.save(commit=False)
             plan.created_by = request.user
             plan.status = WeeklyPlan.Status.DRAFT
+            plan.planning_mode = WeeklyPlan.PlanningMode.MANUAL
             plan.save()
-            messages.success(request, "برنامه ایجاد شد. اکنون کالاها را اضافه کنید.")
+            messages.success(request, "برنامه دستی ایجاد شد. اکنون کالاها را اضافه کنید.")
             return redirect(f"{reverse('plan_detail', args=[plan.pk])}?mode=edit")
     else:
         form = WeeklyPlanForm()
-    return render(request, "planning/plan_form.html", {"form": form})
 
+    title = (
+        "برنامه‌ریزی هفتگی (سیستمی)"
+        if mode == WeeklyPlan.PlanningMode.SYSTEMIC
+        else "برنامه‌ریزی هفتگی (دستی)"
+    )
+    return render(
+        request,
+        "planning/plan_form.html",
+        {
+            "form": form,
+            "planning_mode": mode or WeeklyPlan.PlanningMode.MANUAL,
+            "heading_title": title,
+        },
+    )
+
+
+@login_required
+def inventory_orders(request):
+    """Hub: بررسی موجودی و سفارشات (orders / stock / BOM / forecast)."""
+    from catalog.product_data import bom_rows
+    from .inventory_orders import (
+        INVENTORY_ORDER_TABS,
+        TAB_BOM,
+        TAB_FORECAST,
+        TAB_ORDERS,
+        TAB_STOCK,
+        forecast_rows,
+        order_rows,
+        resolve_tab,
+        stock_rows,
+    )
+    from .models import CustomerOrder
+
+    profile = get_profile(request.user)
+    tab = resolve_tab(request.GET.get("tab"))
+    ctx = {
+        "profile": profile,
+        "tabs": INVENTORY_ORDER_TABS,
+        "active_tab": tab,
+        "order_count": CustomerOrder.objects.filter(is_active=True).count(),
+    }
+    if tab == TAB_ORDERS:
+        ctx["rows"] = order_rows()
+    elif tab == TAB_STOCK:
+        ctx["rows"] = stock_rows()
+    elif tab == TAB_BOM:
+        ctx["rows"] = bom_rows()
+    elif tab == TAB_FORECAST:
+        ctx["rows"] = forecast_rows()
+    return render(request, "planning/inventory_orders.html", ctx)
 
 def _is_plan_owner(user, plan) -> bool:
     if not user or not getattr(user, "is_authenticated", False):

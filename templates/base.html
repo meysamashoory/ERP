@@ -26,6 +26,7 @@
       <div class="nav-section {% block nav_production %}{% endblock %}">
         <div class="nav-section-title">برنامه‌های تولید</div>
         <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
+        <a href="{% url 'inventory_orders' %}" class="{% block nav_inventory_orders %}{% endblock %}">بررسی موجودی و سفارشات</a>
         <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">ثبت و کنترل تولید</a>
         <a href="{% url 'production_history' %}" class="{% block nav_history %}{% endblock %}">سوابق تولید</a>
       </div>

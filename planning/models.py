@@ -47,10 +47,20 @@ class WeeklyPlan(models.Model):
         DRAFT = "draft", "در انتظار تأیید"
         APPROVED = "approved", "تأییدشده"
 
+    class PlanningMode(models.TextChoices):
+        MANUAL = "manual", "دستی"
+        SYSTEMIC = "systemic", "سیستمی"
+
     program_number = models.CharField("شماره برنامه", max_length=30, unique=True)
     date = jmodels.jDateField("تاریخ برنامه‌ریزی", unique=True)
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.DRAFT
+    )
+    planning_mode = models.CharField(
+        "نحوه برنامه‌ریزی",
+        max_length=12,
+        choices=PlanningMode.choices,
+        default=PlanningMode.MANUAL,
     )
     alarms = models.TextField("هشدارها", blank=True)
 
@@ -188,3 +198,73 @@ class WeeklyPlanLine(models.Model):
         if qty <= 0 or cycle <= 0:
             return 0.0
         return round((qty / cavities) * cycle / 3600.0, 2)
+
+
+class CustomerOrder(models.Model):
+    """Weekly / backlog customer order line — fed from Excel via بررسی موجودی و سفارشات."""
+
+    order_ref = models.CharField("شماره سفارش", max_length=80, blank=True, db_index=True)
+    product_code = models.CharField("کد کالا", max_length=40, db_index=True)
+    product_name = models.CharField("نام کالا", max_length=200, blank=True)
+    quantity = models.PositiveIntegerField("مقدار سفارش", default=0)
+    delivery_date = jmodels.jDateField("تاریخ تحویل", null=True, blank=True)
+    priority = models.PositiveIntegerField(
+        "اولویت", default=100, help_text="عدد کمتر = اولویت بالاتر"
+    )
+    is_backlog = models.BooleanField("سفارش معوق", default=False)
+    customer_name = models.CharField("مشتری", max_length=200, blank=True)
+    notes = models.CharField("توضیحات", max_length=255, blank=True)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_orders",
+        verbose_name="محصول",
+    )
+    is_active = models.BooleanField("فعال", default=True)
+    source_table_name = models.CharField(max_length=120, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["priority", "delivery_date", "id"]
+        verbose_name = "سفارش"
+        verbose_name_plural = "سفارشات"
+        indexes = [
+            models.Index(fields=["order_ref", "product_code"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.order_ref or '—'} / {self.product_code} × {self.quantity}"
+
+
+class SalesForecast(models.Model):
+    """Sales forecast snapshot — stored for later Make-to-Stock use (not applied yet)."""
+
+    product_code = models.CharField("کد کالا", max_length=40, db_index=True)
+    product_name = models.CharField("نام کالا", max_length=200, blank=True)
+    period_label = models.CharField("دوره پیش‌بینی", max_length=80, blank=True)
+    quantity = models.PositiveIntegerField("مقدار پیش‌بینی", default=0)
+    notes = models.CharField("توضیحات", max_length=255, blank=True)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_forecasts",
+        verbose_name="محصول",
+    )
+    is_active = models.BooleanField("فعال", default=True)
+    source_table_name = models.CharField(max_length=120, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["product_code", "period_label", "id"]
+        verbose_name = "پیش‌بینی فروش"
+        verbose_name_plural = "پیش‌بینی فروش"
+
+    def __str__(self) -> str:
+        return f"{self.product_code} / {self.period_label or '—'} = {self.quantity}"
+
