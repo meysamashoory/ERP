@@ -165,6 +165,7 @@ class ExcelManagementTests(TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["file_kind"], "csv")
         self.assertEqual(data["csv_delimiter"], ";")
+        self.assertIn(data.get("csv_encoding"), ("utf-8", "utf-8-sig"))
         self.assertEqual(len(data["tables"]), 1)
         self.assertEqual(len(data["sheets"]), 1)
         self.assertEqual(data["tables"][0]["headers"], ["کد", "نام", "قیمت"])
@@ -188,6 +189,50 @@ class ExcelManagementTests(TestCase):
         table = ExcelUpload.objects.get(pk=payload["upload_id"]).tables.get()
         self.assertEqual(table.headers, ["کد", "نام", "قیمت"])
         self.assertEqual(table.rows[0], ["A1", "قطعه", "1000"])
+
+    def test_arabic_windows_cp1256_csv(self):
+        """Excel File Origin → Arabic (Windows) = cp1256."""
+        from catalog.excel_io import decode_csv_bytes
+
+        # cp1256 uses Arabic letter forms (ي / ك), like Iranian ERP exports.
+        raw = (
+            "کد کالا;شرح کالا;واحد\r\n"
+            "07505045;سه راه تبديل 45 پروتکت;عدد\r\n"
+        ).encode("cp1256")
+        text, enc = decode_csv_bytes(raw)
+        self.assertEqual(enc, "cp1256")
+        self.assertIn("کد کالا", text)
+        self.assertIn("سه راه تبديل", text)
+
+        self.client.login(username="expert", password="erp12345")
+        preview = self.client.post(
+            reverse("excel_preview"),
+            {"file": SimpleUploadedFile("inv.csv", raw, content_type="text/csv")},
+        )
+        self.assertEqual(preview.status_code, 200)
+        data = preview.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["csv_delimiter"], ";")
+        self.assertEqual(data["csv_encoding"], "cp1256")
+        self.assertEqual(data["csv_encoding_label"], "Arabic (Windows)")
+        self.assertEqual(data["tables"][0]["headers"][:3], ["کد کالا", "شرح کالا", "واحد"])
+        self.assertEqual(data["tables"][0]["preview_rows"][0][1], "سه راه تبديل 45 پروتکت")
+
+        confirm = self.client.post(
+            reverse("excel_import_confirm"),
+            {
+                "file": SimpleUploadedFile("inv.csv", raw, content_type="text/csv"),
+                "title": "موجودی cp1256",
+                "selected_sheets": json.dumps([
+                    {"sheet": "CSV", "table": "", "name": "موجودی", "kind": "sheet"},
+                ]),
+            },
+        )
+        self.assertEqual(confirm.status_code, 200)
+        table = ExcelUpload.objects.get(pk=confirm.json()["upload_id"]).tables.get()
+        self.assertEqual(table.headers[:3], ["کد کالا", "شرح کالا", "واحد"])
+        self.assertEqual(table.rows[0][0], "07505045")
+        self.assertEqual(table.rows[0][1], "سه راه تبديل 45 پروتکت")
 
     def test_import_page_has_table_and_sheets_actions(self):
         self.client.login(username="expert", password="erp12345")

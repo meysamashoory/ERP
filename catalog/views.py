@@ -191,6 +191,8 @@ def excel_preview(request: HttpRequest) -> JsonResponse:
         "sheets": sheets,
         "file_kind": inspected.get("file_kind") or "xlsx",
         "csv_delimiter": inspected.get("csv_delimiter"),
+        "csv_encoding": inspected.get("csv_encoding"),
+        "csv_encoding_label": inspected.get("csv_encoding_label"),
         "table_count": len(tables),
         "sheet_count": len(sheets),
     })

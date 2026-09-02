@@ -18,7 +18,7 @@
   </div>
   <p class="excel-import-lead muted">
     پس از انتخاب فایل، می‌توانید <strong>Table</strong>های اکسل یا کل <strong>Sheet</strong>ها را ببینید و وارد کنید.
-    فایل‌های CSV (با جداکننده <code>,</code> یا <code>;</code>) هم مانند اکسل باز می‌شوند.
+    فایل‌های CSV (جداکننده <code>,</code> یا <code>;</code> و کدگذاری UTF-8 یا Arabic Windows) هم مانند اکسل باز می‌شوند.
   </p>
 
   <div class="excel-dropzone" id="excel-dropzone">
@@ -234,6 +234,7 @@
     if (data.file_kind === "csv") {
       subParts.push("فایل CSV");
       if (data.csv_delimiter) subParts.push("جداکننده «" + data.csv_delimiter + "»");
+      if (data.csv_encoding_label) subParts.push("کدگذاری " + data.csv_encoding_label);
     } else {
       subParts.push((data.sheet_count || 0) + " شیت");
       subParts.push((data.table_count || 0) + " جدول");

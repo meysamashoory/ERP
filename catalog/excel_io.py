@@ -95,16 +95,41 @@ def detect_csv_delimiter(text: str) -> str:
     return ","
 
 
-def _decode_csv_text(content: bytes) -> str:
-    return content.decode("utf-8-sig", errors="replace")
+# Excel "File Origin → Arabic (Windows)" maps to Windows code page 1256.
+CSV_ENCODING_LABELS = {
+    "utf-8-sig": "UTF-8",
+    "utf-8": "UTF-8",
+    "cp1256": "Arabic (Windows)",
+}
 
 
-def _csv_matrix(content: bytes) -> tuple[list[list[str]], str]:
-    text = _decode_csv_text(content)
+def decode_csv_bytes(content: bytes) -> tuple[str, str]:
+    """Decode CSV bytes to text.
+
+    Order matches common Iranian exports:
+    1) UTF-8 (with/without BOM)
+    2) Windows-1256 — same as Excel «Arabic (Windows)»
+    """
+    if content.startswith(b"\xef\xbb\xbf"):
+        return content.decode("utf-8-sig"), "utf-8-sig"
+    try:
+        return content.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        pass
+    try:
+        return content.decode("cp1256"), "cp1256"
+    except UnicodeDecodeError:
+        pass
+    # Last resort so preview still opens something readable.
+    return content.decode("utf-8", errors="replace"), "utf-8"
+
+
+def _csv_matrix(content: bytes) -> tuple[list[list[str]], str, str]:
+    text, encoding = decode_csv_bytes(content)
     delimiter = detect_csv_delimiter(text)
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     matrix = [list(r) for r in reader]
-    return matrix, delimiter
+    return matrix, delimiter, encoding
 
 
 def _csv_display_name(uploaded_file) -> str:
@@ -196,6 +221,8 @@ def inspect_workbook(uploaded_file) -> dict[str, Any]:
           "sheets": [...],
           "file_kind": "csv" | "xlsx",
           "csv_delimiter": ";" | "," | None,
+          "csv_encoding": "utf-8" | "cp1256" | None,
+          "csv_encoding_label": "UTF-8" | "Arabic (Windows)" | None,
         }
     """
     name = (getattr(uploaded_file, "name", "") or "").lower()
@@ -204,9 +231,10 @@ def inspect_workbook(uploaded_file) -> dict[str, Any]:
         uploaded_file.seek(0)
 
     if name.endswith(".csv"):
-        matrix, delimiter = _csv_matrix(content)
+        matrix, delimiter, encoding = _csv_matrix(content)
         headers, rows = _split_header_rows(matrix)
         display = _csv_display_name(uploaded_file)
+        enc_label = CSV_ENCODING_LABELS.get(encoding, encoding)
         item = {
             "name": display,
             "sheet_name": "CSV",
@@ -219,6 +247,7 @@ def inspect_workbook(uploaded_file) -> dict[str, Any]:
             "preview_rows": rows[:MAX_PREVIEW_ROWS],
             "kind": "table",
             "csv_delimiter": delimiter,
+            "csv_encoding": encoding,
         }
         sheet_item = {
             **item,
@@ -232,6 +261,8 @@ def inspect_workbook(uploaded_file) -> dict[str, Any]:
             "sheets": [sheet_item],
             "file_kind": "csv",
             "csv_delimiter": delimiter,
+            "csv_encoding": encoding,
+            "csv_encoding_label": enc_label,
         }
 
     from openpyxl import load_workbook
@@ -282,6 +313,8 @@ def inspect_workbook(uploaded_file) -> dict[str, Any]:
         "sheets": sheets_out,
         "file_kind": "xlsx",
         "csv_delimiter": None,
+        "csv_encoding": None,
+        "csv_encoding_label": None,
     }
 
 
@@ -303,7 +336,7 @@ def read_table_data(
         uploaded_file.seek(0)
 
     if name.endswith(".csv"):
-        matrix, _delimiter = _csv_matrix(content)
+        matrix, _delimiter, _encoding = _csv_matrix(content)
         return _split_header_rows(matrix)
 
     from openpyxl import load_workbook
@@ -343,7 +376,7 @@ def read_sheet_data(uploaded_file, sheet_name: str) -> tuple[list[str], list[lis
     if hasattr(uploaded_file, "seek"):
         uploaded_file.seek(0)
     if name.endswith(".csv"):
-        matrix, _delimiter = _csv_matrix(content)
+        matrix, _delimiter, _encoding = _csv_matrix(content)
         return _split_header_rows(matrix)
 
     from openpyxl import load_workbook
