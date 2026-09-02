@@ -11,11 +11,14 @@ class SystemItem:
     key: str
     title: str
     # Django admin reverse names, e.g. "admin:catalog_moldoption_changelist"
-    admin_changelist: str
+    admin_changelist: str = ""
     admin_add: str | None = None
     description: str = ""
     count_fn: Callable[[], int] | None = None
     can_add: bool = True
+    # Optional named URL (non-admin) — preferred when set
+    url_name: str | None = None
+    add_url_name: str | None = None
 
 
 @dataclass
@@ -32,7 +35,11 @@ def _count(model) -> Callable[[], int]:
 def build_system_groups() -> list[SystemGroup]:
     from django.contrib.auth.models import Group, User
 
-    from planning.models import WeeklyPlan, WeeklyPlanItem
+    from planning.models import (
+        PlanningProcessStep,
+        WeeklyPlan,
+        WeeklyPlanItem,
+    )
     from production.models import (
         FittingProduction,
         ProductionDayEntry,
@@ -108,6 +115,18 @@ def build_system_groups() -> list[SystemGroup]:
             key="weekly",
             title="برنامه‌ریزی هفتگی",
             items=[
+                SystemItem(
+                    key="planning_process",
+                    title="منطق فرآیند برنامه‌ریزی (مراحل)",
+                    admin_changelist="",
+                    url_name="planning_process_list",
+                    description=(
+                        "مراحل شماره‌دار Make to Order / Make to Stock از روی PDF؛ "
+                        "سوال‌های بله/خیر با اتصال به مرحله بعدی و داده سیستم — قابل بازتعریف."
+                    ),
+                    count_fn=_count(PlanningProcessStep),
+                    can_add=False,
+                ),
                 SystemItem(
                     key="weekly_plans",
                     title="برنامه‌ریزی هفتگی",

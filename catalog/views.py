@@ -54,12 +54,24 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     for group in build_system_groups():
         items_out = []
         for item in group.items:
-            try:
-                url = reverse(item.admin_changelist)
-            except NoReverseMatch:
-                url = ""
+            url = ""
             add_url = ""
-            if item.can_add and item.admin_add:
+            if getattr(item, "url_name", None):
+                try:
+                    url = reverse(item.url_name)
+                except NoReverseMatch:
+                    url = ""
+            if not url and item.admin_changelist:
+                try:
+                    url = reverse(item.admin_changelist)
+                except NoReverseMatch:
+                    url = ""
+            if item.can_add and getattr(item, "add_url_name", None):
+                try:
+                    add_url = reverse(item.add_url_name)
+                except NoReverseMatch:
+                    add_url = ""
+            elif item.can_add and item.admin_add:
                 try:
                     add_url = reverse(item.admin_add)
                 except NoReverseMatch:

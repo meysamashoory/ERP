@@ -645,3 +645,197 @@ def mold_change_dates(request):
         return JsonResponse({"dates": []})
     candidates = mold_change_date_candidates(plan.date, weekday_int)
     return JsonResponse({"dates": [format_jdate(c) for c in candidates]})
+
+
+def _can_edit_process(user, profile) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    return bool(profile and profile.is_manager)
+
+
+@login_required
+def planning_process_list(request):
+    """System-data entry: list of redefinable planning processes."""
+    from .models import PlanningProcessDefinition
+    from .process_data import ensure_default_processes
+
+    ensure_default_processes()
+    profile = get_profile(request.user)
+    processes = list(
+        PlanningProcessDefinition.objects.prefetch_related("steps").order_by("code")
+    )
+    for p in processes:
+        p.step_count = p.steps.filter(is_active=True).count()
+        p.decision_count = p.steps.filter(
+            is_active=True, kind="decision"
+        ).count()
+    return render(
+        request,
+        "planning/process_list.html",
+        {
+            "processes": processes,
+            "can_edit": _can_edit_process(request.user, profile),
+            "profile": profile,
+        },
+    )
+
+
+@login_required
+def planning_process_detail(request, pk):
+    """Numbered stages table with yes/no links and data bindings."""
+    from .models import PlanningProcessDefinition
+    from .process_data import PLANNING_DATA_BINDINGS, ensure_default_processes
+
+    ensure_default_processes()
+    profile = get_profile(request.user)
+    process = get_object_or_404(PlanningProcessDefinition, pk=pk)
+    steps = list(process.steps.filter(is_active=True).order_by("sort_order", "step_number"))
+    by_num = {s.step_number: s for s in steps}
+
+    rows = []
+    for s in steps:
+        yes_title = by_num[s.yes_next_number].title if s.yes_next_number in by_num else ""
+        no_title = by_num[s.no_next_number].title if s.no_next_number in by_num else ""
+        next_title = by_num[s.next_number].title if s.next_number in by_num else ""
+        rows.append(
+            {
+                "step": s,
+                "yes_title": yes_title,
+                "no_title": no_title,
+                "next_title": next_title,
+                "binding_label": s.data_binding_label,
+            }
+        )
+
+    return render(
+        request,
+        "planning/process_detail.html",
+        {
+            "process": process,
+            "rows": rows,
+            "can_edit": _can_edit_process(request.user, profile),
+            "bindings": PLANNING_DATA_BINDINGS,
+            "profile": profile,
+        },
+    )
+
+
+@login_required
+def planning_process_edit(request, pk):
+    """Edit / add / delete steps — managers only."""
+    from .models import PlanningProcessDefinition, PlanningProcessStep
+    from .process_data import PLANNING_DATA_BINDINGS, ensure_default_processes
+
+    ensure_default_processes()
+    profile = get_profile(request.user)
+    if not _can_edit_process(request.user, profile):
+        raise PermissionDenied("فقط مدیر می‌تواند مراحل فرآیند را بازتعریف کند.")
+
+    process = get_object_or_404(PlanningProcessDefinition, pk=pk)
+    steps = list(process.steps.order_by("sort_order", "step_number"))
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
+        if action == "reset_seed":
+            from .process_data import ensure_default_processes as seed
+
+            seed(force=True)
+            messages.success(request, "مراحل از روی منطق PDF بازنشانی شد.")
+            return redirect("planning_process_detail", pk=process.pk)
+
+        if action == "add":
+            try:
+                num = int(request.POST.get("new_step_number") or 0)
+            except ValueError:
+                num = 0
+            if num <= 0:
+                messages.error(request, "شماره مرحله معتبر نیست.")
+            elif process.steps.filter(step_number=num).exists():
+                messages.error(request, f"مرحله شماره {num} از قبل وجود دارد.")
+            else:
+                PlanningProcessStep.objects.create(
+                    process=process,
+                    step_number=num,
+                    title=(request.POST.get("new_title") or f"مرحله {num}").strip(),
+                    kind=(request.POST.get("new_kind") or "action").strip(),
+                    question=(request.POST.get("new_question") or "").strip(),
+                    data_binding=(request.POST.get("new_binding") or "none").strip(),
+                    sort_order=num,
+                )
+                messages.success(request, f"مرحله {num} افزوده شد.")
+            return redirect("planning_process_edit", pk=process.pk)
+
+        if action == "delete":
+            try:
+                sid = int(request.POST.get("step_id") or 0)
+            except ValueError:
+                sid = 0
+            deleted, _ = process.steps.filter(pk=sid).delete()
+            if deleted:
+                messages.success(request, "مرحله حذف شد.")
+            return redirect("planning_process_edit", pk=process.pk)
+
+        # Bulk save existing rows
+        process.title = (request.POST.get("process_title") or process.title).strip()
+        process.description = (request.POST.get("process_description") or "").strip()
+        try:
+            process.entry_step_number = int(
+                request.POST.get("entry_step_number") or process.entry_step_number
+            )
+        except ValueError:
+            pass
+        process.save()
+
+        for s in steps:
+            prefix = f"step_{s.pk}_"
+            title = (request.POST.get(prefix + "title") or s.title).strip()
+            kind = (request.POST.get(prefix + "kind") or s.kind).strip()
+            question = (request.POST.get(prefix + "question") or "").strip()
+            binding = (request.POST.get(prefix + "binding") or "none").strip()
+            desc = (request.POST.get(prefix + "description") or "").strip()
+
+            def _opt_int(key):
+                raw = (request.POST.get(prefix + key) or "").strip()
+                if raw == "":
+                    return None
+                try:
+                    return int(raw)
+                except ValueError:
+                    return None
+
+            new_number = _opt_int("number")
+            if new_number and new_number != s.step_number:
+                if process.steps.filter(step_number=new_number).exclude(pk=s.pk).exists():
+                    messages.error(
+                        request,
+                        f"شماره {new_number} تکراری است؛ مرحله «{s.title}» تغییر نکرد.",
+                    )
+                    continue
+                s.step_number = new_number
+                s.sort_order = new_number
+
+            s.title = title
+            s.kind = kind if kind in {"action", "decision", "terminal"} else s.kind
+            s.question = question
+            s.data_binding = binding
+            s.description = desc
+            s.yes_next_number = _opt_int("yes")
+            s.no_next_number = _opt_int("no")
+            s.next_number = _opt_int("next")
+            s.is_active = request.POST.get(prefix + "active") == "1"
+            s.save()
+
+        messages.success(request, "مراحل فرآیند ذخیره شد.")
+        return redirect("planning_process_detail", pk=process.pk)
+
+    return render(
+        request,
+        "planning/process_edit.html",
+        {
+            "process": process,
+            "steps": steps,
+            "bindings": PLANNING_DATA_BINDINGS,
+            "kinds": PlanningProcessStep.Kind.choices,
+            "profile": profile,
+        },
+    )

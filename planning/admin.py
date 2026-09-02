@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django_jalali.admin.filters import JDateFieldListFilter
 
-from .models import CustomerOrder, SalesForecast, WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine
+from .models import (
+    CustomerOrder,
+    PlanningProcessDefinition,
+    PlanningProcessStep,
+    SalesForecast,
+    WeeklyPlan,
+    WeeklyPlanItem,
+    WeeklyPlanLine,
+)
 
 
 class WeeklyPlanLineInline(admin.TabularInline):
@@ -55,3 +63,43 @@ class CustomerOrderAdmin(admin.ModelAdmin):
 class SalesForecastAdmin(admin.ModelAdmin):
     list_display = ("product_code", "period_label", "quantity", "is_active", "updated_at")
     search_fields = ("product_code", "product_name", "period_label")
+
+
+class PlanningProcessStepInline(admin.TabularInline):
+    model = PlanningProcessStep
+    extra = 0
+    fields = (
+        "step_number",
+        "kind",
+        "title",
+        "question",
+        "yes_next_number",
+        "no_next_number",
+        "next_number",
+        "data_binding",
+        "is_active",
+    )
+
+
+@admin.register(PlanningProcessDefinition)
+class PlanningProcessDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("code", "title", "entry_step_number", "is_active", "updated_at")
+    search_fields = ("code", "title")
+    inlines = [PlanningProcessStepInline]
+
+
+@admin.register(PlanningProcessStep)
+class PlanningProcessStepAdmin(admin.ModelAdmin):
+    list_display = (
+        "process",
+        "step_number",
+        "kind",
+        "title",
+        "yes_next_number",
+        "no_next_number",
+        "next_number",
+        "data_binding",
+        "is_active",
+    )
+    list_filter = ("process", "kind", "data_binding", "is_active")
+    search_fields = ("title", "question", "data_binding")

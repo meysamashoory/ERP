@@ -268,3 +268,81 @@ class SalesForecast(models.Model):
     def __str__(self) -> str:
         return f"{self.product_code} / {self.period_label or '—'} = {self.quantity}"
 
+
+class PlanningProcessDefinition(models.Model):
+    """A redefinable planning workflow (e.g. Make to Order / Make to Stock)."""
+
+    code = models.SlugField("کد فرآیند", max_length=40, unique=True)
+    title = models.CharField("عنوان", max_length=200)
+    description = models.TextField("توضیحات", blank=True)
+    entry_step_number = models.PositiveIntegerField("شماره مرحله شروع", default=1)
+    is_active = models.BooleanField("فعال", default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "تعریف فرآیند برنامه‌ریزی"
+        verbose_name_plural = "تعاریف فرآیند برنامه‌ریزی"
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.title}"
+
+
+class PlanningProcessStep(models.Model):
+    """One numbered stage in a planning process; decisions link yes/no to other stages."""
+
+    class Kind(models.TextChoices):
+        ACTION = "action", "اقدام"
+        DECISION = "decision", "سوال بله/خیر"
+        TERMINAL = "terminal", "پایان"
+
+    process = models.ForeignKey(
+        PlanningProcessDefinition,
+        on_delete=models.CASCADE,
+        related_name="steps",
+        verbose_name="فرآیند",
+    )
+    step_number = models.PositiveIntegerField("شماره مرحله")
+    title = models.CharField("عنوان مرحله", max_length=255)
+    description = models.TextField("توضیحات", blank=True)
+    kind = models.CharField(
+        "نوع", max_length=12, choices=Kind.choices, default=Kind.ACTION
+    )
+    question = models.CharField(
+        "متن سوال (برای بله/خیر)", max_length=500, blank=True
+    )
+    yes_next_number = models.PositiveIntegerField(
+        "در صورت بله → مرحله", null=True, blank=True
+    )
+    no_next_number = models.PositiveIntegerField(
+        "در صورت خیر → مرحله", null=True, blank=True
+    )
+    next_number = models.PositiveIntegerField(
+        "مرحله بعدی (برای اقدام)", null=True, blank=True
+    )
+    data_binding = models.CharField(
+        "اتصال به داده سیستم",
+        max_length=40,
+        default="none",
+        help_text="کلید اتصال به موجودی، BOM، سفارشات، قالب و …",
+    )
+    is_active = models.BooleanField("فعال", default=True)
+    sort_order = models.PositiveIntegerField("ترتیب نمایش", default=0)
+
+    class Meta:
+        ordering = ["process", "sort_order", "step_number"]
+        verbose_name = "مرحله فرآیند برنامه‌ریزی"
+        verbose_name_plural = "مراحل فرآیند برنامه‌ریزی"
+        unique_together = ("process", "step_number")
+
+    def __str__(self) -> str:
+        return f"{self.process.code}#{self.step_number} {self.title}"
+
+    @property
+    def data_binding_label(self) -> str:
+        from .process_data import binding_label
+
+        return binding_label(self.data_binding)
+
+
