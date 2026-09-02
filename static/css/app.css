@@ -870,20 +870,24 @@ a.tab { text-decoration: none; display: inline-block; }
 .list-filter-bar .field {
   margin: 0;
   min-width: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center !important;
   gap: 8px;
+  justify-content: flex-start;
 }
 .list-filter-bar .field-grow { flex: 1 1 220px; min-width: 180px; }
 .list-filter-bar label {
-  display: inline-block;
+  display: inline-flex !important;
+  align-items: center;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  margin: 0;
+  margin: 0 !important;
   white-space: nowrap;
   line-height: 1.2;
+  min-height: 0 !important;
 }
 .list-filter-count {
   font-size: 12px;
@@ -926,7 +930,8 @@ a.tab { text-decoration: none; display: inline-block; }
 }
 .topbar-filter .field label {
   font-size: 12px;
-  margin: 0;
+  margin: 0 !important;
+  min-height: 0 !important;
 }
 .topbar-filter .input-sm,
 .topbar-filter .input {
@@ -936,6 +941,8 @@ a.tab { text-decoration: none; display: inline-block; }
 }
 .topbar-filter .field {
   min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center !important;
 }
 .topbar-filter .field-search {
   flex: 1 1 180px;
