@@ -1,0 +1,55 @@
+{% comment %}Shared create-plan dialog: mode pick + fields. Include on plan_list / inventory_orders.{% endcomment %}
+{% if profile.can_create_plans %}
+<dialog id="plan-create-dialog" class="dialog plan-create-dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3 id="plan-create-dialog-title">برنامه جدید</h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+
+    <div id="plan-create-step-mode" class="plan-create-step">
+      <p class="muted plan-create-lead">نحوه برنامه‌ریزی را انتخاب کنید:</p>
+      <div class="plan-mode-cards">
+        <button type="button" class="plan-mode-card" data-plan-mode="manual">
+          <strong>دستی</strong>
+          <span>شماره و تاریخ را وارد کنید و کالاها را خودتان اضافه کنید.</span>
+        </button>
+        <button type="button" class="plan-mode-card" data-plan-mode="systemic">
+          <strong>سیستمی</strong>
+          <span>بر اساس سفارشات، موجودی، سقف دپو و BOM پیشنهاد ساخته می‌شود.</span>
+        </button>
+      </div>
+      <p class="muted" style="margin:12px 0 0;font-size:12px">
+        قبل از برنامه سیستمی، داده‌ها را از اکسل به «بررسی موجودی و سفارشات» منتقل کنید.
+        <a href="{% url 'inventory_orders' %}">مشاهده داده‌ها</a>
+      </p>
+    </div>
+
+    <div id="plan-create-step-form" class="plan-create-step" hidden>
+      <p class="muted" id="plan-create-mode-hint" style="margin-top:0"></p>
+      <form id="plan-create-form" method="post" action="{% url 'plan_create' %}" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="planning_mode" id="plan-create-mode-input" value="manual">
+        <div class="field" data-field="program_number">
+          <label for="plan-create-program-number">شماره برنامه</label>
+          <input class="input" type="text" name="program_number" id="plan-create-program-number"
+                 maxlength="30" required autocomplete="off"
+                 value="{{ suggested_program_number|default:'' }}">
+        </div>
+        <div class="field" data-field="date">
+          <label for="plan-create-date">تاریخ برنامه‌ریزی</label>
+          <input class="input" type="text" name="date" id="plan-create-date"
+                 data-jdp="" autocomplete="off" required
+                 placeholder="۱۴۰۳/۰۵/۱۸"
+                 value="{{ suggested_plan_date|default:'' }}">
+        </div>
+        <p class="plan-create-error" id="plan-create-error" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" id="plan-create-back">بازگشت</button>
+          <button type="submit" class="btn btn-primary-soft" id="plan-create-submit">ثبت و ادامه</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</dialog>
+{% endif %}

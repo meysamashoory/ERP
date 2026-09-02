@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}دیتای محصولات{% endblock %}
+{% block heading %}دیتای محصولات{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_product_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">انتقال از اکسل</a>
+  {% if can_edit_permission %}
+  <button type="button" class="btn btn-sm" id="product-edit-toggle">ویرایش</button>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div
+  id="product-data-root"
+  data-tab="{{ active_tab }}"
+  data-can-edit-permission="{% if can_edit_permission %}1{% else %}0{% endif %}"
+  data-can-edit="0"
+  data-save-url="{{ save_url }}"
+  data-delete-url="{{ delete_url }}"
+  data-groups='{{ product_groups_json|escape }}'
+  data-subgroups='{{ product_subgroups_json|escape }}'
+>
+  {% csrf_token %}
+  <div class="tabs product-data-tabs">
+    {% for t in tabs %}
+    <a
+      class="tab {% if active_tab == t.id %}active{% endif %}"
+      href="{% url 'product_data' %}?tab={{ t.id }}"
+    >{{ t.label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="panel panel-compact panel-list">
+    <p class="panel-hint" id="product-view-hint">
+      حالت مشاهده — برای تغییر داده‌ها از «ویرایش» در بالای صفحه استفاده کنید.
+    </p>
+
+    {% if active_tab == "info" %}
+    <div class="table-scroll">
+      <table class="table table-compact product-data-table view-mode" data-tab-table="info">
+        <thead>
+          <tr>
+            <th>کد کالا</th>
+            <th>نام قطعه</th>
+            <th>گروه</th>
+            <th>زیرگروه</th>
+            <th>واحد</th>
+            <th>وزن (گرم)</th>
+            <th>در کارتن</th>
+            <th>موجودی</th>
+            <th>مونتاژ</th>
+            <th style="width:110px" class="col-ops">عملیات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in info_rows %}
+          <tr data-id="{{ r.id }}">
+            <td>
+              <span class="cell-view">{{ r.code }}</span>
+              <input class="input input-sm cell-edit" data-field="code" value="{{ r.code }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.name }}</span>
+              <input class="input input-sm cell-edit" data-field="name" value="{{ r.name }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.group_name|default:"—" }}</span>
+              <select class="input input-sm cell-edit" data-field="group_name" data-group-select>
+                <option value="">—</option>
+                {% for g in product_groups %}
+                <option value="{{ g.name }}" {% if r.group_name == g.name %}selected{% endif %}>{{ g.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <span class="cell-view">{{ r.subgroup_name|default:"—" }}</span>
+              <select class="input input-sm cell-edit" data-field="subgroup_name" data-subgroup-select
+                      data-current="{{ r.subgroup_name }}">
+                <option value="{{ r.subgroup_name }}">{{ r.subgroup_name|default:"—" }}</option>
+              </select>
+            </td>
+            <td>
+              <span class="cell-view">{% for u in counting_units %}{% if r.counting_unit == u.value %}{{ u.label }}{% endif %}{% endfor %}</span>
+              <select class="input input-sm cell-edit" data-field="counting_unit">
+                {% for u in counting_units %}
+                <option value="{{ u.value }}" {% if r.counting_unit == u.value %}selected{% endif %}>{{ u.label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <span class="cell-view num">{{ r.unit_weight_grams }}</span>
+              <input class="input input-sm num cell-edit" data-field="unit_weight_grams" value="{{ r.unit_weight_grams }}">
+            </td>
+            <td>
+              <span class="cell-view num">{{ r.per_carton }}</span>
+              <input class="input input-sm num cell-edit" data-field="per_carton" value="{{ r.per_carton }}">
+            </td>
+            <td>
+              <span class="cell-view num">{{ r.stock_finished }}</span>
+              <input class="input input-sm num cell-edit" data-field="stock_finished" value="{{ r.stock_finished }}">
+            </td>
+            <td class="num">
+              <span class="cell-view">{% if r.needs_assembly %}بله{% else %}خیر{% endif %}</span>
+              <input class="cell-edit" type="checkbox" data-field="needs_assembly" {% if r.needs_assembly %}checked{% endif %}>
+            </td>
+            <td class="col-ops">
+              <button type="button" class="btn btn-sm btn-ghost" data-delete-row>حذف</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="empty-row"><td colspan="10" class="empty">محصولی ثبت نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions product-data-actions" hidden>
+      <button type="button" class="btn btn-sm btn-ghost" data-add-row>＋ ردیف جدید</button>
+      <button type="button" class="btn btn-sm" data-save-tab>ذخیره تغییرات</button>
+    </div>
+
+    {% elif active_tab == "bom" %}
+    <div class="table-scroll">
+      <table class="table table-compact product-data-table view-mode" data-tab-table="bom">
+        <thead>
+          <tr>
+            <th>کد محصول والد</th>
+            <th>نام والد</th>
+            <th>کد جزء</th>
+            <th>نام جزء</th>
+            <th>مقدار</th>
+            <th>واحد</th>
+            <th>توضیحات</th>
+            <th style="width:110px" class="col-ops">عملیات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in bom_rows %}
+          <tr data-id="{{ r.id }}">
+            <td>
+              <span class="cell-view">{{ r.parent_code }}</span>
+              <input class="input input-sm cell-edit" data-field="parent_code" value="{{ r.parent_code }}">
+            </td>
+            <td class="muted">{{ r.parent_name }}</td>
+            <td>
+              <span class="cell-view">{{ r.component_code }}</span>
+              <input class="input input-sm cell-edit" data-field="component_code" value="{{ r.component_code }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.component_name }}</span>
+              <input class="input input-sm cell-edit" data-field="component_name" value="{{ r.component_name }}">
+            </td>
+            <td>
+              <span class="cell-view num">{{ r.quantity }}</span>
+              <input class="input input-sm num cell-edit" data-field="quantity" value="{{ r.quantity }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.unit }}</span>
+              <input class="input input-sm cell-edit" data-field="unit" value="{{ r.unit }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.notes }}</span>
+              <input class="input input-sm cell-edit" data-field="notes" value="{{ r.notes }}">
+            </td>
+            <td class="col-ops">
+              <button type="button" class="btn btn-sm btn-ghost" data-delete-row>حذف</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="empty-row"><td colspan="8" class="empty">هنوز سطر BOM ثبت نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions product-data-actions" hidden>
+      <button type="button" class="btn btn-sm btn-ghost" data-add-row>＋ ردیف جدید</button>
+      <button type="button" class="btn btn-sm" data-save-tab>ذخیره تغییرات</button>
+    </div>
+
+    {% elif active_tab == "consumables" %}
+    <div class="table-scroll">
+      <table class="table table-compact product-data-table view-mode" data-tab-table="consumables">
+        <thead>
+          <tr>
+            <th>کد محصول</th>
+            <th>نام محصول</th>
+            <th>کد ماده</th>
+            <th>نام ماده</th>
+            <th>مقدار / واحد</th>
+            <th>واحد</th>
+            <th>توضیحات</th>
+            <th style="width:110px" class="col-ops">عملیات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in consumable_rows %}
+          <tr data-id="{{ r.id }}">
+            <td>
+              <span class="cell-view">{{ r.product_code }}</span>
+              <input class="input input-sm cell-edit" data-field="product_code" value="{{ r.product_code }}">
+            </td>
+            <td class="muted">{{ r.product_name }}</td>
+            <td>
+              <span class="cell-view">{{ r.material_code }}</span>
+              <input class="input input-sm cell-edit" data-field="material_code" value="{{ r.material_code }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.material_name }}</span>
+              <input class="input input-sm cell-edit" data-field="material_name" value="{{ r.material_name }}">
+            </td>
+            <td>
+              <span class="cell-view num">{{ r.quantity_per_unit }}</span>
+              <input class="input input-sm num cell-edit" data-field="quantity_per_unit" value="{{ r.quantity_per_unit }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.unit }}</span>
+              <input class="input input-sm cell-edit" data-field="unit" value="{{ r.unit }}">
+            </td>
+            <td>
+              <span class="cell-view">{{ r.notes }}</span>
+              <input class="input input-sm cell-edit" data-field="notes" value="{{ r.notes }}">
+            </td>
+            <td class="col-ops">
+              <button type="button" class="btn btn-sm btn-ghost" data-delete-row>حذف</button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="empty-row"><td colspan="8" class="empty">ماده مصرفی ثبت نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions product-data-actions" hidden>
+      <button type="button" class="btn btn-sm btn-ghost" data-add-row>＋ ردیف جدید</button>
+      <button type="button" class="btn btn-sm" data-save-tab>ذخیره تغییرات</button>
+    </div>
+
+    {% else %}
+    <p class="empty coming-soon-panel">
+      این بخش به‌زودی تکمیل می‌شود. ساختار تب آماده است و از طریق اکسل نیز قابل گسترش خواهد بود.
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/product_data.js' %}?v=3"></script>
+{% endblock %}

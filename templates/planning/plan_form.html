@@ -1,19 +1,27 @@
 {% extends "base.html" %}
-{% block title %}برنامه جدید{% endblock %}
-{% block heading %}ایجاد برنامه هفتگی{% endblock %}
+{% block title %}{{ heading_title|default:"برنامه جدید" }}{% endblock %}
+{% block heading %}{{ heading_title|default:"ایجاد برنامه هفتگی" }}{% endblock %}
 {% block nav_planning %}active{% endblock %}
 
 {% block content %}
 <div class="panel" style="max-width:560px">
   <div class="panel-head"><h2>مشخصات برنامه</h2></div>
   <div class="panel-body">
+    {% if planning_mode == "systemic" %}
+    <p class="muted" style="margin-top:0">
+      پس از ثبت، سامانه از سفارشات فعال و موجودی/سقف دپو/BOM ردیف‌های پیشنهادی می‌سازد.
+      پیش‌بینی فروش فعلاً اعمال نمی‌شود.
+    </p>
+    {% else %}
     <p class="muted" style="margin-top:0">شماره برنامه و تاریخ شمسی را وارد کنید. روز هفته به‌صورت خودکار محاسبه می‌شود.</p>
+    {% endif %}
     <form method="post">
       {% csrf_token %}
+      <input type="hidden" name="planning_mode" value="{{ planning_mode|default:'manual' }}">
       {% include "partials/form_fields.html" with form=form %}
       <div class="form-actions">
-        <button class="btn" type="submit">ثبت و ادامه</button>
-        <a class="btn btn-ghost" href="{% url 'plan_list' %}">انصراف</a>
+        <button class="btn" type="submit">{% if planning_mode == "systemic" %}ساخت برنامه سیستمی{% else %}ثبت و ادامه{% endif %}</button>
+        <a class="btn btn-ghost" href="{% url 'plan_create' %}">بازگشت</a>
       </div>
     </form>
   </div>
