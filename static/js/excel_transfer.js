@@ -1,0 +1,620 @@
+/**
+ * Excel table → system destination transfer / update dialog (column mapping + levels).
+ */
+(function () {
+  const root = document.getElementById("excel-editor");
+  const dialog = document.getElementById("excel-transfer-dialog");
+  if (!root || !dialog) return;
+  if (root.dataset.canTransfer !== "1") return;
+
+  const csrf =
+    (root.querySelector("[name=csrfmiddlewaretoken]") || {}).value ||
+    (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] ||
+    "";
+  const transferTpl = root.dataset.transferUrlTemplate || "";
+  const destEl = document.getElementById("excel-transfer-destinations");
+  const destinations = destEl ? JSON.parse(destEl.textContent || "[]") : [];
+  const uiLabelsEl = document.getElementById("excel-transfer-ui-labels");
+  const uiLabels = uiLabelsEl ? JSON.parse(uiLabelsEl.textContent || "{}") : {};
+  const tablesEl = document.getElementById("excel-tables-data");
+  const tables = tablesEl ? JSON.parse(tablesEl.textContent || "[]") : [];
+  const byId = {};
+  tables.forEach(function (t) {
+    byId[String(t.id)] = t;
+  });
+
+  const destSelect = document.getElementById("transfer-destination");
+  const levelSelect = document.getElementById("transfer-level");
+  const mapBody = document.getElementById("transfer-map-body");
+  const resultBox = document.getElementById("transfer-result");
+  const submitBtn = document.getElementById("transfer-submit");
+  const dialogTitle = document.getElementById("transfer-dialog-title");
+  const dialogHint = document.getElementById("transfer-dialog-hint");
+  let activeTableId = null;
+  let activeMode = "transfer";
+
+  destinations.forEach(function (d) {
+    const opt = document.createElement("option");
+    opt.value = d.id;
+    opt.textContent = d.label;
+    destSelect.appendChild(opt);
+  });
+
+  function currentDest() {
+    return destinations.find(function (d) {
+      return d.id === destSelect.value;
+    });
+  }
+
+  function currentLevel() {
+    const dest = currentDest();
+    if (!dest || !dest.levels) return null;
+    return (
+      dest.levels.find(function (l) {
+        return l.id === levelSelect.value;
+      }) ||
+      dest.levels[0] ||
+      null
+    );
+  }
+
+  function refreshLevels() {
+    const dest = currentDest();
+    levelSelect.innerHTML = "";
+    (dest && dest.levels ? dest.levels : []).forEach(function (lv) {
+      const opt = document.createElement("option");
+      opt.value = lv.id;
+      opt.textContent = lv.label;
+      levelSelect.appendChild(opt);
+    });
+    if (dest && dest.levels && dest.levels[0]) levelSelect.value = dest.levels[0].id;
+  }
+
+  function colLetter(index) {
+    let n = index + 1;
+    let s = "";
+    while (n > 0) {
+      n -= 1;
+      s = String.fromCharCode(65 + (n % 26)) + s;
+      n = Math.floor(n / 26);
+    }
+    return s;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function guessIndex(headers, field) {
+    const labels = [field.label, field.key].map(function (x) {
+      return String(x || "").toLowerCase();
+    });
+    for (let i = 0; i < headers.length; i++) {
+      const h = String(headers[i] || "").toLowerCase();
+      if (!h) continue;
+      for (let j = 0; j < labels.length; j++) {
+        if (
+          labels[j] &&
+          (h === labels[j] || h.indexOf(labels[j]) !== -1 || labels[j].indexOf(h) !== -1)
+        ) {
+          return i;
+        }
+      }
+    }
+    const aliases = {
+      program_uid: ["شناسه", "uid", "شناسه تعویض"],
+      product_code: ["کد کالا", "کد محصول", "کد"],
+      product_name: ["نام جنس", "نام محصول", "نام"],
+      machine_number: ["دستگاه", "شماره دستگاه"],
+      unit_number: ["واحد", "شماره واحد"],
+      plan_date: ["تاریخ برنامه", "تاریخ برنامه‌ریزی"],
+      plan_number: ["شماره برنامه"],
+      planned_qty: ["مقدار تولید برنامه", "مقدار برنامه"],
+      produced_qty: ["مقدار تولید واقعی", "مقدار تولید شده", "تولید"],
+      scrap_qty: ["ضایعات"],
+      plan_start_date: ["تاریخ شروع برنامه"],
+      actual_start_date: ["تاریخ شروع واقعی", "راه‌اندازی"],
+      actual_end_date: ["تاریخ پایان", "پایان تولید"],
+      work_date: ["تاریخ سند", "تاریخ"],
+      code: ["کد کالا", "کد محصول", "کد"],
+      name: ["نام قطعه", "نام جنس", "نام محصول", "نام"],
+      group_name: ["گروه"],
+      subgroup_name: ["زیرگروه"],
+      parent_code: ["کد محصول والد", "کد والد"],
+      component_code: ["کد جزء", "کد قطعه"],
+      component_name: ["نام جزء", "نام قطعه"],
+      material_code: ["کد ماده", "کد مواد"],
+      material_name: ["نام ماده", "نام مواد"],
+      quantity_per_unit: ["مقدار به ازای", "مقدار مصرف"],
+      status: ["وضعیت", "وضعیت تولید"],
+    };
+    const list = aliases[field.key] || [];
+    for (let i = 0; i < headers.length; i++) {
+      const h = String(headers[i] || "");
+      for (let j = 0; j < list.length; j++) {
+        if (h.indexOf(list[j]) !== -1) return i;
+      }
+    }
+    return -1;
+  }
+
+  function selectedIndexes(exceptField) {
+    const used = {};
+    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+      if (exceptField && sel.dataset.field === exceptField) return;
+      const v = parseInt(sel.value, 10);
+      if (!isNaN(v) && v >= 0) used[v] = true;
+    });
+    return used;
+  }
+
+  function buildOptions(headers, selected, exceptField) {
+    const used = selectedIndexes(exceptField);
+    let html = '<option value="-1">— انتخاب نشده —</option>';
+    (headers || []).forEach(function (h, i) {
+      if (used[i] && i !== selected) return;
+      const label = (h || "ستون " + (i + 1)) + " (" + colLetter(i) + ")";
+      html +=
+        '<option value="' +
+        i +
+        '"' +
+        (i === selected ? " selected" : "") +
+        ">" +
+        escapeHtml(label) +
+        "</option>";
+    });
+    return html;
+  }
+
+  function refreshExclusiveOptions() {
+    const table = byId[String(activeTableId)];
+    if (!table) return;
+    const headers = Array.isArray(table.headers) ? table.headers : [];
+    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+      const cur = parseInt(sel.value, 10);
+      const selected = isNaN(cur) ? -1 : cur;
+      const keep = selected;
+      sel.innerHTML = buildOptions(headers, keep >= 0 ? keep : -1, sel.dataset.field);
+      if (keep >= 0) sel.value = String(keep);
+      else sel.value = "-1";
+    });
+  }
+
+  function renderMap() {
+    const level = currentLevel();
+    const table = byId[String(activeTableId)];
+    mapBody.innerHTML = "";
+    if (!level || !table) return;
+    const headers = Array.isArray(table.headers) ? table.headers : [];
+    const fields = level.fields || [];
+    fields.forEach(function (f) {
+      const tr = document.createElement("tr");
+      const guessed = guessIndex(headers, f);
+      tr.innerHTML =
+        "<td>" +
+        escapeHtml(f.label) +
+        (f.required ? ' <span style="color:#b91c1c">*</span>' : "") +
+        '</td><td class="muted">' +
+        escapeHtml(f.type) +
+        '</td><td><select class="input transfer-col-select" data-field="' +
+        escapeHtml(f.key) +
+        '"></select></td>';
+      mapBody.appendChild(tr);
+      const sel = tr.querySelector("select");
+      sel.innerHTML = buildOptions(headers, guessed >= 0 ? guessed : -1, f.key);
+      if (guessed >= 0) sel.value = String(guessed);
+      sel.addEventListener("change", refreshExclusiveOptions);
+    });
+    refreshExclusiveOptions();
+  }
+
+  function setTableTransferStatus(tableId, text, isDone, errorDetail) {
+    const pane = root.querySelector('.excel-pane[data-table-id="' + tableId + '"]');
+    if (!pane) return;
+    let badge = pane.querySelector(".excel-transfer-status");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "excel-transfer-status muted";
+      const meta = pane.querySelector(".excel-pane-meta");
+      if (meta) meta.appendChild(badge);
+    }
+    badge.textContent = text || "";
+    badge.classList.toggle("is-done", !!isDone);
+    badge.classList.toggle("is-busy", !!text && !isDone && !errorDetail);
+    badge.classList.toggle("is-failed", !!errorDetail);
+
+    let actions = pane.querySelector(".excel-transfer-status-actions");
+    if (!actions) {
+      actions = document.createElement("span");
+      actions.className = "excel-transfer-status-actions";
+      badge.insertAdjacentElement("afterend", actions);
+    }
+    let viewBtn = actions.querySelector(".btn-view-transfer-errors");
+    if (errorDetail) {
+      pane._lastTransferErrorDetail = String(errorDetail).replace(/^\n+/, "");
+      if (!viewBtn) {
+        viewBtn = document.createElement("button");
+        viewBtn.type = "button";
+        viewBtn.className = "btn btn-sm btn-ghost btn-view-transfer-errors";
+        viewBtn.textContent = "مشاهده خطا";
+        viewBtn.addEventListener("click", function () {
+          showTransferErrorsDialog(pane._lastTransferErrorDetail || "");
+        });
+        actions.appendChild(viewBtn);
+      }
+      viewBtn.hidden = false;
+    } else if (viewBtn) {
+      viewBtn.hidden = true;
+      if (!text) pane._lastTransferErrorDetail = "";
+    }
+  }
+
+  function showTransferErrorsDialog(detail) {
+    const errDialog = document.getElementById("excel-transfer-errors-dialog");
+    const body = document.getElementById("excel-transfer-errors-body");
+    if (!errDialog || !body) {
+      alert(detail || "جزئیات خطا در دسترس نیست.");
+      return;
+    }
+    body.textContent = detail || "جزئیات خطا در دسترس نیست.";
+    if (typeof errDialog.showModal === "function") errDialog.showModal();
+    else errDialog.setAttribute("open", "open");
+  }
+
+  const errDialog = document.getElementById("excel-transfer-errors-dialog");
+  if (errDialog) {
+    errDialog.querySelectorAll("[data-transfer-errors-close]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (typeof errDialog.close === "function") errDialog.close();
+        else errDialog.removeAttribute("open");
+      });
+    });
+  }
+
+  function applyModeUi(mode) {
+    activeMode = mode === "update" ? "update" : "transfer";
+    if (dialogTitle) {
+      dialogTitle.textContent =
+        activeMode === "update"
+          ? uiLabels.title_update || "بروزرسانی داده جدول"
+          : uiLabels.title_transfer || "انتقال داده جدول";
+    }
+    if (dialogHint) {
+      dialogHint.textContent =
+        activeMode === "update"
+          ? uiLabels.hint_update ||
+            "فقط ردیف‌های از قبل موجود در سامانه اصلاح می‌شوند؛ ردیف جدید اضافه نمی‌شود. نگاشت ستون‌ها مانند انتقال است و جدول اکسل حذف نمی‌شود."
+          : uiLabels.hint_transfer ||
+            "بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند. هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود.";
+    }
+    if (submitBtn) {
+      submitBtn.textContent =
+        activeMode === "update"
+          ? uiLabels.btn_update || "بروزرسانی"
+          : uiLabels.btn_transfer || "انتقال";
+    }
+  }
+
+  function openFor(tableId, mode) {
+    activeTableId = tableId;
+    applyModeUi(mode || "transfer");
+    resultBox.hidden = true;
+    resultBox.innerHTML = "";
+    submitBtn.disabled = false;
+    if (!destSelect.value && destinations[0]) destSelect.value = destinations[0].id;
+    refreshLevels();
+    renderMap();
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "open");
+  }
+
+  destSelect.addEventListener("change", function () {
+    refreshLevels();
+    renderMap();
+  });
+  levelSelect.addEventListener("change", renderMap);
+
+  dialog.querySelectorAll("[data-transfer-close]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
+    });
+  });
+
+  root.querySelectorAll(".btn-transfer-table").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const pane = btn.closest(".excel-pane");
+      if (!pane) return;
+      openFor(pane.dataset.tableId, btn.dataset.transferMode || "transfer");
+    });
+  });
+
+  submitBtn.addEventListener("click", async function () {
+    const dest = currentDest();
+    const level = currentLevel();
+    const table = byId[String(activeTableId)];
+    if (!dest || !level || !table) return;
+    const mapping = {};
+    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+      mapping[sel.dataset.field] = parseInt(sel.value, 10);
+    });
+    const anyMapped = Object.keys(mapping).some(function (k) {
+      return mapping[k] >= 0;
+    });
+    if (!anyMapped) {
+      alert("حداقل یک ستون اکسل را به یک فیلد مقصد نگاشت کنید.");
+      return;
+    }
+    const isUpdate = activeMode === "update";
+    const baseBusy = isUpdate ? "در حال بروزرسانی" : "در حال انتقال دیتا";
+    submitBtn.disabled = true;
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+    setTableTransferStatus(activeTableId, baseBusy + "… ۰٪", false);
+
+    const url = transferTpl.replace(/\/0\/transfer\/?$/, "/" + table.id + "/transfer/");
+    const chunkHistory =
+      (dest.id === "production_history" || dest.id === "history") &&
+      (level.id === "history_list" || level.id === "list" || !level.id);
+    const chunkSize = chunkHistory ? 80 : null;
+
+    try {
+      let offset = 0;
+      let totalTransferred = 0;
+      let totalFailed = 0;
+      let lastMessage = "";
+      let allAlarms = [];
+      let allGroups = [];
+      let allConflicts = [];
+      let allErrorCells = [];
+      let done = false;
+      let guard = 0;
+
+      while (!done && guard < 5000) {
+        guard += 1;
+        const body = {
+          destination: dest.id,
+          level: level.id,
+          mapping: mapping,
+          mode: activeMode,
+          offset: offset,
+        };
+        if (chunkSize != null) body.limit = chunkSize;
+
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrf,
+          },
+          body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        const progress = data.progress || {};
+        const percent = typeof progress.percent === "number" ? progress.percent : 100;
+        setTableTransferStatus(activeTableId, baseBusy + "… " + percent + "٪", false);
+
+        if (Array.isArray(data.error_cells) && data.error_cells.length) {
+          allErrorCells = allErrorCells.concat(data.error_cells);
+        }
+
+        if (!data.ok && !(data.transferred > 0) && offset === 0) {
+          const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
+          const earlyDetail = formatAlarmDetail(
+            Array.isArray(data.alarm_groups) ? data.alarm_groups : [],
+            Array.isArray(data.alarms) ? data.alarms : [],
+            Array.isArray(data.conflicts) ? data.conflicts : []
+          );
+          const earlyMsg = (data.error || data.message || failLabel) + earlyDetail;
+          setTableTransferStatus(activeTableId, failLabel, false, earlyMsg);
+          if (typeof window.ExcelGridHighlightErrors === "function") {
+            window.ExcelGridHighlightErrors(activeTableId, allErrorCells);
+          }
+          submitBtn.disabled = false;
+          return;
+        }
+
+        totalTransferred += data.transferred || 0;
+        totalFailed += data.failed || 0;
+        lastMessage = data.message || lastMessage;
+        if (Array.isArray(data.alarms)) allAlarms = allAlarms.concat(data.alarms);
+        if (Array.isArray(data.alarm_groups) && data.alarm_groups.length) {
+          allGroups = mergeAlarmGroups(allGroups, data.alarm_groups);
+        }
+        if (Array.isArray(data.conflicts) && data.conflicts.length) {
+          allConflicts = data.conflicts;
+        }
+
+        if (chunkSize == null || progress.done !== false) {
+          done = true;
+        } else {
+          offset = progress.next_offset || offset + chunkSize;
+          if (progress.total_rows && offset >= progress.total_rows) done = true;
+        }
+      }
+
+      if (!allGroups.length && allAlarms.length) {
+        allGroups = synthesizeGroupsFromAlarms(allAlarms);
+      }
+      const detail = formatAlarmDetail(allGroups, allAlarms, allConflicts);
+      const failLabel = isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق";
+      const partialLabel = isUpdate ? "بروزرسانی ناقص" : "انتقال ناقص";
+      const okLabel = isUpdate ? "بروزرسانی موفق" : "انتقال موفق";
+      const hasIssues = totalFailed > 0 || (allConflicts && allConflicts.length);
+
+      if (typeof window.ExcelGridClearErrors === "function") {
+        window.ExcelGridClearErrors(activeTableId);
+      }
+      if (totalFailed > 0 && typeof window.ExcelGridHighlightErrors === "function") {
+        window.ExcelGridHighlightErrors(activeTableId, allErrorCells);
+      }
+
+      if (totalFailed > 0 && totalTransferred === 0) {
+        setTableTransferStatus(
+          activeTableId,
+          failLabel,
+          false,
+          (lastMessage || failLabel) + detail
+        );
+      } else if (hasIssues) {
+        const label =
+          totalFailed > 0
+            ? "⚠ " + (lastMessage || partialLabel) + " — ۱۰۰٪"
+            : "⚠ " +
+              (lastMessage || okLabel) +
+              " — تداخل تولید (" +
+              allConflicts.length +
+              ") — ۱۰۰٪";
+        setTableTransferStatus(
+          activeTableId,
+          label,
+          false,
+          (lastMessage || (totalFailed ? partialLabel : okLabel)) + detail
+        );
+      } else {
+        setTableTransferStatus(activeTableId, "✓ " + (lastMessage || okLabel) + " — ۱۰۰٪", true);
+      }
+      submitBtn.disabled = false;
+    } catch (err) {
+      setTableTransferStatus(
+        activeTableId,
+        isUpdate ? "✕ بروزرسانی ناموفق" : "✕ انتقال ناموفق",
+        false,
+        "خطا در ارتباط با سرور. در صورت تکرار، آلارم سیستم را بررسی کنید."
+      );
+      submitBtn.disabled = false;
+    }
+  });
+
+  function mergeAlarmGroups(existing, incoming) {
+    const byKey = {};
+    const order = [];
+    function ingest(list) {
+      (list || []).forEach(function (g) {
+        const key = g.key || g.title || "other";
+        if (!byKey[key]) {
+          byKey[key] = {
+            key: key,
+            title: g.title || key,
+            explanation: g.explanation || "",
+            count: 0,
+            examples: [],
+            rows: [],
+            rows_label: "",
+            fields_label: g.fields_label || "",
+            fields: g.fields || [],
+            excel_columns: g.excel_columns || [],
+          };
+          order.push(key);
+        }
+        const tgt = byKey[key];
+        tgt.count += g.count || 0;
+        if (g.explanation && !tgt.explanation) tgt.explanation = g.explanation;
+        if (g.fields_label && !tgt.fields_label) tgt.fields_label = g.fields_label;
+        (g.fields || []).forEach(function (f) {
+          if (tgt.fields.indexOf(f) === -1) tgt.fields.push(f);
+        });
+        (g.excel_columns || []).forEach(function (c) {
+          if (tgt.excel_columns.indexOf(c) === -1) tgt.excel_columns.push(c);
+        });
+        (g.examples || []).forEach(function (ex) {
+          if (tgt.examples.length < 3 && tgt.examples.indexOf(ex) === -1) tgt.examples.push(ex);
+        });
+        (g.rows || []).forEach(function (r) {
+          if (tgt.rows.indexOf(r) === -1) tgt.rows.push(r);
+        });
+      });
+    }
+    ingest(existing);
+    ingest(incoming);
+    return order.map(function (k) {
+      const g = byKey[k];
+        if (g.rows.length) {
+        const shown = g.rows.slice(0, 12).join("، ");
+        const more = g.rows.length > 12 ? " و " + (g.rows.length - 12) + " ردیف دیگر" : "";
+        g.rows_label = "ردیف‌های درگیر: " + shown + more;
+      }
+      if (!g.fields_label && ((g.fields && g.fields.length) || (g.excel_columns && g.excel_columns.length))) {
+        const parts = [];
+        if (g.fields && g.fields.length) parts.push("فیلد مقصد: " + g.fields.slice(0, 8).join("، "));
+        if (g.excel_columns && g.excel_columns.length) {
+          parts.push("ستون اکسل: " + g.excel_columns.slice(0, 8).join("، "));
+        }
+        g.fields_label = parts.join(" | ");
+      }
+      return g;
+    });
+  }
+
+  function synthesizeGroupsFromAlarms(alarms) {
+    // Fallback if older server response has no alarm_groups
+    return [
+      {
+        key: "raw",
+        title: "جزئیات خطا",
+        explanation: "پیام‌های خام انتقال (گروه‌بندی سمت سرور در دسترس نبود).",
+        count: alarms.length,
+        examples: alarms.slice(0, 5),
+        rows: [],
+        rows_label: "",
+      },
+    ];
+  }
+
+  function formatAlarmDetail(groups, alarms, conflicts) {
+    let out = "";
+    if (groups && groups.length) {
+      out += "\n\nخطاهای ردیف اکسل (" + groups.length + " نوع) — جدا از تداخل تولید:\n";
+      groups.forEach(function (g, i) {
+        out +=
+          "\n" +
+          (i + 1) +
+          ") " +
+          (g.title || "خطا") +
+          " — " +
+          (g.count || 0) +
+          " مورد\n";
+        if (g.explanation) out += "   توضیح: " + g.explanation + "\n";
+        if (g.rows_label) out += "   " + g.rows_label + "\n";
+        if (g.fields_label) out += "   " + g.fields_label + "\n";
+        if (g.examples && g.examples.length) {
+          out += "   نمونه:\n";
+          g.examples.forEach(function (ex) {
+            out += "   • " + ex + "\n";
+          });
+        }
+      });
+    } else if (alarms && alarms.length) {
+      out += "\n\nجزئیات خطای ردیف:\n• " + alarms.slice(0, 8).join("\n• ");
+    }
+    if (conflicts && conflicts.length) {
+      out +=
+        "\n\nتداخل‌های تولید (" +
+        conflicts.length +
+        " دستگاه) — فقط وضعیت در حال تولید/توقف موقت:\n";
+      out +=
+        "توجه: ردیف‌های بدون تداخل منتقل شده‌اند و در سوابق قابل مشاهده‌اند.\n";
+      conflicts.forEach(function (c, i) {
+        out += "\n" + (i + 1) + ") " + (c.machine_label || "دستگاه") + "\n";
+        out += "   " + (c.message || "") + "\n";
+        (c.links || []).forEach(function (link) {
+          out +=
+            "   ← ویرایش «" +
+            (link.uid || "") +
+            "» (" +
+            (link.status || "") +
+            "): " +
+            (link.url || "") +
+            "\n";
+        });
+      });
+      out += "\nبرای فیلتر جداگانه به صفحه «سوابق تولید» بروید.\n";
+    }
+    return out;
+  }
+
+})();

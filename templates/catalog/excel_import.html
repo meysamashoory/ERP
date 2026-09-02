@@ -1,0 +1,396 @@
+{% extends "base.html" %}
+{% block title %}بارگذاری — وارد کردن فایل{% endblock %}
+{% block heading %}وارد کردن فایل اکسل / CSV{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_excel %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بازگشت به لیست</a>
+</div>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="panel excel-import-panel">
+  <div class="panel-head panel-head-compact">
+    <h2>انتخاب فایل</h2>
+  </div>
+  <p class="excel-import-lead muted">
+    پس از انتخاب فایل، می‌توانید <strong>Table</strong>های اکسل یا کل <strong>Sheet</strong>ها را ببینید و وارد کنید.
+    فایل‌های CSV (جداکننده <code>,</code> یا <code>;</code> و کدگذاری UTF-8 یا Arabic Windows) هم مانند اکسل باز می‌شوند.
+  </p>
+
+  <div class="excel-dropzone" id="excel-dropzone">
+    <div class="excel-dropzone-inner">
+      <div class="excel-dropzone-icon" aria-hidden="true">xlsx</div>
+      <div class="excel-dropzone-copy">
+        <strong>فایل را اینجا رها کنید</strong>
+        <span>یا از دکمه زیر انتخاب کنید · .xlsx / .xlsm / .csv</span>
+      </div>
+      <label class="btn btn-primary-soft excel-file-pick">
+        انتخاب فایل
+        <input type="file" id="excel-file-input" hidden
+               accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
+      </label>
+    </div>
+    <div class="excel-file-chip" id="excel-file-chip" hidden>
+      <div class="excel-file-chip-meta">
+        <span class="excel-file-chip-name" id="excel-file-chip-name"></span>
+        <span class="muted excel-file-chip-size" id="excel-file-chip-size"></span>
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost" id="excel-file-clear">حذف</button>
+    </div>
+  </div>
+
+  <div class="excel-view-actions" id="excel-view-actions" hidden>
+    <button type="button" class="btn btn-excel-view" id="excel-view-tables" disabled>
+      <span class="excel-view-kicker">TABLE</span>
+      <span class="excel-view-label">مشاهده TABLE</span>
+      <span class="excel-view-desc">جداول Insert → Table با شیت، ردیف و ستون</span>
+    </button>
+    <button type="button" class="btn btn-excel-view" id="excel-view-sheets" disabled>
+      <span class="excel-view-kicker">SHEETS</span>
+      <span class="excel-view-label">مشاهده SHEETS</span>
+      <span class="excel-view-desc">تمام شیت‌های فایل — قابل افزودن به سامانه</span>
+    </button>
+  </div>
+  <p class="muted" id="excel-import-hint" style="margin-top:12px;font-size:13px"></p>
+</div>
+
+<dialog id="excel-import-dialog" class="dialog excel-import-dialog"
+        data-title-pick-table="{{ transfer_ui_labels.import_pick_table }}"
+        data-title-view-table="{{ transfer_ui_labels.import_view_table }}"
+        data-title-view-sheet="{{ transfer_ui_labels.import_view_sheet }}">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <div class="excel-dialog-title-wrap">
+        <span class="excel-dialog-mode-badge" id="excel-dialog-mode-badge">TABLE</span>
+        <h3 id="excel-dialog-title">{{ transfer_ui_labels.import_pick_table }}</h3>
+      </div>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <p class="excel-dialog-sub muted" id="excel-dialog-sub"></p>
+    <div class="excel-import-fields">
+      <label class="field">
+        <span>نام فایل در سامانه</span>
+        <input type="text" id="excel-import-title" class="input" maxlength="200">
+      </label>
+      <label class="excel-select-all">
+        <input type="checkbox" id="excel-select-all" checked>
+        <span id="excel-select-all-label">انتخاب همه</span>
+      </label>
+      <div id="excel-sheet-list" class="excel-sheet-list"></div>
+      <p class="empty excel-import-empty" id="excel-import-empty" hidden>موردی برای نمایش نیست.</p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+      <button type="button" class="btn btn-primary-soft" id="excel-import-confirm">افزودن / وارد کردن</button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var fileInput = document.getElementById("excel-file-input");
+  var dropzone = document.getElementById("excel-dropzone");
+  var fileChip = document.getElementById("excel-file-chip");
+  var chipName = document.getElementById("excel-file-chip-name");
+  var chipSize = document.getElementById("excel-file-chip-size");
+  var clearBtn = document.getElementById("excel-file-clear");
+  var viewActions = document.getElementById("excel-view-actions");
+  var viewTablesBtn = document.getElementById("excel-view-tables");
+  var viewSheetsBtn = document.getElementById("excel-view-sheets");
+  var hint = document.getElementById("excel-import-hint");
+  var dialog = document.getElementById("excel-import-dialog");
+  var dialogTitle = document.getElementById("excel-dialog-title");
+  var dialogSub = document.getElementById("excel-dialog-sub");
+  var modeBadge = document.getElementById("excel-dialog-mode-badge");
+  var titleInput = document.getElementById("excel-import-title");
+  var sheetList = document.getElementById("excel-sheet-list");
+  var emptyEl = document.getElementById("excel-import-empty");
+  var selectAll = document.getElementById("excel-select-all");
+  var selectAllLabel = document.getElementById("excel-select-all-label");
+  var confirmBtn = document.getElementById("excel-import-confirm");
+  var currentFile = null;
+  var previewCache = null;
+  var currentMode = "table";
+  var csrf = (document.querySelector("[name=csrfmiddlewaretoken]") || {}).value
+    || (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+
+  function setHint(msg, isError) {
+    hint.textContent = msg || "";
+    hint.style.color = isError ? "#b91c1c" : "";
+  }
+  function openDialog() {
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+  function closeDialog() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function formatBytes(n) {
+    if (!n && n !== 0) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function setFile(file) {
+    currentFile = file || null;
+    previewCache = null;
+    if (!currentFile) {
+      fileChip.hidden = true;
+      viewActions.hidden = true;
+      viewTablesBtn.disabled = true;
+      viewSheetsBtn.disabled = true;
+      dropzone.classList.remove("has-file");
+      setHint("");
+      return;
+    }
+    chipName.textContent = currentFile.name;
+    chipSize.textContent = formatBytes(currentFile.size);
+    fileChip.hidden = false;
+    viewActions.hidden = false;
+    viewTablesBtn.disabled = false;
+    viewSheetsBtn.disabled = false;
+    dropzone.classList.add("has-file");
+    setHint("فایل آماده است — مشاهده TABLE یا SHEETS را انتخاب کنید.");
+  }
+
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); closeDialog(); }
+  });
+
+  fileInput.addEventListener("change", function () {
+    setFile(fileInput.files && fileInput.files[0] ? fileInput.files[0] : null);
+  });
+  clearBtn.addEventListener("click", function () {
+    fileInput.value = "";
+    setFile(null);
+  });
+
+  ["dragenter", "dragover"].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("is-dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("is-dragover");
+    });
+  });
+  dropzone.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length) return;
+    var f = files[0];
+    var lower = (f.name || "").toLowerCase();
+    if (!(lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".csv"))) {
+      setHint("فقط فایل‌های .xlsx ، .xlsm یا .csv پشتیبانی می‌شوند.", true);
+      return;
+    }
+    try {
+      var dt = new DataTransfer();
+      dt.items.add(f);
+      fileInput.files = dt.files;
+    } catch (err) { /* some browsers */ }
+    setFile(f);
+  });
+
+  function syncSelectAllState() {
+    var boxes = sheetList.querySelectorAll("input[data-item]");
+    var checked = 0;
+    boxes.forEach(function (b) { if (b.checked) checked++; });
+    selectAll.checked = boxes.length > 0 && checked === boxes.length;
+    selectAll.indeterminate = checked > 0 && checked < boxes.length;
+  }
+
+  selectAll.addEventListener("change", function () {
+    sheetList.querySelectorAll("input[data-item]").forEach(function (b) {
+      b.checked = selectAll.checked;
+    });
+  });
+
+  function renderItems(mode, data) {
+    currentMode = mode;
+    var isTable = mode === "table";
+    var items = isTable ? (data.tables || []) : (data.sheets || []);
+    modeBadge.textContent = isTable ? "TABLE" : "SHEETS";
+    modeBadge.className = "excel-dialog-mode-badge " + (isTable ? "is-table" : "is-sheet");
+    dialogTitle.textContent = isTable
+      ? (dialog.getAttribute("data-title-view-table") || "مشاهده و انتخاب Table")
+      : (dialog.getAttribute("data-title-view-sheet") || "مشاهده و انتخاب Sheet");
+    selectAllLabel.textContent = isTable ? "انتخاب همه Tableها" : "انتخاب همه Sheetها";
+    var subParts = [];
+    if (data.file_kind === "csv") {
+      subParts.push("فایل CSV");
+      if (data.csv_delimiter) subParts.push("جداکننده «" + data.csv_delimiter + "»");
+      if (data.csv_encoding_label) subParts.push("کدگذاری " + data.csv_encoding_label);
+    } else {
+      subParts.push((data.sheet_count || 0) + " شیت");
+      subParts.push((data.table_count || 0) + " جدول");
+    }
+    dialogSub.textContent = subParts.join(" · ");
+    titleInput.value = data.filename || (currentFile && currentFile.name) || "";
+    sheetList.innerHTML = "";
+    emptyEl.hidden = items.length > 0;
+    items.forEach(function (t, idx) {
+      var itemName = t.name || (isTable ? ("Table" + (idx + 1)) : ("Sheet" + (idx + 1)));
+      var sheetName = t.sheet_name || "";
+      var excelTable = isTable ? itemName : "";
+      var row = document.createElement("div");
+      row.className = "excel-sheet-row excel-item-card";
+      var statsHtml =
+        '<div class="excel-item-stats">' +
+          '<span class="excel-stat"><em>' + (t.row_count || 0) + '</em> ردیف</span>' +
+          '<span class="excel-stat"><em>' + (t.column_count || 0) + '</em> ستون</span>' +
+          (sheetName && isTable
+            ? ('<span class="excel-stat excel-stat-sheet">شیت: <strong>' + escapeHtml(sheetName) + '</strong></span>')
+            : '') +
+          (t.ref ? ('<span class="excel-stat muted">' + escapeHtml(t.ref) + '</span>') : '') +
+          ((!isTable && t.table_count != null)
+            ? ('<span class="excel-stat muted">' + t.table_count + ' Table</span>')
+            : '') +
+        '</div>';
+      row.innerHTML =
+        '<label class="excel-sheet-check">' +
+          '<input type="checkbox" data-item checked ' +
+            'data-kind="' + (isTable ? "table" : "sheet") + '" ' +
+            'data-sheet="' + escapeHtml(sheetName) + '" ' +
+            'data-excel-table="' + escapeHtml(excelTable) + '" ' +
+            'value="' + escapeHtml(itemName) + '">' +
+        '</label>' +
+        '<div class="excel-sheet-meta">' +
+          '<div class="excel-item-title-row">' +
+            '<span class="excel-item-kind">' + (isTable ? "TABLE" : "SHEET") + '</span>' +
+            '<strong class="excel-item-name">' + escapeHtml(itemName) + '</strong>' +
+          '</div>' +
+          statsHtml +
+          '<label class="field excel-table-name-field">' +
+            '<span>نام نمایشی در سامانه</span>' +
+            '<input type="text" class="input excel-table-name-input" maxlength="200" value="' + escapeHtml(itemName) + '">' +
+          '</label>' +
+        '</div>';
+      sheetList.appendChild(row);
+      row.querySelector("input[data-item]").addEventListener("change", syncSelectAllState);
+    });
+    selectAll.checked = items.length > 0;
+    selectAll.indeterminate = false;
+    confirmBtn.disabled = items.length === 0;
+  }
+
+  function fetchPreview(mode) {
+    if (!currentFile) return;
+    setHint(mode === "table" ? "در حال خواندن Tableها…" : "در حال خواندن Sheetها…");
+    viewTablesBtn.disabled = true;
+    viewSheetsBtn.disabled = true;
+    var done = function () {
+      viewTablesBtn.disabled = !currentFile;
+      viewSheetsBtn.disabled = !currentFile;
+    };
+    var apply = function (data) {
+      previewCache = data;
+      if (!data.ok) {
+        setHint(data.error || "خطا در خواندن فایل", true);
+        return;
+      }
+      var items = mode === "table" ? (data.tables || []) : (data.sheets || []);
+      if (!items.length) {
+        setHint(
+          mode === "table"
+            ? "هیچ Table در فایل یافت نشد. می‌توانید از «مشاهده SHEETS» کل شیت را اضافه کنید."
+            : "هیچ شیتی در فایل یافت نشد.",
+          true
+        );
+        renderItems(mode, data);
+        openDialog();
+        return;
+      }
+      setHint("");
+      renderItems(mode, data);
+      openDialog();
+    };
+    if (previewCache && previewCache.ok) {
+      done();
+      apply(previewCache);
+      return;
+    }
+    var fd = new FormData();
+    fd.append("file", currentFile);
+    fetch("{% url 'excel_preview' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      done();
+      apply(data);
+    }).catch(function () {
+      done();
+      setHint("ارتباط با سرور برقرار نشد.", true);
+    });
+  }
+
+  viewTablesBtn.addEventListener("click", function () { fetchPreview("table"); });
+  viewSheetsBtn.addEventListener("click", function () { fetchPreview("sheet"); });
+
+  confirmBtn.addEventListener("click", function () {
+    if (!currentFile) return;
+    var selected = [];
+    sheetList.querySelectorAll(".excel-sheet-row").forEach(function (row) {
+      var box = row.querySelector("input[data-item]");
+      if (!box || !box.checked) return;
+      var nameInput = row.querySelector(".excel-table-name-input");
+      var kind = box.getAttribute("data-kind") || currentMode;
+      var excelTable = box.getAttribute("data-excel-table") || "";
+      var sheet = box.getAttribute("data-sheet") || "";
+      var name = (nameInput && nameInput.value.trim()) || excelTable || sheet;
+      selected.push({ sheet: sheet, table: excelTable, name: name, kind: kind });
+    });
+    if (!selected.length) {
+      setHint("حداقل یک مورد را انتخاب کنید.", true);
+      return;
+    }
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "در حال وارد کردن…";
+    var fd = new FormData();
+    fd.append("file", currentFile);
+    fd.append("title", titleInput.value || currentFile.name);
+    fd.append("selected_sheets", JSON.stringify(selected));
+    fetch("{% url 'excel_import_confirm' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "افزودن / وارد کردن";
+      if (!data.ok) {
+        setHint(data.error || "ورود ناموفق بود.", true);
+        return;
+      }
+      closeDialog();
+      window.location = data.detail_url || data.list_url || "{% url 'excel_list' %}";
+    }).catch(function () {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "افزودن / وارد کردن";
+      setHint("ارتباط با سرور برقرار نشد.", true);
+    });
+  });
+})();
+</script>
+{% endblock %}
