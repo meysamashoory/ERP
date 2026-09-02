@@ -40,7 +40,20 @@ class SeedAndDashboardTests(TestCase):
 
     def test_reports_excel_export(self):
         self.client.login(username="admin", password="erp12345")
-        resp = self.client.get(reverse("reports"), {"type": "fitting", "export": "excel"})
+        from reports.models import SavedReport
+
+        report = SavedReport.objects.create(
+            owner=User.objects.get(username="admin"),
+            title="گزارش تولید",
+            number=11,
+            data_source="fitting",
+            columns=[
+                {"key": "date", "source": "fitting", "level": 1},
+                {"key": "product", "source": "fitting", "level": 1},
+                {"key": "produced", "source": "fitting", "level": 1},
+            ],
+        )
+        resp = self.client.get(reverse("report_detail", args=[report.pk]), {"export": "excel"})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(
             resp["Content-Type"],
@@ -119,3 +132,78 @@ class ProgramFlowTests(TestCase):
     def test_product_needs_reorder(self):
         self.assertTrue(Product.objects.get(code="F-1100").needs_reorder)
         self.assertFalse(Product.objects.get(code="F-0900").needs_reorder)
+
+    def test_start_form_has_no_mold_field(self):
+        from production.forms import ProgramStartForm
+        program = self._make_program()
+        program.status = ProductionProgram.Status.AWAITING
+        program.save()
+        form = ProgramStartForm(program=program)
+        self.assertNotIn("mold", form.fields)
+        self.assertIn("production_type", form.fields)
+
+
+class PlanningUiTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+
+    def test_view_mode_hides_header_edit(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1000")  # approved
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "ویرایش شماره و تاریخ")
+        self.assertNotContains(resp, "صفحه اصلی")
+        self.assertNotContains(resp, "تأیید برنامه")
+
+    def test_edit_mode_shows_finalize(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1001")  # draft
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]) + "?mode=edit")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "ویرایش شماره و تاریخ")
+        self.assertContains(resp, "در حال ویرایش")
+        self.assertContains(resp, "plan-matrix")
+        self.assertNotContains(resp, "صفحه اصلی")
+
+    def test_sidebar_branding_and_logout(self):
+        self.client.login(username="admin", password="erp12345")
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "سامانه برنامه ریزی")
+        self.assertContains(resp, "و کنترل تولید")
+        self.assertContains(resp, "خروج از سامانه")
+        self.assertNotContains(resp, "مدیر سامانه")
+        self.assertContains(resp, "(admin)")
+
+    def test_plan_list_status_labels(self):
+        self.client.login(username="admin", password="erp12345")
+        resp = self.client.get(reverse("plan_list"))
+        self.assertContains(resp, "تعداد قالب برنامه")
+        self.assertContains(resp, "تعداد قالب فعال")
+        self.assertContains(resp, "تقویم برنامه")
+        self.assertContains(resp, "عملیات")
+        self.assertContains(resp, "plan-filter-col")
+        self.assertContains(resp, "topbar-filter")
+        self.assertNotContains(resp, "تغییر وضعیت")
+        self.assertNotContains(resp, "تأیید (تأییدشده)")
+
+    def test_plan_detail_edit_has_matrix_and_blue_insights(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1001")
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "روز تعویض")
+        self.assertContains(resp, "plan-matrix")
+        self.assertContains(resp, "data-insights")
+        self.assertNotContains(resp, "کالاهای برنامه")
+        self.assertContains(resp, "items-scroll")
+
+    def test_plan_detail_view_has_green_glass_no_matrix(self):
+        self.client.login(username="admin", password="erp12345")
+        plan = WeeklyPlan.objects.get(program_number="BP-1000")
+        resp = self.client.get(reverse("plan_detail", args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "mold-glass-green")
+        self.assertNotContains(resp, "plan-matrix-panel")
+        self.assertContains(resp, "قالب")

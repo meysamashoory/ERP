@@ -1,17 +1,16 @@
 """Weekly production planning for fittings, with a manager-approval workflow."""
 
-import secrets
-
 from django.conf import settings
 from django.db import models
 from django_jalali.db import models as jmodels
 
-from catalog.models import Machine, Product, ProductionTypeOption, ProductionUnit, ProductSubGroup
+from catalog.models import Machine, MoldOption, Product, ProductionTypeOption, ProductionUnit, ProductSubGroup
 
 
 def generate_program_uid() -> str:
-    """A short, unique, human-referable id for a production program."""
-    return secrets.token_hex(4).upper()  # e.g. "9F3A2B10"
+    """Placeholder default; real UIDs are assigned via planning.uid after save."""
+    import secrets
+    return secrets.token_hex(4).upper()
 
 
 PERSIAN_WEEKDAYS = [
@@ -45,11 +44,11 @@ class Weekday(models.IntegerChoices):
 
 class WeeklyPlan(models.Model):
     class Status(models.TextChoices):
-        DRAFT = "draft", "موقت"
+        DRAFT = "draft", "در انتظار تأیید"
         APPROVED = "approved", "تأییدشده"
 
     program_number = models.CharField("شماره برنامه", max_length=30, unique=True)
-    date = jmodels.jDateField("تاریخ برنامه‌ریزی")
+    date = jmodels.jDateField("تاریخ برنامه‌ریزی", unique=True)
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.DRAFT
     )
@@ -77,7 +76,8 @@ class WeeklyPlan(models.Model):
         verbose_name_plural = "برنامه‌ریزی هفتگی"
 
     def __str__(self) -> str:
-        return f"برنامه {self.program_number} — {self.date}"
+        from .utils import format_jdate
+        return f"برنامه {self.program_number} — {format_jdate(self.date)}"
 
     @property
     def weekday_name(self) -> str:
@@ -100,12 +100,20 @@ class WeeklyPlanItem(models.Model):
     product = models.ForeignKey(
         Product, on_delete=models.PROTECT, related_name="+", verbose_name="نام محصول"
     )
+    mold = models.ForeignKey(
+        MoldOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="نوع قالب",
+    )
 
     mold_change_weekday = models.IntegerField(
         "روز تعویض قالب", choices=Weekday.choices
     )
     mold_change_date = jmodels.jDateField("تاریخ تعویض قالب")
     active_cavities = models.PositiveSmallIntegerField("تعداد حفره فعال", default=1)
+    production_days = models.JSONField(
+        "روزهای تولید", default=list, blank=True,
+        help_text="فهرست {date, shift, note}",
+    )
 
     uid = models.CharField(
         "شناسه برنامه", max_length=16, unique=True, default=generate_program_uid,
@@ -123,18 +131,46 @@ class WeeklyPlanItem(models.Model):
     def __str__(self) -> str:
         return f"{self.product.name} @ {self.machine}"
 
+    def uid_for_type(self, production_type_index: int = 1) -> str:
+        from .uid import uid_for_item
+        return uid_for_item(self, production_type_index=production_type_index)
+
+    @property
+    def has_production_days(self) -> bool:
+        days = self.production_days or []
+        if not isinstance(days, list):
+            return False
+        return any(
+            isinstance(d, dict) and str(d.get("date") or "").strip()
+            for d in days
+        )
+
 
 class WeeklyPlanLine(models.Model):
-    """A repeatable (نوع تولید، مقدار تولید، سیکل تولید) row on a plan item."""
+    """A repeatable (نوع تولید، قالب، مقدار تولید، سیکل تولید) row on a plan item."""
 
     item = models.ForeignKey(
         WeeklyPlanItem, on_delete=models.CASCADE, related_name="lines"
     )
     production_type = models.ForeignKey(
-        ProductionTypeOption, on_delete=models.PROTECT, related_name="+", verbose_name="نوع تولید"
+        ProductionTypeOption, on_delete=models.PROTECT, related_name="+",
+        verbose_name="نوع تولید", null=True, blank=True,
+    )
+    mold = models.ForeignKey(
+        MoldOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="انتخاب قالب",
     )
     quantity = models.PositiveIntegerField("مقدار تولید", default=0)
     cycle = models.PositiveIntegerField("سیکل تولید (ثانیه)", default=0)
+    active_cavities = models.PositiveSmallIntegerField("تعداد حفره", default=1)
+    uid = models.CharField(
+        "شناسه ردیف تولید",
+        max_length=16,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="شناسه ۱۴ رقمی مخصوص این نوع تولید",
+    )
 
     class Meta:
         verbose_name = "ردیف تولید"
@@ -142,3 +178,13 @@ class WeeklyPlanLine(models.Model):
 
     def __str__(self) -> str:
         return f"{self.production_type} — {self.quantity}"
+
+    @property
+    def production_hours(self) -> float:
+        """Estimated production hours: (qty / cavities) × cycle seconds / 3600."""
+        cavities = max(int(self.active_cavities or getattr(self.item, "active_cavities", 1) or 1), 1)
+        qty = int(self.quantity or 0)
+        cycle = int(self.cycle or 0)
+        if qty <= 0 or cycle <= 0:
+            return 0.0
+        return round((qty / cavities) * cycle / 3600.0, 2)

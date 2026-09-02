@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'system_data' %}">بازگشت به داده‌های سیستم</a>
+  {% if can_add %}
+  <a class="btn btn-sm" href="{% url 'system_section' section_key %}?new=1">+ اضافه کردن</a>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% if editing and form %}
+<div class="panel panel-compact">
+  <div class="panel-head panel-head-compact">
+    <h2>{% if is_new %}افزودن{% else %}ویرایش{% endif %}</h2>
+  </div>
+  <form method="post" class="form-grid" style="padding:12px">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="{% if is_new %}create{% else %}update{% endif %}">
+    {% if instance %}<input type="hidden" name="id" value="{{ instance.pk }}">{% endif %}
+    {{ form.as_p }}
+    <div class="form-actions">
+      <button class="btn btn-sm" type="submit">ذخیره</button>
+      <a class="btn btn-sm btn-ghost" href="{% url 'system_section' section_key %}">انصراف</a>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="panel panel-compact panel-list">
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="table table-compact table-plan-list">
+      <thead>
+        <tr>
+          {% for col in columns %}
+          <th>{{ col.label }}</th>
+          {% endfor %}
+          {% if can_edit or can_delete %}<th style="width:180px">عملیات</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% for cell in row.cells %}
+          <td>{{ cell }}</td>
+          {% endfor %}
+          {% if can_edit or can_delete %}
+          <td class="col-ops">
+            <div class="ops-inline row-actions-ops">
+              {% if can_edit %}
+              <a class="btn btn-sm btn-ghost" href="{% url 'system_section' section_key %}?id={{ row.id }}">ویرایش</a>
+              {% endif %}
+              {% if can_delete %}
+              <form method="post" class="inline-form" onsubmit="return confirm('حذف شود؟');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="id" value="{{ row.id }}">
+                <button class="btn btn-sm btn-ghost" type="submit">حذف</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">ردیفی ثبت نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}
