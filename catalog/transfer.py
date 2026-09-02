@@ -279,7 +279,7 @@ TRANSFER_UI_LABELS: dict[str, str] = {
 
 def list_destinations_for_ui() -> list[dict[str, Any]]:
     """Destinations with naming-registry labels; inactive dest/level/field omitted."""
-    from catalog.models import SystemNamingKey
+    from catalog.naming_registry import lookup_naming_rows, resolve_from_row
 
     base = list_destinations()
     keys: list[str] = []
@@ -292,36 +292,31 @@ def list_destinations_for_ui() -> list[dict[str, Any]]:
             for field in level.get("fields") or []:
                 keys.append(f"transfer.field.{dest_id}.{level_id}.{field['key']}")
 
-    rows = {
-        r.key: r
-        for r in SystemNamingKey.objects.filter(key__in=keys).only("key", "label", "is_active")
-    }
-
-    def _resolve(key: str, default: str) -> tuple[bool, str]:
-        row = rows.get(key)
-        if row is None:
-            return True, default
-        return bool(row.is_active), (row.label or default)
+    rows = lookup_naming_rows(keys)
 
     out: list[dict[str, Any]] = []
     for dest in base:
         dest_id = dest["id"]
-        dest_ok, dest_label = _resolve(f"transfer.dest.{dest_id}", dest["label"])
+        dest_ok, dest_label = resolve_from_row(
+            rows, f"transfer.dest.{dest_id}", dest["label"]
+        )
         if not dest_ok:
             continue
         levels_out: list[dict[str, Any]] = []
         for level in dest.get("levels") or []:
             level_id = level["id"]
-            level_ok, level_label = _resolve(
-                f"transfer.level.{dest_id}.{level_id}", level["label"]
+            level_ok, level_label = resolve_from_row(
+                rows, f"transfer.level.{dest_id}.{level_id}", level["label"]
             )
             if not level_ok:
                 continue
             fields_out: list[dict[str, Any]] = []
             for field in level.get("fields") or []:
                 fkey = field["key"]
-                field_ok, field_label = _resolve(
-                    f"transfer.field.{dest_id}.{level_id}.{fkey}", field["label"]
+                field_ok, field_label = resolve_from_row(
+                    rows,
+                    f"transfer.field.{dest_id}.{level_id}.{fkey}",
+                    field["label"],
                 )
                 if not field_ok:
                     continue
@@ -334,22 +329,14 @@ def list_destinations_for_ui() -> list[dict[str, Any]]:
 
 def transfer_ui_labels_resolved() -> dict[str, str]:
     """Resolved chrome labels for the transfer/import dialogs."""
-    from catalog.models import SystemNamingKey
+    from catalog.naming_registry import lookup_naming_rows, resolve_from_row
 
-    keys = list(TRANSFER_UI_LABELS.keys())
-    rows = {
-        r.key: r
-        for r in SystemNamingKey.objects.filter(key__in=keys).only("key", "label", "is_active")
-    }
+    rows = lookup_naming_rows(TRANSFER_UI_LABELS.keys())
     out: dict[str, str] = {}
     for key, default in TRANSFER_UI_LABELS.items():
-        row = rows.get(key)
-        if row is not None and not row.is_active:
-            # Hidden chrome still needs a fallback string in the DOM; keep default.
-            out[key] = default
-            continue
-        out[key] = (row.label if row and row.label else default)
-    # Short aliases used by JS / templates
+        _active, label = resolve_from_row(rows, key, default, require_active=True)
+        # Chrome stays visible with default when inactive (hide only dest/level/field).
+        out[key] = label if _active else default
     return {
         "title_transfer": out["transfer.ui.dialog.title_transfer"],
         "title_update": out["transfer.ui.dialog.title_update"],

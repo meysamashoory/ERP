@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable
 
 
 @dataclass
@@ -378,11 +378,3 @@ def build_system_groups() -> list[SystemGroup]:
         ),
     ]
 
-
-# Kept for any legacy links to /data/system/<key>/
-def section_specs() -> dict[str, dict[str, Any]]:
-    return {}
-
-
-def get_section_spec(key: str) -> dict[str, Any] | None:
-    return section_specs().get(key)

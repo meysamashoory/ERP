@@ -50,38 +50,30 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     """Accordion hub — each item opens full Django-admin capabilities in app chrome."""
     from django.urls import NoReverseMatch, reverse
 
-    from .models import SystemNamingKey
-    from .naming_registry import ensure_registry_seeded, resolve_label
+    from .naming_registry import ensure_registry_seeded, lookup_naming_rows
     from .system_sections import build_system_groups
 
     ensure_registry_seeded()
 
-    # Preload section/group naming rows for title resolve + hide
+    groups = build_system_groups()
     naming_keys: list[str] = []
-    for group in build_system_groups():
+    for group in groups:
         naming_keys.append(f"system.group.{group.key}")
         for item in group.items:
             naming_keys.append(f"system.section.{item.key}")
-    naming_rows = {
-        r.key: r
-        for r in SystemNamingKey.objects.filter(key__in=naming_keys).only(
-            "key", "label", "is_active"
-        )
-    }
+    naming_rows = lookup_naming_rows(naming_keys)
 
     groups_out = []
-    for group in build_system_groups():
-        group_row = naming_rows.get(f"system.group.{group.key}")
+    for group in groups:
+        group_key = f"system.group.{group.key}"
+        group_row = naming_rows.get(group_key)
         if group_row is not None and not group_row.is_active:
             continue
-        group_title = (
-            group_row.label
-            if group_row and group_row.label
-            else resolve_label(f"system.group.{group.key}", group.title)
-        )
+        group_title = (group_row.label if group_row and group_row.label else group.title)
         items_out = []
         for item in group.items:
-            item_row = naming_rows.get(f"system.section.{item.key}")
+            item_key = f"system.section.{item.key}"
+            item_row = naming_rows.get(item_key)
             if item_row is not None and not item_row.is_active:
                 continue
             url = ""
@@ -108,11 +100,7 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
                     add_url = reverse(item.admin_add)
                 except NoReverseMatch:
                     add_url = ""
-            item_title = (
-                item_row.label
-                if item_row and item_row.label
-                else resolve_label(f"system.section.{item.key}", item.title)
-            )
+            item_title = (item_row.label if item_row and item_row.label else item.title)
             items_out.append(
                 {
                     "key": item.key,
@@ -956,6 +944,8 @@ def system_admin_header_save(request: HttpRequest) -> JsonResponse:
     """Persist admin changelist header renames into the naming registry."""
     if not _can_edit_naming(request.user):
         return JsonResponse({"ok": False, "error": "مجاز نیستید."}, status=403)
+    import re
+
     from .models import SystemNamingKey
 
     try:
@@ -969,17 +959,36 @@ def system_admin_header_save(request: HttpRequest) -> JsonResponse:
     if not label:
         return JsonResponse({"ok": False, "error": "عنوان خالی است."}, status=400)
 
-    # Prefer field name when known; else path+index
-    if field:
-        key = f"admin.header.{field}"
-        # Try to match existing admin.field.* keys by column_key suffix
-        existing = SystemNamingKey.objects.filter(
-            category=SystemNamingKey.Category.COLUMN, column_key=field
-        ).first()
+    # Prefer scoped harvest key: admin.field.{app}.{model}.{col} from /admin/app/model/
+    app_label = model_name = ""
+    m = re.search(r"/admin/([^/]+)/([^/]+)/", path)
+    if m:
+        app_label, model_name = m.group(1), m.group(2)
+
+    if field and app_label and model_name:
+        key = f"admin.field.{app_label}.{model_name}.{field}"
+        existing = SystemNamingKey.objects.filter(key=key).first()
         if existing:
             existing.label = label
             existing.save(update_fields=["label", "updated_at"])
             return JsonResponse({"ok": True, "id": existing.pk, "key": existing.key})
+        row = SystemNamingKey.objects.create(
+            key=key[:220],
+            label=label,
+            default_label=label,
+            address=f"پنل مدیریت (ادمین) ← /admin/{app_label}/{model_name}/ · list_display={field}",
+            category=SystemNamingKey.Category.COLUMN,
+            section_key="",
+            table_key=f"admin.{app_label}.{model_name}"[:120],
+            column_key=field,
+            is_custom=False,
+            is_active=True,
+        )
+        return JsonResponse({"ok": True, "id": row.pk, "key": row.key})
+
+    # Fallback for unknown admin pages without a parseable model path
+    if field:
+        key = f"admin.header.{field}"
     else:
         key = f"admin.header.path:{path}:col:{col_index}"
 

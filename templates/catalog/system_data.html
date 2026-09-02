@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load system_labels %}
 {% block title %}داده‌های سیستم{% endblock %}
 {% block heading %}داده‌های سیستم{% endblock %}
 {% block nav_data %}{% endblock %}
@@ -26,10 +27,10 @@
         <table class="table table-compact table-plan-list" data-erp-nav="off">
           <thead>
             <tr>
-              <th style="width:70px">ردیف</th>
-              <th>بخش</th>
-              <th style="width:100px">تعداد</th>
-              <th style="width:160px">عملیات</th>
+              <th style="width:70px" data-col="row">{% system_col "catalog.system_data_hub" "row" "ردیف" %}</th>
+              <th data-col="section">{% system_col "catalog.system_data_hub" "section" "بخش" %}</th>
+              <th style="width:100px" data-col="count">{% system_col "catalog.system_data_hub" "count" "تعداد" %}</th>
+              <th style="width:160px" data-col="ops">{% system_col "catalog.system_data_hub" "ops" "عملیات" %}</th>
             </tr>
           </thead>
           <tbody>

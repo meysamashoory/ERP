@@ -218,3 +218,60 @@ class SystemNamingRegistryTests(TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "transfer.ui.dialog.title_transfer")
         self.assertContains(page, "دیالوگ انتقال")
+
+    def test_excel_list_uses_renamed_column_label(self):
+        from catalog.models import ExcelUpload
+
+        sync_naming_registry()
+        ExcelUpload.objects.create(title="نمونه", original_name="sample.xlsx", uploaded_by=self.admin)
+        row = SystemNamingKey.objects.get(key="ui.table.catalog.excel_list.col.title")
+        row.label = "نام فایل سفارشی"
+        row.save(update_fields=["label"])
+        self.client.login(username="admin", password="erp12345")
+        page = self.client.get(reverse("excel_list"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "نام فایل سفارشی")
+        self.assertContains(page, 'data-col="title"')
+
+    def test_admin_header_save_scoped_to_model(self):
+        sync_naming_registry()
+        self.client.login(username="admin", password="erp12345")
+        # Seed two models that share column_key "label"
+        key_a = "admin.field.catalog.moldoption.label"
+        key_b = "admin.field.catalog.stoppagereason.label"
+        SystemNamingKey.objects.update_or_create(
+            key=key_a,
+            defaults={
+                "label": "عنوان",
+                "default_label": "عنوان",
+                "category": SystemNamingKey.Category.COLUMN,
+                "table_key": "admin.catalog.moldoption",
+                "column_key": "label",
+                "is_active": True,
+            },
+        )
+        SystemNamingKey.objects.update_or_create(
+            key=key_b,
+            defaults={
+                "label": "عنوان",
+                "default_label": "عنوان",
+                "category": SystemNamingKey.Category.COLUMN,
+                "table_key": "admin.catalog.stoppagereason",
+                "column_key": "label",
+                "is_active": True,
+            },
+        )
+        resp = self.client.post(
+            reverse("system_admin_header_save"),
+            data=json.dumps({
+                "path": "/admin/catalog/moldoption/",
+                "field": "label",
+                "label": "عنوان قالب سفارشی",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
+        self.assertEqual(resp.json()["key"], key_a)
+        self.assertEqual(SystemNamingKey.objects.get(key=key_a).label, "عنوان قالب سفارشی")
+        self.assertEqual(SystemNamingKey.objects.get(key=key_b).label, "عنوان")

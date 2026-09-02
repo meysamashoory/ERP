@@ -24,7 +24,44 @@ def resolve_label(key: str, default: str = "") -> str:
     return default or key
 
 
-def resolve_labels(keys: Iterable[str]) -> dict[str, str]:
+def lookup_naming_rows(keys: Iterable[str]) -> dict[str, SystemNamingKey]:
+    """Batch-load naming rows (active and inactive) keyed by ``key``."""
+    key_list = [str(k).strip() for k in keys if str(k).strip()]
+    if not key_list:
+        return {}
+    return {
+        r.key: r
+        for r in SystemNamingKey.objects.filter(key__in=key_list).only(
+            "key", "label", "is_active", "default_label"
+        )
+    }
+
+
+def resolve_from_row(
+    rows: dict[str, SystemNamingKey],
+    key: str,
+    default: str = "",
+    *,
+    require_active: bool = True,
+) -> tuple[bool, str]:
+    """Return ``(is_active_or_missing, label)`` using a preloaded row map.
+
+    Missing keys are treated as active with ``default``.
+    When ``require_active`` is True and the row is inactive, label still returns
+    ``default`` (useful for chrome that must stay visible).
+    """
+    row = rows.get(key)
+    if row is None:
+        return True, default
+    label = row.label or default
+    if require_active and not row.is_active:
+        return False, default
+    return bool(row.is_active), label
+
+
+def resolve_labels(keys: Iterable[str], defaults: dict[str, str] | None = None) -> dict[str, str]:
+    """Batch resolve active labels; falls back to ``defaults`` then the key itself."""
+    defaults = defaults or {}
     key_list = [str(k).strip() for k in keys if str(k).strip()]
     if not key_list:
         return {}
@@ -34,7 +71,10 @@ def resolve_labels(keys: Iterable[str]) -> dict[str, str]:
             "key", "label"
         )
     }
-    return {k: found.get(k, k) for k in key_list}
+    return {
+        k: (found.get(k) or defaults.get(k) or k)
+        for k in key_list
+    }
 
 
 def table_columns(table_key: str, *, include_inactive: bool = False) -> list[SystemNamingKey]:

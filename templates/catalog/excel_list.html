@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load system_labels %}
 {% block title %}بارگذاری{% endblock %}
 {% block heading %}بارگذاری فایل اکسل{% endblock %}
 {% block nav_data %}{% endblock %}
@@ -20,13 +21,13 @@
     <table class="table">
       <thead>
         <tr>
-          <th>نام فایل</th>
-          <th>تعداد جدول</th>
-          <th>جمع ردیف</th>
-          <th>جداول</th>
-          <th>بارگذارنده</th>
-          <th>تاریخ</th>
-          <th style="width:200px" class="col-ops">عملیات</th>
+          <th data-col="title">{% system_col "catalog.excel_list" "title" "نام فایل" %}</th>
+          <th data-col="table_count">{% system_col "catalog.excel_list" "table_count" "تعداد جدول" %}</th>
+          <th data-col="row_total">{% system_col "catalog.excel_list" "row_total" "جمع ردیف" %}</th>
+          <th data-col="table_names">{% system_col "catalog.excel_list" "table_names" "جداول" %}</th>
+          <th data-col="uploader">{% system_col "catalog.excel_list" "uploader" "بارگذارنده" %}</th>
+          <th data-col="created">{% system_col "catalog.excel_list" "created" "تاریخ" %}</th>
+          <th style="width:200px" class="col-ops" data-col="ops">{% system_col "catalog.excel_list" "ops" "عملیات" %}</th>
         </tr>
       </thead>
       <tbody>
