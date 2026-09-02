@@ -1,0 +1,375 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="{% static 'css/designer.css' %}?v=19">
+</head>
+<body class="designer-app">
+<form method="post" id="designer-form" data-mode="{{ mode }}" data-pk="{{ print_form.pk|default:'' }}"
+      data-save-url="{% if print_form %}{% url 'print_form_save_ajax' print_form.pk %}{% else %}{% url 'print_form_save_ajax_new' %}{% endif %}"
+      data-list-url="{% url 'print_form_list' %}">
+  {% csrf_token %}
+  {{ form.frames_json }}
+  {{ form.page_settings_json }}
+  {{ form.page_width_mm }}
+  {{ form.page_height_mm }}
+  {{ form.title }}
+  {{ form.number }}
+  {{ form.description }}
+  {{ form.is_standard }}
+  {{ form.purpose }}
+  {{ form.linked_report }}
+
+  <div class="dz-shell">
+    <div class="dz-titlebar">
+      <span class="dz-title" id="dz-window-title">{{ page_title }}</span>
+      <div class="dz-win-btns">
+        <button type="button" id="dz-minimize" title="کوچک‌سازی">—</button>
+        <button type="button" id="dz-maximize" title="بزرگ‌سازی">□</button>
+        <button type="button" class="dz-close" id="dz-close" title="بستن">×</button>
+      </div>
+    </div>
+
+    <div class="dz-topbar">
+      <button type="button" class="dz-btn" id="btn-undo" title="بازگشت" disabled>↶ بکوارد</button>
+      <button type="button" class="dz-btn" id="btn-redo" title="جلو" disabled>↷ فوروارد</button>
+      <span class="sep"></span>
+      <div class="dz-align-group" id="align-group">
+        <button type="button" data-align="right" disabled title="تراز راست">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="1.8" rx=".4"/><rect x="6" y="7.2" width="12" height="1.8" rx=".4"/><rect x="6" y="11.4" width="12" height="1.8" rx=".4"/><rect x="2" y="15.6" width="16" height="1.8" rx=".4"/></svg>
+        </button>
+        <button type="button" data-align="center" disabled title="تراز وسط">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="1.8" rx=".4"/><rect x="5" y="7.2" width="10" height="1.8" rx=".4"/><rect x="5" y="11.4" width="10" height="1.8" rx=".4"/><rect x="2" y="15.6" width="16" height="1.8" rx=".4"/></svg>
+        </button>
+        <button type="button" data-align="left" disabled title="تراز چپ">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="1.8" rx=".4"/><rect x="2" y="7.2" width="12" height="1.8" rx=".4"/><rect x="2" y="11.4" width="12" height="1.8" rx=".4"/><rect x="2" y="15.6" width="16" height="1.8" rx=".4"/></svg>
+        </button>
+        <button type="button" data-valign="top" disabled title="بالا">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2.5" width="16" height="1.8" rx=".4"/><rect x="5.5" y="6" width="9" height="4.2" rx=".6"/><rect x="5.5" y="12.5" width="9" height="4.2" rx=".6"/></svg>
+        </button>
+        <button type="button" data-valign="middle" disabled title="وسط عمودی">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="9.1" width="16" height="1.8" rx=".4"/><rect x="5.5" y="3.2" width="9" height="4.2" rx=".6"/><rect x="5.5" y="12.6" width="9" height="4.2" rx=".6"/></svg>
+        </button>
+        <button type="button" data-valign="bottom" disabled title="پایین">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="15.7" width="16" height="1.8" rx=".4"/><rect x="5.5" y="3.2" width="9" height="4.2" rx=".6"/><rect x="5.5" y="9.3" width="9" height="4.2" rx=".6"/></svg>
+        </button>
+      </div>
+      <span class="sep"></span>
+      <div class="dz-font-group" id="font-toolbar" title="قالب‌بندی متن">
+        <select id="tb-font-family" disabled aria-label="فونت">
+          <optgroup label="فارسی">
+            <option value="Vazirmatn, Tahoma, sans-serif">وزیرمتن</option>
+            <option value="Tahoma">Tahoma</option>
+            <option value="'IRANSans', Tahoma, sans-serif">ایران‌سنس</option>
+            <option value="'IRANSansX', Tahoma, sans-serif">ایران‌سنس X</option>
+            <option value="'Shabnam', Tahoma, sans-serif">شبنم</option>
+            <option value="'Samim', Tahoma, sans-serif">صمیم</option>
+            <option value="'Sahel', Tahoma, sans-serif">ساحل</option>
+            <option value="'Tanha', Tahoma, sans-serif">تنها</option>
+            <option value="'Parastoo', Tahoma, sans-serif">پرستو</option>
+            <option value="'Gandom', Tahoma, serif">گندم</option>
+            <option value="'Nahid', Tahoma, sans-serif">ناهید</option>
+            <option value="'B Nazanin', Tahoma, sans-serif">بی‌نازنین</option>
+            <option value="'B Lotus', Tahoma, serif">بی‌لوتوس</option>
+            <option value="'B Mitra', Tahoma, serif">بی‌میترا</option>
+            <option value="'B Traffic', Tahoma, sans-serif">بی‌ترافیک</option>
+            <option value="'B Yekan', Tahoma, sans-serif">بی‌یکان</option>
+            <option value="'B Zar', Tahoma, serif">بی‌زر</option>
+            <option value="'B Titr', Tahoma, sans-serif">بی‌تیتر</option>
+            <option value="'B Koodak', Tahoma, sans-serif">بی‌کودک</option>
+            <option value="'B Homa', Tahoma, sans-serif">بی‌هما</option>
+            <option value="'XB Niloofar', Tahoma, serif">ایکس‌بی نیلوفر</option>
+            <option value="'XB Zar', Tahoma, serif">ایکس‌بی زر</option>
+          </optgroup>
+          <optgroup label="لاتین">
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+            <option value="'Helvetica Neue', Helvetica, Arial, sans-serif">Helvetica</option>
+            <option value="'Times New Roman', Times, serif">Times New Roman</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Garamond, serif">Garamond</option>
+            <option value="'Courier New', monospace">Courier New</option>
+            <option value="Verdana, sans-serif">Verdana</option>
+            <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+            <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+            <option value="Impact, sans-serif">Impact</option>
+            <option value="'Palatino Linotype', Palatino, serif">Palatino</option>
+            <option value="'Lucida Console', monospace">Lucida Console</option>
+            <option value="'Lucida Sans Unicode', 'Lucida Grande', sans-serif">Lucida Sans</option>
+            <option value="'Gill Sans', 'Gill Sans MT', sans-serif">Gill Sans</option>
+            <option value="Calibri, Candara, sans-serif">Calibri</option>
+            <option value="Cambria, serif">Cambria</option>
+            <option value="'Century Gothic', sans-serif">Century Gothic</option>
+          </optgroup>
+        </select>
+        <select id="tb-font-size" disabled aria-label="اندازه">
+          <option value="8">۸</option>
+          <option value="9">۹</option>
+          <option value="10">۱۰</option>
+          <option value="11">۱۱</option>
+          <option value="12" selected>۱۲</option>
+          <option value="14">۱۴</option>
+          <option value="16">۱۶</option>
+          <option value="18">۱۸</option>
+          <option value="20">۲۰</option>
+          <option value="24">۲۴</option>
+          <option value="28">۲۸</option>
+          <option value="32">۳۲</option>
+          <option value="36">۳۶</option>
+          <option value="48">۴۸</option>
+          <option value="72">۷۲</option>
+        </select>
+        <div class="dz-color-wrap" id="tb-color-wrap">
+          <button type="button" id="tb-font-color-btn" disabled title="رنگ فونت" aria-label="رنگ فونت">
+            <span class="dz-color-swatch" id="tb-font-color-swatch"></span>
+            <span class="dz-color-caret">▾</span>
+          </button>
+          <input type="hidden" id="tb-font-color" value="#111111">
+          <input type="color" id="tb-font-color-native" value="#111111" tabindex="-1" aria-hidden="true">
+          <div class="dz-color-panel" id="tb-color-panel" hidden>
+            <div class="dz-color-section-label">رنگ‌های زمینه</div>
+            <div class="dz-color-grid" id="tb-color-theme"></div>
+            <div class="dz-color-section-label">رنگ‌های استاندارد</div>
+            <div class="dz-color-grid" id="tb-color-standard"></div>
+            <button type="button" class="dz-color-more" id="tb-color-more">رنگ‌های بیشتر…</button>
+          </div>
+        </div>
+        <button type="button" id="tb-font-bold" disabled title="ضخیم (Bold)"><b>B</b></button>
+        <button type="button" id="tb-font-italic" disabled title="ایتالیک"><i>I</i></button>
+        <button type="button" id="tb-font-underline" disabled title="زیرخط"><u>U</u></button>
+      </div>
+      <span class="sep"></span>
+      <label class="dz-chk"><input type="checkbox" id="chk-grid" checked> Gridlines</label>
+      <label class="dz-chk"><input type="checkbox" id="chk-ruler" checked> Ruler</label>
+      <label class="dz-chk"><input type="checkbox" id="chk-guides" checked> Guides</label>
+      <span class="sep"></span>
+      <button type="button" class="dz-btn" id="btn-copy" disabled>Copy</button>
+      <button type="button" class="dz-btn" id="btn-paste" disabled>Paste</button>
+      <span class="sep"></span>
+      <label class="dz-purpose-wrap">
+        <span>کاربرد فرم</span>
+        <select id="ui-form-purpose">
+          <option value="">— انتخاب کاربرد —</option>
+          <option value="weekly_planning">برنامه ریزی هفتگی</option>
+          <option value="production">برنامه های تولید</option>
+          <option value="reports">گزارش ها</option>
+        </select>
+      </label>
+      <label class="dz-purpose-wrap" id="report-name-wrap" hidden>
+        <span>نام گزارش</span>
+        <select id="ui-linked-report">
+          <option value="">— انتخاب گزارش —</option>
+        </select>
+      </label>
+      <span class="sep"></span>
+      <button type="button" class="dz-btn" id="btn-preview">پیش‌نمایش چاپ</button>
+      <button type="button" class="dz-btn" id="btn-print">چاپ</button>
+      <span class="sep"></span>
+      <button type="button" class="dz-btn ok" id="btn-save">ذخیره</button>
+      <button type="button" class="dz-btn primary" id="btn-register">ثبت فرم</button>
+    </div>
+
+    <div class="dz-main">
+      <aside class="dz-left" id="props-panel">
+        <div class="dz-section">
+          <h3>مشخصات فرم</h3>
+          <div class="dz-field">
+            <label>عنوان فرم</label>
+            <input type="text" id="ui-form-title" maxlength="200" placeholder="نام فرم">
+          </div>
+          <div class="dz-field">
+            <label>شماره فرم</label>
+            <input type="number" id="ui-form-number" min="1" max="999" step="1" lang="en" dir="ltr">
+          </div>
+          <div id="report-sheet-controls" hidden>
+            <div class="dz-field">
+              <label>برگه</label>
+              <select id="ui-form-sheet"></select>
+            </div>
+            <div class="dz-field">
+              <label>انتقال از</label>
+              <div class="dz-transfer-row">
+                <select id="ui-transfer-from"></select>
+                <button type="button" class="dz-btn" id="btn-transfer-sheet">اعمال</button>
+              </div>
+            </div>
+            <p class="muted" style="font-size:11px;margin:0">هر برگه یک صفحه چاپ است. با جابه‌جایی برگه، کادرها و عناوین همان برگه نمایش داده می‌شود.</p>
+          </div>
+        </div>
+        <div class="dz-section">
+          <h3>کاغذ و حاشیه چاپ</h3>
+          <div class="dz-field">
+            <label>اندازه کاغذ</label>
+            <select id="paper-preset">
+              <option value="A4-P">A4 عمودی</option>
+              <option value="A4-L">A4 افقی</option>
+              <option value="A5-P">A5 عمودی</option>
+              <option value="A5-L">A5 افقی</option>
+              <option value="custom">سفارشی</option>
+            </select>
+          </div>
+          <div class="dz-grid-2">
+            <div class="dz-field"><label>عرض</label><input type="number" id="prop-page-w" min="50" max="600" step="1" lang="en" dir="ltr"></div>
+            <div class="dz-field"><label>ارتفاع</label><input type="number" id="prop-page-h" min="50" max="600" step="1" lang="en" dir="ltr"></div>
+            <div class="dz-field"><label>حاشیه بالا</label><input type="number" id="margin-top" min="0" max="80" step="0.5" lang="en" dir="ltr"></div>
+            <div class="dz-field"><label>حاشیه پایین</label><input type="number" id="margin-bottom" min="0" max="80" step="0.5" lang="en" dir="ltr"></div>
+            <div class="dz-field"><label>حاشیه راست</label><input type="number" id="margin-right" min="0" max="80" step="0.5" lang="en" dir="ltr"></div>
+            <div class="dz-field"><label>حاشیه چپ</label><input type="number" id="margin-left" min="0" max="80" step="0.5" lang="en" dir="ltr"></div>
+          </div>
+          <div class="dz-field">
+            <label>شبکه (میلی‌متر)</label>
+            <select id="snap-mm">
+              <option value="1">۱</option>
+              <option value="2" selected>۲</option>
+              <option value="3">۳</option>
+              <option value="4">۴</option>
+              <option value="5">۵</option>
+              <option value="6">۶</option>
+              <option value="7">۷</option>
+              <option value="8">۸</option>
+              <option value="9">۹</option>
+              <option value="10">۱۰</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="dz-section">
+          <h3>ویژگی شیء</h3>
+          <p class="muted" id="props-empty" style="font-size:12px;color:#64748b">یک آیتم را انتخاب کنید.</p>
+          <div id="props-fields" hidden>
+            <div class="dz-field"><label>برچسب</label><input id="prop-label"></div>
+            <div class="dz-grid-2">
+              <div class="dz-field"><label>X</label><input type="number" step="1" id="prop-x" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>Y</label><input type="number" step="1" id="prop-y" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>عرض</label><input type="number" step="1" id="prop-w" lang="en" dir="ltr"></div>
+              <div class="dz-field"><label>ارتفاع</label><input type="number" step="1" id="prop-h" lang="en" dir="ltr"></div>
+            </div>
+            <div class="dz-field">
+              <label>چرخش (درجه)</label>
+              <input type="number" id="prop-rotation" min="-180" max="180" step="1" lang="en" dir="ltr">
+            </div>
+            <div id="logo-props" hidden>
+              <div class="dz-field"><label>تصویر لوگو</label><input type="file" id="prop-logo-file" accept="image/*"></div>
+            </div>
+            <div id="field-bind-props" hidden>
+              <div class="dz-field" id="report-level-wrap" hidden>
+                <label>انتخاب سطح گزارش</label>
+                <select id="prop-report-level"></select>
+              </div>
+              <div class="dz-field"><label>منبع</label><select id="prop-source"></select></div>
+              <div class="dz-field"><label>ستون</label><select id="prop-source-key"></select></div>
+              <div id="extra-key-bindings"></div>
+              <button type="button" class="btn btn-sm btn-ghost" id="btn-add-key-bind" style="margin-top:6px">اتصال کلید</button>
+              <p id="field-bind-path" style="font-size:11px;color:#64748b;margin:4px 0 0"></p>
+              <p style="font-size:11px;color:#64748b;margin:6px 0 0">تکرار فیلد به تعداد آیتم‌های مرتبط (برنامه / گزارش) است. چند اتصال در چاپ با « ، » جدا می‌شوند.</p>
+            </div>
+            <div id="row-number-props" hidden>
+              <p style="font-size:11px;color:#64748b;margin:0">شماره ردیف به تعداد آیتم‌های مرتبط (۱…N) ساخته می‌شود.</p>
+            </div>
+            <div id="shape-extend-props" hidden>
+              <div class="dz-field">
+                <label>تکرار کادر / خط</label>
+                <select id="prop-extend-mode">
+                  <option value="none">بدون تکرار</option>
+                  <option value="page">تکرار تا پایین صفحه</option>
+                  <option value="field">تکرار وابسته به فیلد</option>
+                  <option value="count">تعداد تکرار</option>
+                </select>
+              </div>
+              <div class="dz-field" id="extend-count-wrap">
+                <label>تعداد تکرار</label>
+                <input type="number" id="prop-extend-count" min="1" max="99" step="1" value="2" lang="en" dir="ltr" disabled>
+              </div>
+              <p style="font-size:11px;color:#64748b;margin:4px 0 0">تا پایین صفحه مستقل از تعداد آیتم است؛ وابسته به فیلد با تعداد آیتم‌های داده هماهنگ می‌شود؛ تعداد تکرار تعداد ثابت ردیف‌ها را مشخص می‌کند.</p>
+            </div>
+            <div id="line-style-props" hidden>
+              <div class="dz-field">
+                <label>نوع خط</label>
+                <input type="hidden" id="prop-line-style" value="solid">
+                <div class="line-style-picker" data-line-picker="prop-line-style" data-allow-none="0"></div>
+              </div>
+            </div>
+            <div id="box-style-props" hidden>
+              <div class="dz-field">
+                <label>الگوی رنگ داخل کادر</label>
+                <div id="fill-pattern-list" class="dz-fill-list"></div>
+                <button type="button" class="dz-btn" id="btn-add-fill" title="افزودن الگو">+ الگوی رنگ</button>
+                <p class="muted" style="font-size:11px;margin:4px 0 0">تا ۹ الگو؛ در تکرار به ترتیب اعمال می‌شود.</p>
+              </div>
+              <div class="dz-grid-2">
+                <div class="dz-field"><label>خط بالا</label>
+                  <input type="hidden" id="prop-border-top" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-top" data-allow-none="1"></div>
+                </div>
+                <div class="dz-field"><label>خط پایین</label>
+                  <input type="hidden" id="prop-border-bottom" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-bottom" data-allow-none="1"></div>
+                </div>
+                <div class="dz-field"><label>خط راست</label>
+                  <input type="hidden" id="prop-border-right" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-right" data-allow-none="1"></div>
+                </div>
+                <div class="dz-field"><label>خط چپ</label>
+                  <input type="hidden" id="prop-border-left" value="solid">
+                  <div class="line-style-picker" data-line-picker="prop-border-left" data-allow-none="1"></div>
+                </div>
+              </div>
+              <label class="dz-chk"><input type="checkbox" id="prop-last-line-enable"> خط آخر مستقل</label>
+              <div class="dz-field" id="last-line-wrap">
+                <label>نوع خط آخر (پایین)</label>
+                <input type="hidden" id="prop-last-line-style" value="solid">
+                <div class="line-style-picker" data-line-picker="prop-last-line-style" data-allow-none="1" id="last-line-picker"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="dz-canvas-wrap" id="canvas-wrap">
+        <div class="dz-ruler-corner" id="ruler-corner"></div>
+        <div class="dz-ruler-h" id="ruler-h"></div>
+        <div class="dz-ruler-v" id="ruler-v"></div>
+        <div class="dz-scroll" id="designer-scroll">
+          <div class="dz-stage" id="designer-stage">
+            <div class="dz-page" id="form-canvas"></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="dz-right">
+        <div class="dz-section">
+          <h3>ابزارها</h3>
+          <div class="dz-tool-list">
+            <button type="button" class="dz-tool" data-add="header">عنوان</button>
+            <button type="button" class="dz-tool" data-add="box">کادر</button>
+            <button type="button" class="dz-tool" data-add="field">کلید منابع</button>
+            <button type="button" class="dz-tool" data-add="row_number">ردیف</button>
+            <button type="button" class="dz-tool" data-add="line_h">خط افقی</button>
+            <button type="button" class="dz-tool" data-add="line_v">خط عمودی</button>
+            <button type="button" class="dz-tool" data-add="logo">لوگو</button>
+          </div>
+        </div>
+        <div class="dz-section">
+          <h3>لایه‌ها / کلیپس</h3>
+          <p class="muted" style="font-size:11px;margin:0 0 6px">برای ترتیب لایه بکشید و رها کنید.</p>
+          <div id="layers-list"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</form>
+<div class="dz-toast" id="dz-toast"></div>
+<button type="button" class="dz-exit-preview no-print" id="btn-exit-preview" hidden>بازگشت به طراحی</button>
+
+{{ column_groups|json_script:"column-groups" }}
+{{ purpose_catalogs|json_script:"purpose-catalogs" }}
+{{ saved_reports|json_script:"saved-reports" }}
+<script id="frames-initial" type="application/json">{{ frames_json|safe }}</script>
+<script id="page-settings-initial" type="application/json">{{ page_settings_json|default:'{}'|safe }}</script>
+<script src="{% static 'js/form_sheet_render.js' %}?v=7"></script>
+<script src="{% static 'js/form_designer.js' %}?v=20"></script>
+</body>
+</html>

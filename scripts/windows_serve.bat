@@ -18,9 +18,10 @@ if "%DJANGO_SECRET_KEY%"=="" (
   set DJANGO_SECRET_KEY=change-me-please-set-a-real-secret-key
 )
 
-REM Hosts allowed to reach the server. Best practice: set your server IP,
-REM e.g.  set DJANGO_ALLOWED_HOSTS=192.168.1.50,localhost
-if "%DJANGO_ALLOWED_HOSTS%"=="" set DJANGO_ALLOWED_HOSTS=*
+REM Hosts allowed to reach the server. Prefer explicit names/IPs in production:
+REM   set DJANGO_ALLOWED_HOSTS=planning.poliran,192.168.1.50,localhost
+if "%DJANGO_ALLOWED_HOSTS%"=="" set DJANGO_ALLOWED_HOSTS=planning.poliran,localhost,127.0.0.1
+if "%DJANGO_CSRF_TRUSTED_ORIGINS%"=="" set DJANGO_CSRF_TRUSTED_ORIGINS=http://planning.poliran:8000,http://planning.poliran
 
 echo [1/3] Applying migrations ...
 python manage.py migrate --noinput
@@ -30,6 +31,7 @@ echo [2/3] Collecting static files ...
 python manage.py collectstatic --noinput
 if errorlevel 1 exit /b 1
 
-echo [3/3] Starting Waitress on http://0.0.0.0:8000/ ...
+echo [3/3] Starting Waitress on http://0.0.0.0:8000/
+echo       Open from LAN: http://planning.poliran:8000/
 waitress-serve --listen=0.0.0.0:8000 erp.wsgi:application
 endlocal
