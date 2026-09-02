@@ -634,3 +634,92 @@ class ExcelTable(models.Model):
             out.append((f"col_{i}", label))
         return out
 
+
+class SystemNamingKey(models.Model):
+    """Editable system naming dictionary: keys, column titles, and exact addresses.
+
+    Stable ``key`` never changes; users rename ``label``. ``address`` points to the
+    concrete place in code/UI (template data-col, admin model, transfer field, …).
+    """
+
+    class Category(models.TextChoices):
+        SECTION = "section", "بخش سیستم"
+        TABLE = "table", "جدول / صفحه"
+        COLUMN = "column", "سرستون"
+        TRANSFER = "transfer", "انتقال داده"
+        REPORT = "report", "گزارش"
+        STATUS = "status", "وضعیت"
+        UID = "uid", "شناسه / UID"
+        OTHER = "other", "سایر"
+
+    key = models.CharField(
+        "کلید پایدار",
+        max_length=220,
+        unique=True,
+        db_index=True,
+        help_text="شناسه ثابت برنامه‌نویسی؛ با تغییر عنوان عوض نمی‌شود.",
+    )
+    label = models.CharField("عنوان نمایشی", max_length=200)
+    default_label = models.CharField("عنوان پیش‌فرض", max_length=200, blank=True)
+    address = models.CharField(
+        "آدرس دقیق",
+        max_length=400,
+        blank=True,
+        db_index=True,
+        help_text="مسیر پیدا کردن در سامانه / کد، مثلاً templates/...#data-col=…",
+    )
+    category = models.CharField(
+        "دسته",
+        max_length=20,
+        choices=Category.choices,
+        default=Category.OTHER,
+        db_index=True,
+    )
+    section_key = models.CharField(
+        "کلید بخش سیستم",
+        max_length=80,
+        blank=True,
+        db_index=True,
+        help_text="ارجاع به آیتم داده‌های سیستم (مثلاً weekly_plans)",
+    )
+    linked_section_key = models.CharField(
+        "ربط به بخش دیگر",
+        max_length=80,
+        blank=True,
+        db_index=True,
+        help_text="اختیاری: لینک معنایی به بخش دیگری از سامانه",
+    )
+    table_key = models.CharField("کلید جدول", max_length=120, blank=True, db_index=True)
+    column_key = models.CharField("کلید ستون", max_length=120, blank=True, db_index=True)
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField(
+        "فعال / نمایش",
+        default=True,
+        help_text="غیرفعال = پنهان‌کردن سرستون از UIهایی که رجیستری را می‌خوانند",
+    )
+    is_custom = models.BooleanField(
+        "افزوده توسط کاربر",
+        default=False,
+        help_text="ستون/کلید دستی که در بذر اولیه نبوده است",
+    )
+    notes = models.TextField("یادداشت", blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["category", "table_key", "order", "key"]
+        verbose_name = "کلید نام‌گذاری سیستم"
+        verbose_name_plural = "کلیدهای نام‌گذاری سیستم"
+        indexes = [
+            models.Index(fields=["table_key", "order"]),
+            models.Index(fields=["category", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.key} → {self.label}"
+
+    @property
+    def is_renamed(self) -> bool:
+        default = (self.default_label or "").strip()
+        return bool(default) and self.label.strip() != default
+

@@ -51,6 +51,7 @@ def build_system_groups() -> list[SystemGroup]:
     from .models import (
         DeviationReason,
         ExcelTable,
+        ExcelUpload,
         Machine,
         MoldOption,
         PlanningDisplaySettings,
@@ -66,9 +67,41 @@ def build_system_groups() -> list[SystemGroup]:
         ProgramUidScheme,
         StoppageReason,
         SystemAlarm,
+        SystemNamingKey,
     )
 
     return [
+        SystemGroup(
+            key="meta",
+            title="نام‌گذاری و ساختار نمایش",
+            items=[
+                SystemItem(
+                    key="naming_keys",
+                    title="کلیدهای نام‌گذاری سیستم",
+                    admin_changelist="",
+                    url_name="system_naming_keys",
+                    description=(
+                        "همه کلیدهای عنوان (بخش‌ها، سرستون‌ها، انتقال داده، گزارش‌ها) "
+                        "با آدرس دقیق — قابل جستجو و تغییر نام."
+                    ),
+                    count_fn=_count(SystemNamingKey),
+                    can_add=False,
+                ),
+                SystemItem(
+                    key="table_columns",
+                    title="سرستون‌های جداول سامانه",
+                    admin_changelist="",
+                    url_name="system_table_columns",
+                    description=(
+                        "تغییر نام، نمایش/پنهان، افزودن ستون سفارشی و ربط به بخش‌های مختلف."
+                    ),
+                    count_fn=lambda: SystemNamingKey.objects.filter(
+                        category=SystemNamingKey.Category.COLUMN
+                    ).count(),
+                    can_add=False,
+                ),
+            ],
+        ),
         SystemGroup(
             key="reports",
             title="گزارش‌ها",
@@ -212,6 +245,25 @@ def build_system_groups() -> list[SystemGroup]:
                     admin_changelist="admin:catalog_exceltable_changelist",
                     admin_add="admin:catalog_exceltable_add",
                     count_fn=_count(ExcelTable),
+                ),
+                SystemItem(
+                    key="excel_uploads",
+                    title="فایل‌های اکسل / CSV",
+                    admin_changelist="",
+                    url_name="excel_list",
+                    description="ورود، مشاهده TABLE/SHEETS و انتقال داده",
+                    count_fn=_count(ExcelUpload),
+                    can_add=True,
+                    add_url_name="excel_import",
+                ),
+                SystemItem(
+                    key="product_data_hub",
+                    title="دیتای محصولات (هاب)",
+                    admin_changelist="",
+                    url_name="product_data",
+                    description="ویرایش جدولی محصولات، BOM و مواد مصرفی",
+                    count_fn=_count(Product),
+                    can_add=False,
                 ),
                 SystemItem(
                     key="machines",

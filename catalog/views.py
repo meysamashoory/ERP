@@ -16,6 +16,7 @@ from accounts.permissions import get_profile
 from .alarms import register_alarm
 from .excel_io import inspect_workbook, read_sheet_data, read_table_data
 from .models import ExcelTable, ExcelUpload, SystemAlarm
+
 from .transfer import (
     group_transfer_alarms,
     list_destinations,
@@ -48,7 +49,10 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     """Accordion hub — each item opens full Django-admin capabilities in app chrome."""
     from django.urls import NoReverseMatch, reverse
 
+    from .naming_registry import ensure_registry_seeded
     from .system_sections import build_system_groups
+
+    ensure_registry_seeded()
 
     groups_out = []
     for group in build_system_groups():
@@ -99,14 +103,21 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def system_section(request: HttpRequest, key: str) -> HttpResponse:
-    """Legacy route: redirect into the matching admin changelist."""
+    """Legacy route: redirect into the matching admin changelist or custom URL."""
     from django.urls import NoReverseMatch, reverse
 
     from .system_sections import build_system_groups
 
     for group in build_system_groups():
         for item in group.items:
-            if item.key == key:
+            if item.key != key:
+                continue
+            if getattr(item, "url_name", None):
+                try:
+                    return redirect(reverse(item.url_name))
+                except NoReverseMatch:
+                    break
+            if item.admin_changelist:
                 try:
                     return redirect(reverse(item.admin_changelist))
                 except NoReverseMatch:
@@ -649,3 +660,266 @@ def product_data_delete(request: HttpRequest) -> JsonResponse:
     except Exception as exc:  # noqa: BLE001
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     return JsonResponse({"ok": True})
+
+
+def _can_edit_naming(user) -> bool:
+    profile = get_profile(user)
+    return bool(profile and (profile.is_manager or profile.can_enter_data))
+
+
+@login_required
+def system_naming_keys(request: HttpRequest) -> HttpResponse:
+    """Searchable registry of all system naming keys with exact addresses."""
+    from django.db.models import Q
+
+    from .models import SystemNamingKey
+    from .naming_registry import ensure_registry_seeded, section_choices, sync_naming_registry
+
+    ensure_registry_seeded()
+    if request.method == "POST" and request.POST.get("action") == "resync":
+        if not _can_edit_naming(request.user):
+            return HttpResponseForbidden("مجاز نیستید.")
+        stats = sync_naming_registry(refresh_defaults=False)
+        messages.success(
+            request,
+            f"همگام‌سازی انجام شد: {stats['created']} جدید، {stats['updated']} به‌روز.",
+        )
+        return redirect("system_naming_keys")
+
+    q = (request.GET.get("q") or "").strip()
+    category = (request.GET.get("category") or "").strip()
+    section = (request.GET.get("section") or "").strip()
+    table = (request.GET.get("table") or "").strip()
+    only_renamed = request.GET.get("renamed") == "1"
+
+    qs = SystemNamingKey.objects.all()
+    if q:
+        qs = qs.filter(
+            Q(key__icontains=q)
+            | Q(label__icontains=q)
+            | Q(address__icontains=q)
+            | Q(column_key__icontains=q)
+            | Q(table_key__icontains=q)
+            | Q(default_label__icontains=q)
+        )
+    if category:
+        qs = qs.filter(category=category)
+    if section:
+        qs = qs.filter(Q(section_key=section) | Q(linked_section_key=section))
+    if table:
+        qs = qs.filter(table_key=table)
+    if only_renamed:
+        from django.db.models import F
+
+        qs = qs.exclude(default_label="").exclude(label=F("default_label"))
+
+    filtered_count = qs.count()
+    rows = list(qs.order_by("category", "table_key", "order", "key")[:250])
+    tables = (
+        SystemNamingKey.objects.exclude(table_key="")
+        .values_list("table_key", flat=True)
+        .distinct()
+        .order_by("table_key")
+    )
+    return render(
+        request,
+        "catalog/system_naming_keys.html",
+        {
+            "rows": rows,
+            "q": q,
+            "category": category,
+            "section": section,
+            "table": table,
+            "only_renamed": only_renamed,
+            "categories": SystemNamingKey.Category.choices,
+            "section_choices": section_choices(),
+            "table_choices": list(tables),
+            "can_edit": _can_edit_naming(request.user),
+            "total_count": SystemNamingKey.objects.count(),
+            "filtered_count": filtered_count,
+            "shown_count": len(rows),
+        },
+    )
+
+
+@login_required
+@require_POST
+def system_naming_key_save(request: HttpRequest) -> JsonResponse:
+    if not _can_edit_naming(request.user):
+        return JsonResponse({"ok": False, "error": "مجاز به ویرایش نیستید."}, status=403)
+    from .models import SystemNamingKey
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+
+    pk = payload.get("id")
+    row = get_object_or_404(SystemNamingKey, pk=pk) if pk else None
+    create = row is None
+    if create:
+        key = str(payload.get("key") or "").strip()
+        if not key:
+            return JsonResponse({"ok": False, "error": "کلید الزامی است."}, status=400)
+        if SystemNamingKey.objects.filter(key=key).exists():
+            return JsonResponse({"ok": False, "error": "این کلید از قبل وجود دارد."}, status=400)
+        row = SystemNamingKey(key=key[:220], is_custom=True)
+
+    if "label" in payload:
+        label = str(payload.get("label") or "").strip()[:200]
+        if not label:
+            return JsonResponse({"ok": False, "error": "عنوان خالی مجاز نیست."}, status=400)
+        row.label = label
+        if create:
+            row.default_label = label
+    if "address" in payload and (create or row.is_custom):
+        row.address = str(payload.get("address") or "").strip()[:400]
+    if "category" in payload and create:
+        cat = str(payload.get("category") or SystemNamingKey.Category.OTHER)
+        if cat in SystemNamingKey.Category.values:
+            row.category = cat
+    if "section_key" in payload:
+        row.section_key = str(payload.get("section_key") or "").strip()[:80]
+    if "linked_section_key" in payload:
+        row.linked_section_key = str(payload.get("linked_section_key") or "").strip()[:80]
+    if "table_key" in payload:
+        row.table_key = str(payload.get("table_key") or "").strip()[:120]
+    if "column_key" in payload:
+        row.column_key = str(payload.get("column_key") or "").strip()[:120]
+    if "order" in payload:
+        try:
+            row.order = max(0, int(payload.get("order") or 0))
+        except (TypeError, ValueError):
+            pass
+    if "is_active" in payload:
+        row.is_active = bool(payload.get("is_active"))
+    if "notes" in payload:
+        row.notes = str(payload.get("notes") or "")[:2000]
+    if create and not row.category:
+        row.category = SystemNamingKey.Category.COLUMN
+    row.save()
+    return JsonResponse({
+        "ok": True,
+        "id": row.pk,
+        "key": row.key,
+        "label": row.label,
+        "is_active": row.is_active,
+        "linked_section_key": row.linked_section_key,
+        "is_renamed": row.is_renamed,
+    })
+
+
+@login_required
+@require_POST
+def system_naming_key_delete(request: HttpRequest) -> JsonResponse:
+    if not _can_edit_naming(request.user):
+        return JsonResponse({"ok": False, "error": "مجاز نیستید."}, status=403)
+    from .models import SystemNamingKey
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+    row = get_object_or_404(SystemNamingKey, pk=payload.get("id"))
+    if not row.is_custom:
+        return JsonResponse(
+            {"ok": False, "error": "فقط کلیدهای افزوده‌شده توسط کاربر قابل حذف‌اند. برای بقیه نمایش را خاموش کنید."},
+            status=400,
+        )
+    row.delete()
+    return JsonResponse({"ok": True})
+
+
+@login_required
+def system_table_columns(request: HttpRequest) -> HttpResponse:
+    """Manage column headers per table: rename, show/hide, link to sections, add."""
+    from .models import SystemNamingKey
+    from .naming_registry import ensure_registry_seeded, section_choices
+
+    ensure_registry_seeded()
+    table_key = (request.GET.get("table") or "").strip()
+    tables = list(
+        SystemNamingKey.objects.filter(category=SystemNamingKey.Category.TABLE)
+        .order_by("label")
+    )
+    if not table_key and tables:
+        table_key = tables[0].table_key or tables[0].key.replace("ui.table.", "").replace("admin.table.", "")
+        # Prefer table_key field
+        table_key = tables[0].table_key or ""
+    columns = []
+    table_meta = None
+    if table_key:
+        table_meta = (
+            SystemNamingKey.objects.filter(
+                category=SystemNamingKey.Category.TABLE, table_key=table_key
+            ).first()
+            or SystemNamingKey.objects.filter(key=f"ui.table.{table_key}").first()
+            or SystemNamingKey.objects.filter(key=f"admin.table.{table_key}").first()
+        )
+        columns = list(
+            SystemNamingKey.objects.filter(
+                category=SystemNamingKey.Category.COLUMN,
+                table_key=table_key,
+            ).order_by("order", "id")
+        )
+    return render(
+        request,
+        "catalog/system_table_columns.html",
+        {
+            "tables": tables,
+            "table_key": table_key,
+            "table_meta": table_meta,
+            "columns": columns,
+            "section_choices": section_choices(),
+            "can_edit": _can_edit_naming(request.user),
+        },
+    )
+
+
+@login_required
+@require_POST
+def system_admin_header_save(request: HttpRequest) -> JsonResponse:
+    """Persist admin changelist header renames into the naming registry."""
+    if not _can_edit_naming(request.user):
+        return JsonResponse({"ok": False, "error": "مجاز نیستید."}, status=403)
+    from .models import SystemNamingKey
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+    path = str(payload.get("path") or "").strip()[:300]
+    field = str(payload.get("field") or payload.get("column_key") or "").strip()[:120]
+    label = str(payload.get("label") or "").strip()[:200]
+    col_index = payload.get("col_index")
+    if not label:
+        return JsonResponse({"ok": False, "error": "عنوان خالی است."}, status=400)
+
+    # Prefer field name when known; else path+index
+    if field:
+        key = f"admin.header.{field}"
+        # Try to match existing admin.field.* keys by column_key suffix
+        existing = SystemNamingKey.objects.filter(
+            category=SystemNamingKey.Category.COLUMN, column_key=field
+        ).first()
+        if existing:
+            existing.label = label
+            existing.save(update_fields=["label", "updated_at"])
+            return JsonResponse({"ok": True, "id": existing.pk, "key": existing.key})
+    else:
+        key = f"admin.header.path:{path}:col:{col_index}"
+
+    row, _created = SystemNamingKey.objects.update_or_create(
+        key=key[:220],
+        defaults={
+            "label": label,
+            "default_label": label,
+            "address": f"admin-changelist:{path}#col={field or col_index}",
+            "category": SystemNamingKey.Category.COLUMN,
+            "column_key": field,
+            "table_key": f"admin.path:{path}"[:120],
+            "is_custom": True,
+            "is_active": True,
+        },
+    )
+    return JsonResponse({"ok": True, "id": row.pk, "key": row.key})

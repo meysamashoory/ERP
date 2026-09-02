@@ -301,6 +301,19 @@ def column_label_map(source: str) -> dict[str, str]:
     if is_excel_table_source(source):
         for k, label, _ in _columns_for_source(source):
             mapping[k] = label
+    # Overlay editable system naming registry (report.col.<source>.<key>)
+    try:
+        from catalog.models import SystemNamingKey
+
+        prefix = f"report.col.{source}."
+        for row in SystemNamingKey.objects.filter(
+            key__startswith=prefix, is_active=True
+        ).only("key", "label", "column_key"):
+            ck = row.column_key or row.key[len(prefix):]
+            if ck and row.label:
+                mapping[ck] = row.label
+    except Exception:  # noqa: BLE001
+        pass
     return mapping
 
 

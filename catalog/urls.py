@@ -4,6 +4,11 @@ from . import views
 
 urlpatterns = [
     path("data/system/", views.system_data_hub, name="system_data"),
+    path("data/system/naming/", views.system_naming_keys, name="system_naming_keys"),
+    path("data/system/naming/save/", views.system_naming_key_save, name="system_naming_key_save"),
+    path("data/system/naming/delete/", views.system_naming_key_delete, name="system_naming_key_delete"),
+    path("data/system/columns/", views.system_table_columns, name="system_table_columns"),
+    path("data/system/admin-header/", views.system_admin_header_save, name="system_admin_header_save"),
     path("data/system/<slug:key>/", views.system_section, name="system_section"),
     path("data/products/", views.product_data_hub, name="product_data"),
     path("data/products/save/", views.product_data_save, name="product_data_save"),

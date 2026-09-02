@@ -167,6 +167,27 @@
         state[id].labels = state[id].labels || {};
         state[id].labels[colIndex] = next;
         saveState(state);
+        // Persist to system naming registry (server-side)
+        try {
+          var csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+          var fieldName = th.getAttribute("data-field") || th.className.match(/column-(\w+)/);
+          fieldName = typeof fieldName === "string" ? fieldName : (fieldName && fieldName[1]) || "";
+          fetch("/data/system/admin-header/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrf,
+              "X-Requested-With": "XMLHttpRequest"
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              path: location.pathname,
+              field: fieldName,
+              col_index: colIndex,
+              label: next
+            })
+          }).catch(function () { /* offline/local-only ok */ });
+        } catch (err) { /* ignore */ }
       }
     }
 

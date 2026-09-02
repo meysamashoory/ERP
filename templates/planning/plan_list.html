@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static planning_extras %}
+{% load static planning_extras system_labels %}
 {% block title %}برنامه‌ریزی هفتگی{% endblock %}
 {% block heading %}برنامه‌ریزی هفتگی تولید{% endblock %}
 {% block nav_planning %}active{% endblock %}
@@ -36,24 +36,24 @@
     <table class="table table-plan-list" id="plan-list-table">
       <thead>
         <tr>
-          <th data-col="row">ردیف</th>
+          <th data-col="row">{% system_col "planning.plan_list" "row" "ردیف" %}</th>
           <th data-col="program_number">
             <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}">
-              شماره برنامه {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+              {% system_col "planning.plan_list" "program_number" "شماره برنامه" %} {% if sort == 'number' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
             </a>
           </th>
           <th data-col="date">
             <a class="th-sort" href="?sort=date&dir={% if sort == 'date' and dir == 'asc' %}desc{% else %}asc{% endif %}">
-              تاریخ برنامه {% if sort == 'date' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+              {% system_col "planning.plan_list" "date" "تاریخ برنامه" %} {% if sort == 'date' %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
             </a>
           </th>
-          <th data-col="weekday">روز برنامه</th>
-          <th data-col="mode">نحوه</th>
-          <th data-col="creator">ایجاد کننده</th>
-          <th data-col="forms">تعداد فرم</th>
-          <th data-col="calendar">تقویم برنامه</th>
-          <th data-col="mold_count">تعداد قالب برنامه</th>
-          <th data-col="active_mold_count">تعداد قالب فعال</th>
+          <th data-col="weekday">{% system_col "planning.plan_list" "weekday" "روز برنامه" %}</th>
+          <th data-col="mode">{% system_col "planning.plan_list" "mode" "نحوه" %}</th>
+          <th data-col="creator">{% system_col "planning.plan_list" "creator" "ایجاد کننده" %}</th>
+          <th data-col="forms">{% system_col "planning.plan_list" "forms" "تعداد فرم" %}</th>
+          <th data-col="calendar">{% system_col "planning.plan_list" "calendar" "تقویم برنامه" %}</th>
+          <th data-col="mold_count">{% system_col "planning.plan_list" "mold_count" "تعداد قالب برنامه" %}</th>
+          <th data-col="active_mold_count">{% system_col "planning.plan_list" "active_mold_count" "تعداد قالب فعال" %}</th>
           <th>عملیات</th>
         </tr>
       </thead>

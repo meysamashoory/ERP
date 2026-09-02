@@ -19,6 +19,7 @@ from .models import (
     ProgramUidScheme,
     StoppageReason,
     SystemAlarm,
+    SystemNamingKey,
 )
 
 
@@ -414,3 +415,17 @@ class ExcelTableAdmin(admin.ModelAdmin):
         return obj.source_id if obj.pk else "—"
 
     source_id_display.short_description = "شناسه منبع گزارش"
+
+
+@admin.register(SystemNamingKey)
+class SystemNamingKeyAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "key", "label", "category", "table_key", "column_key",
+        "section_key", "linked_section_key", "order", "is_active", "is_custom", "updated_at",
+    )
+    list_display_links = ("id", "key")
+    list_editable = ("label", "is_active", "linked_section_key", "order")
+    list_filter = ("category", "is_active", "is_custom", "section_key")
+    search_fields = ("key", "label", "address", "table_key", "column_key", "default_label")
+    readonly_fields = ("created_at", "updated_at", "default_label")
+    ordering = ("category", "table_key", "order", "key")

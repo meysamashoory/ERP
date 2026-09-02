@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static system_labels %}
 {% block title %}سوابق تولید{% endblock %}
 {% block heading %}
 <span class="topbar-title-text">سوابق تولید</span>
@@ -44,23 +44,23 @@
     <table class="table table-compact table-list-nav" id="history-list-table">
       <thead>
         <tr>
-          <th data-col="plan_number">شماره برنامه</th>
-          <th data-col="plan_date">تاریخ برنامه‌ریزی</th>
-          <th data-col="machine">شناسه دستگاه</th>
-          <th data-col="product_name">نام جنس</th>
-          <th data-col="mold_number">شماره قالب</th>
-          <th data-col="unique_code">کد یکتا</th>
-          <th data-col="plan_start">تاریخ شروع برنامه</th>
-          <th data-col="actual_start">تاریخ شروع واقعی</th>
-          <th data-col="actual_end">تاریخ پایان تولید</th>
-          <th data-col="planned_qty">مقدار تولید برنامه (عدد)</th>
-          <th data-col="actual_qty">مقدار تولید واقعی (عدد)</th>
-          <th data-col="planned_cycle">سیکل تولید برنامه (ثانیه)</th>
-          <th data-col="last_cycle">آخرین سیکل تولید (ثانیه)</th>
-          <th data-col="planned_hours">ساعت تولید برنامه</th>
-          <th data-col="active_cavities">تعداد حفره فعال</th>
-          <th data-col="last_cavities">آخرین وضعیت حفره</th>
-          <th data-col="scrap">ضایعات تولید</th>
+          <th data-col="plan_number">{% system_col "production.history_list" "plan_number" "شماره برنامه" %}</th>
+          <th data-col="plan_date">{% system_col "production.history_list" "plan_date" "تاریخ برنامه‌ریزی" %}</th>
+          <th data-col="machine">{% system_col "production.history_list" "machine" "شناسه دستگاه" %}</th>
+          <th data-col="product_name">{% system_col "production.history_list" "product_name" "نام جنس" %}</th>
+          <th data-col="mold_number">{% system_col "production.history_list" "mold_number" "شماره قالب" %}</th>
+          <th data-col="unique_code">{% system_col "production.history_list" "unique_code" "کد یکتا" %}</th>
+          <th data-col="plan_start">{% system_col "production.history_list" "plan_start" "تاریخ شروع برنامه" %}</th>
+          <th data-col="actual_start">{% system_col "production.history_list" "actual_start" "تاریخ شروع واقعی" %}</th>
+          <th data-col="actual_end">{% system_col "production.history_list" "actual_end" "تاریخ پایان تولید" %}</th>
+          <th data-col="planned_qty">{% system_col "production.history_list" "planned_qty" "مقدار تولید برنامه (عدد)" %}</th>
+          <th data-col="actual_qty">{% system_col "production.history_list" "actual_qty" "مقدار تولید واقعی (عدد)" %}</th>
+          <th data-col="planned_cycle">{% system_col "production.history_list" "planned_cycle" "سیکل تولید برنامه (ثانیه)" %}</th>
+          <th data-col="last_cycle">{% system_col "production.history_list" "last_cycle" "آخرین سیکل تولید (ثانیه)" %}</th>
+          <th data-col="planned_hours">{% system_col "production.history_list" "planned_hours" "ساعت تولید برنامه" %}</th>
+          <th data-col="active_cavities">{% system_col "production.history_list" "active_cavities" "تعداد حفره فعال" %}</th>
+          <th data-col="last_cavities">{% system_col "production.history_list" "last_cavities" "آخرین وضعیت حفره" %}</th>
+          <th data-col="scrap">{% system_col "production.history_list" "scrap" "ضایعات تولید" %}</th>
         </tr>
       </thead>
       <tbody>

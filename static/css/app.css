@@ -437,6 +437,42 @@ tr.is-conflict-row > td {
 .system-acc-count { font-weight: 500; font-size: 12px; }
 .system-acc-body { padding: 0; }
 .system-acc-body .table { margin: 0; border-radius: 0; }
+
+.naming-filter-bar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  margin-bottom: 12px;
+}
+.naming-filter-actions { display: flex; gap: 8px; align-items: center; }
+.naming-resync-form { margin: 0 0 10px; }
+.naming-keys-table code.naming-key-code,
+.naming-cols-table code.naming-key-code {
+  font-size: 11px; background: #f1f5f9; padding: 2px 6px; border-radius: 4px;
+  word-break: break-all;
+}
+.naming-address {
+  font-size: 12px; color: #334155; max-width: 360px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.naming-badge {
+  display: inline-block; margin-inline-start: 6px;
+  font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  background: #e2e8f0; color: #334155;
+}
+.naming-badge-renamed { background: #fef3c7; color: #92400e; }
+.naming-keys-table tr.is-renamed td:nth-child(3) .naming-label-input {
+  border-color: #f59e0b;
+}
+.naming-keys-table tr.is-inactive,
+.naming-cols-table tr.is-inactive { opacity: .55; }
+.naming-label-input, .naming-link-select, .naming-order-input { width: 100%; min-width: 0; }
+.naming-order-input { max-width: 72px; }
+.naming-default { font-size: 11px; margin-top: 2px; }
+.naming-active-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.naming-table-meta {
+  margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: #f8fafc; display: grid; gap: 4px;
+}
+.naming-add-col { border: 1px dashed #94a3b8; border-radius: 12px; background: #fff; }
 .product-data-table input[readonly],
 .product-data-table select:disabled,
 .product-data-table textarea[readonly] {
