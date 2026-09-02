@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}گزارش‌ها{% endblock %}
+{% block heading %}گزارش‌ها{% endblock %}
+{% block nav_reports %}{% endblock %}
+{% block nav_report_list %}active{% endblock %}
+
+{% block topbar_actions %}
+{% if can_create %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-primary-soft" href="{% url 'report_create' %}">+ ایجاد گزارش</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="panel panel-compact panel-list">
+  {% if rows %}
+  <div class="table-scroll">
+  <table class="table table-compact table-list-nav table-plan-list" id="report-list-table">
+    <thead>
+      <tr>
+        <th style="width:90px">
+          <a class="th-sort" href="?sort=number&dir={% if sort == 'number' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+            شماره{% if sort == 'number' %} {% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          </a>
+        </th>
+        <th>
+          <a class="th-sort" href="?sort=title&dir={% if sort == 'title' and dir == 'asc' %}desc{% else %}asc{% endif %}">
+            عنوان گزارش{% if sort == 'title' %} {% if dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+          </a>
+        </th>
+        <th style="width:120px">مدل گزارش</th>
+        <th style="width:110px">نوع گزارش</th>
+        <th style="width:110px">تعداد فرم</th>
+        <th style="width:200px">عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="list-row" data-report-id="{{ row.report.pk }}"
+          data-href="{% url 'report_detail' row.report.pk %}"
+          data-title="{{ row.report.title }}"
+          data-number="{{ row.report.number }}"
+          data-description="{{ row.report.description }}"
+          tabindex="0">
+        <td class="num cell-nav">{{ row.report.number }}</td>
+        <td class="cell-nav">
+          <span class="list-title">{{ row.report.title }}</span>
+        </td>
+        <td class="cell-nav">
+          {% if row.report.access_mode == 'editable' %}
+          <span class="type-label">قابل اصلاح</span>
+          {% else %}
+          <span class="type-label">فقط خواندنی</span>
+          {% endif %}
+        </td>
+        <td class="col-type cell-nav">
+          {% if row.report.is_standard %}
+          <span class="type-label type-standard">استاندارد</span>
+          {% else %}
+          <span class="type-label">شخصی</span>
+          {% endif %}
+        </td>
+        <td class="forms-cell">
+          <button type="button" class="btn btn-sm btn-ghost plan-forms-btn" data-open-forms
+            data-forms-title="{{ row.report.heading_label }}"
+            data-forms-ctx="report"
+            data-forms-id="{{ row.report.pk }}"
+            data-forms-json="{{ row.forms_json|escape }}">{{ row.forms_count }} فرم</button>
+        </td>
+        <td class="col-ops">
+          <div class="ops-inline">
+            <select class="ops-select" data-ops>
+              <option value="">…</option>
+              {% if row.can_edit %}<option value="edit">ویرایش</option>{% endif %}
+              {% if row.can_send %}<option value="send">ارسال به کاربر</option>{% endif %}
+              {% if row.can_copy %}<option value="copy">ایجاد کپی</option>{% endif %}
+              {% if row.can_delete %}<option value="delete">حذف گزارش</option>{% endif %}
+            </select>
+            <button type="button" class="btn btn-sm ops-apply" data-ops-apply hidden>اعمال</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">هنوز گزارشی ایجاد نشده است.</p>
+  {% endif %}
+</div>
+
+<dialog id="report-action-dialog" class="dialog">
+  <div data-dialog-body></div>
+</dialog>
+
+<template id="tpl-send">
+  <div class="dialog-head"><h3>ارسال گزارش به کاربر</h3></div>
+  <form method="post" data-action-form>
+    {% csrf_token %}
+    <div class="field"><label>نام گزارش</label><input class="input" name="title" required></div>
+    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری"></div>
+    <div class="field"><label>کاربر مقصد</label>
+      <select name="recipient" data-combo="1" required>
+        <option value="">انتخاب کاربر…</option>
+        {% for u in users %}<option value="{{ u.pk }}">{{ u.username }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn" type="submit">ارسال</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+
+<template id="tpl-copy">
+  <div class="dialog-head"><h3>ایجاد کپی از گزارش</h3></div>
+  <form method="post" data-action-form>
+    {% csrf_token %}
+    <div class="field"><label>نام گزارش</label><input class="input" name="title" required></div>
+    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری"></div>
+    <div class="field"><label>کاربر</label><input class="input" value="{{ user.username }}" disabled></div>
+    <div class="form-actions">
+      <button class="btn" type="submit">ایجاد کپی</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+
+<template id="tpl-delete">
+  <div class="dialog-head"><h3>حذف گزارش</h3></div>
+  <p>آیا از حذف گزارش «<strong data-del-title></strong>» اطمینان دارید؟ فقط از لیست شما حذف می‌شود.</p>
+  <form method="post" data-action-form>
+    {% csrf_token %}
+    <div class="form-actions">
+      <button class="btn btn-danger" type="submit">حذف</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var dialog = document.getElementById("report-action-dialog");
+  var body = dialog.querySelector("[data-dialog-body]");
+
+  document.querySelectorAll("#report-list-table tbody tr").forEach(function (tr) {
+    // Navigation: first click selects, second click on same row opens (handled by table_nav.js)
+  });
+
+  document.querySelectorAll("[data-ops]").forEach(function (sel) {
+    var apply = sel.parentElement.querySelector("[data-ops-apply]");
+    sel.addEventListener("change", function () { apply.hidden = !sel.value; });
+    apply.addEventListener("click", function () {
+      var row = sel.closest("tr");
+      var op = sel.value;
+      var id = row.getAttribute("data-report-id");
+      if (op === "edit") { window.location = "/reports/" + id + "/edit/"; return; }
+      var tpl = document.getElementById(op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete");
+      body.innerHTML = "";
+      body.appendChild(tpl.content.cloneNode(true));
+      var form = body.querySelector("[data-action-form]");
+      if (op === "delete") {
+        form.action = "/reports/" + id + "/delete/";
+        body.querySelector("[data-del-title]").textContent = row.getAttribute("data-title");
+      } else if (op === "send") {
+        form.action = "/reports/" + id + "/send/";
+        form.title.value = row.getAttribute("data-title");
+        form.number.value = row.getAttribute("data-number");
+        form.description.value = row.getAttribute("data-description") || "";
+      } else {
+        form.action = "/reports/" + id + "/copy/";
+        form.title.value = row.getAttribute("data-title");
+        form.number.value = row.getAttribute("data-number");
+        form.description.value = row.getAttribute("data-description") || "";
+      }
+      if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+      if (window.enhance) window.enhance(body);
+    });
+  });
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) {
+      e.preventDefault();
+      if (typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
+    }
+  });
+})();
+</script>
+{% include "print_forms/_forms_dialog.html" %}
+{% endblock %}

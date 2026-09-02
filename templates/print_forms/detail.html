@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ print_form.heading_label }}{% endblock %}
+{% block heading %}
+<span class="entity-heading-text">{{ print_form.heading_label }}</span>
+{% endblock %}
+{% block nav_reports %}{% endblock %}
+{% block nav_form_list %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  {% if print_form.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
+  <a class="btn btn-sm btn-ghost" href="{% url 'print_form_list' %}">لیست فرم‌ها</a>
+  <button type="button" class="btn btn-sm btn-primary-soft" data-print-form>پرینت</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="panel print-sheet-panel">
+  <div class="panel-body">
+    <div class="form-canvas-wrap preview-only form-view-wrap" id="form-view-host"></div>
+  </div>
+</div>
+{{ column_groups|json_script:"column-groups" }}
+<script id="frames-view" type="application/json">{{ frames_json|safe }}</script>
+<script id="page-settings-view" type="application/json">{{ page_settings_json|safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/form_sheet_render.js' %}?v=8"></script>
+<script>
+(function () {
+  var frames = [];
+  var settings = {};
+  var groups = [];
+  try { frames = JSON.parse(document.getElementById("frames-view").textContent || "[]") || []; } catch (e) {}
+  try { settings = JSON.parse(document.getElementById("page-settings-view").textContent || "{}") || {}; } catch (e) {}
+  try { groups = JSON.parse(document.getElementById("column-groups").textContent || "[]") || []; } catch (e) {}
+  var host = document.getElementById("form-view-host");
+  if (!host || !window.ERPFormSheetRender) return;
+
+  function sheetOf(f) {
+    try { return Math.max(1, parseInt(f && f.sheet, 10) || 1); } catch (e) { return 1; }
+  }
+  var sheetCount = 1;
+  frames.forEach(function (f) { sheetCount = Math.max(sheetCount, sheetOf(f)); });
+
+  var pageW = {{ print_form.page_width_mm|default:210 }};
+  var pageH = {{ print_form.page_height_mm|default:297 }};
+
+  for (var s = 1; s <= sheetCount; s++) {
+    var pageFrames = frames.filter(function (f) { return sheetOf(f) === s; });
+    if (sheetCount === 1) pageFrames = frames.slice();
+    var canvas = document.createElement("div");
+    canvas.className = "form-canvas print-sheet";
+    canvas.id = s === 1 ? "form-view-canvas" : ("form-view-canvas-" + s);
+    canvas.setAttribute("data-sheet", String(s));
+    canvas.style.setProperty("--page-w", String(pageW));
+    canvas.style.setProperty("--page-h", String(pageH));
+    if (sheetCount > 1) {
+      canvas.style.marginBottom = "20px";
+    }
+    host.appendChild(canvas);
+    window.ERPFormSheetRender.render({
+      canvas: canvas,
+      frames: pageFrames,
+      pageWidthMm: pageW,
+      pageHeightMm: pageH,
+      pageSettings: settings,
+      columnGroups: groups,
+      useMm: true,
+      fillRows: [],
+      viewMode: "detail"
+    });
+  }
+
+  var printBtn = document.querySelector("[data-print-form]");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+})();
+</script>
+{% endblock %}

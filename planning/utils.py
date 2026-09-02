@@ -1,6 +1,53 @@
 """Helpers for weekly-planning date logic."""
 
+from __future__ import annotations
+
 import jdatetime
+
+
+def format_jdate(value) -> str:
+    """Display Jalali dates as ``1405/02/25`` (never day-first or dash-separated).
+
+    Also converts accidental Gregorian ``date`` values (year ≥ 1600) to شمسی.
+    """
+    if value in (None, ""):
+        return ""
+    try:
+        from catalog.jalali_dates import format_jalali_slash, is_gregorian_year
+
+        if hasattr(value, "year") and is_gregorian_year(int(value.year)):
+            text = format_jalali_slash(value)
+            if text:
+                return text
+    except Exception:  # noqa: BLE001
+        pass
+    if hasattr(value, "strftime"):
+        try:
+            return value.strftime("%Y/%m/%d")
+        except (ValueError, TypeError, OverflowError):
+            pass
+    text = str(value).strip()
+    if not text:
+        return ""
+    # Normalize common stored/display variants: 1405-02-25, 25-02-1405, 1405/02/25
+    for sep in ("/", "-", "."):
+        if sep in text:
+            parts = text.split(sep)
+            if len(parts) == 3:
+                a, b, c = parts
+                if len(a) == 4:
+                    return f"{a}/{b.zfill(2)}/{c.zfill(2)}"
+                if len(c) == 4:
+                    return f"{c}/{b.zfill(2)}/{a.zfill(2)}"
+            break
+    return text
+
+
+def parse_jdate_string(raw: str) -> jdatetime.date:
+    """Parse ``YYYY/MM/DD`` or ``YYYY-MM-DD`` into a Jalali date."""
+    normalized = str(raw or "").strip().replace("-", "/")
+    y, m, d = (int(p) for p in normalized.split("/"))
+    return jdatetime.date(y, m, d)
 
 
 def start_of_week(jdate: jdatetime.date) -> jdatetime.date:

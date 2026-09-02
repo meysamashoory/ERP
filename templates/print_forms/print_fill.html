@@ -1,0 +1,132 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>چاپ — {{ print_form.title }}</title>
+  <style>
+    html, body { margin: 0; background: #eef2f7; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { position: fixed; top: 10px; left: 10px; z-index: 10; display: flex; gap: 8px; }
+    .btn { padding: 6px 12px; border: 1px solid #94a3b8; background: #f8fafc; border-radius: 6px; cursor: pointer; }
+    #sheets-host { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 48px 12px 24px; }
+    .print-sheet {
+      margin: 0 auto;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+      box-sizing: border-box;
+      overflow: hidden;
+      width: calc(var(--page-w, 210) * 1mm);
+      height: calc(var(--page-h, 297) * 1mm);
+      position: relative;
+    }
+    .sheet-page-label {
+      position: absolute;
+      top: -22px;
+      right: 0;
+      font: 12px Tahoma, sans-serif;
+      color: #64748b;
+    }
+    @media print {
+      html, body { background: #fff; }
+      .no-print, .sheet-page-label { display: none !important; }
+      #sheets-host { gap: 0; padding: 0; }
+      .print-sheet {
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+      }
+      .print-sheet:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button type="button" class="btn" onclick="window.print()">چاپ</button>
+    <button type="button" class="btn" onclick="window.close()">بستن</button>
+  </div>
+  <div id="sheets-host"></div>
+  <script id="frames-view" type="application/json">{{ frames_json|safe }}</script>
+  <script id="page-settings-view" type="application/json">{{ page_settings_json|safe }}</script>
+  <script id="fill-rows" type="application/json">{{ fill_rows_json|safe }}</script>
+  <script src="{% static 'js/form_sheet_render.js' %}?v=8"></script>
+  <script>
+  (function () {
+    var frames = [], settings = {}, fillRows = [];
+    try { frames = JSON.parse(document.getElementById("frames-view").textContent || "[]") || []; } catch (e) {}
+    try { settings = JSON.parse(document.getElementById("page-settings-view").textContent || "{}") || {}; } catch (e) {}
+    try { fillRows = JSON.parse(document.getElementById("fill-rows").textContent || "[]") || []; } catch (e) {}
+    if (!Array.isArray(fillRows)) fillRows = [];
+    if (!Array.isArray(frames)) frames = [];
+
+    function sheetOfFrame(f) {
+      try { return Math.max(1, parseInt(f && f.sheet, 10) || 1); } catch (e) { return 1; }
+    }
+    function sheetOfRow(r) {
+      try { return Math.max(1, parseInt(r && r._sheet, 10) || 1); } catch (e) { return 1; }
+    }
+
+    var sheetCount = 1;
+    frames.forEach(function (f) { sheetCount = Math.max(sheetCount, sheetOfFrame(f)); });
+    fillRows.forEach(function (r) { sheetCount = Math.max(sheetCount, sheetOfRow(r)); });
+    try {
+      var declared = parseInt("{{ sheet_count|default:1 }}", 10);
+      if (!isNaN(declared) && declared > sheetCount) sheetCount = declared;
+    } catch (e) {}
+    sheetCount = Math.max(1, sheetCount);
+
+    var host = document.getElementById("sheets-host");
+    var pageW = {{ print_form.page_width_mm|default:210 }};
+    var pageH = {{ print_form.page_height_mm|default:297 }};
+
+    for (var s = 1; s <= sheetCount; s++) {
+      var pageFrames = frames.filter(function (f) { return sheetOfFrame(f) === s; });
+      var pageRows = fillRows.filter(function (r) { return sheetOfRow(r) === s; });
+      // Single-page legacy: no sheet metadata beyond 1 → put all rows on page 1
+      if (sheetCount === 1) {
+        pageFrames = frames.slice();
+        pageRows = fillRows.slice();
+      }
+
+      var wrap = document.createElement("div");
+      wrap.style.position = "relative";
+      wrap.setAttribute("data-print-page", String(s));
+      if (sheetCount > 1) {
+        var lab = document.createElement("div");
+        lab.className = "sheet-page-label no-print";
+        lab.textContent = "برگه " + s;
+        wrap.appendChild(lab);
+      }
+      var canvas = document.createElement("div");
+      canvas.className = "form-canvas print-sheet";
+      canvas.setAttribute("data-sheet", String(s));
+      canvas.style.setProperty("--page-w", String(pageW));
+      canvas.style.setProperty("--page-h", String(pageH));
+      wrap.appendChild(canvas);
+      host.appendChild(wrap);
+
+      if (window.ERPFormSheetRender) {
+        window.ERPFormSheetRender.render({
+          canvas: canvas,
+          frames: pageFrames,
+          pageWidthMm: pageW,
+          pageHeightMm: pageH,
+          pageSettings: settings,
+          columnGroups: [],
+          useMm: true,
+          fillRows: pageRows,
+          viewMode: "context"
+        });
+      }
+    }
+
+    {% if auto_print %}
+    setTimeout(function () { window.print(); }, 250);
+    {% endif %}
+  })();
+  </script>
+</body>
+</html>
