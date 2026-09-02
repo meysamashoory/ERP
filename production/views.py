@@ -136,6 +136,8 @@ def program_list(request):
     Light backfill: push active Excel archive rows that are still missing a live
     ProductionProgram so ثبت و کنترل تولید stays in sync after imports.
     """
+    import logging
+
     from production.sync import ensure_running_history_in_production
 
     from .conflicts import collect_in_production_conflicts
@@ -143,7 +145,9 @@ def program_list(request):
     try:
         ensure_running_history_in_production(user=request.user)
     except Exception:  # noqa: BLE001
-        pass
+        logging.getLogger(__name__).exception(
+            "ensure_running_history_in_production failed on hub load"
+        )
 
     profile = _profile(request)
     programs = list(
@@ -216,6 +220,7 @@ def production_history(request):
     """All planning/production programs + Excel archives, sorted naturally.
 
     Sync/conflict checks run during Excel transfer/update — not on every page load.
+    Conflict details open on a dedicated page so large lists do not bury the table.
     """
     from .conflicts import collect_in_production_conflicts, history_conflict_uids
     from .history import build_history_rows
@@ -239,6 +244,40 @@ def production_history(request):
             "conflict_count": len(conflicts),
             "ok_count": sum(1 for r in rows if not r.get("has_conflict")),
             "conflict_row_count": sum(1 for r in rows if r.get("has_conflict")),
+        },
+    )
+
+
+@login_required
+def production_conflicts(request):
+    """Dedicated page listing occupancy conflicts for history review."""
+    from .conflicts import collect_in_production_conflicts, history_conflict_uids
+    from .history import build_history_rows
+
+    profile = _profile(request)
+    rows = build_history_rows()
+    conflict_uids = history_conflict_uids()
+    conflict_row_count = 0
+    ok_count = 0
+    for row in rows:
+        uid = str(row.get("change_uid") or row.get("unique_code") or "").strip()
+        if uid in ("—", "-"):
+            uid = ""
+        has = bool(uid and uid in conflict_uids)
+        if has:
+            conflict_row_count += 1
+        else:
+            ok_count += 1
+    conflicts = collect_in_production_conflicts()
+    return render(
+        request,
+        "production/conflicts.html",
+        {
+            "profile": profile,
+            "production_conflicts": conflicts,
+            "conflict_count": len(conflicts),
+            "ok_count": ok_count,
+            "conflict_row_count": conflict_row_count,
         },
     )
 

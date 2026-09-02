@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.production_list, name="production_list"),
     path("programs/", views.program_list, name="program_list"),
     path("history/", views.production_history, name="production_history"),
+    path("history/conflicts/", views.production_conflicts, name="production_conflicts"),
     path("history/<int:pk>/", views.production_history_detail, name="production_history_detail"),
     path(
         "history/archive/<int:pk>/",

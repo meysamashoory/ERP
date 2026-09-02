@@ -97,6 +97,14 @@ class MenuAndHistoryTests(TestCase):
         self.assertContains(history, "history-filter-col")
         self.assertContains(history, "topbar-filter")
         self.assertContains(history, "heading-hint")
+        self.assertContains(history, "بررسی تداخل برنامه")
+        self.assertContains(history, reverse("production_conflicts"))
+        self.assertNotContains(history, "تداخل‌های تولید (")
+
+        conflicts_page = self.client.get(reverse("production_conflicts"))
+        self.assertEqual(conflicts_page.status_code, 200)
+        self.assertContains(conflicts_page, "بررسی تداخل برنامه")
+        self.assertContains(conflicts_page, "بازگشت به سوابق تولید")
 
         products = self.client.get(reverse("product_data"))
         self.assertEqual(products.status_code, 200)
@@ -908,6 +916,8 @@ class ProductDataTests(TestCase):
         self.assertEqual(parse_unit_machine_label("دستگاه 6 واحد 1"), (1, "6"))
         self.assertEqual(parse_unit_machine_label("واحد ۲ دستگاه ۰۳"), (2, "3"))
         self.assertEqual(parse_unit_machine_label("دستگاه ۶"), (None, "6"))
+        self.assertEqual(parse_unit_machine_label("6/1"), (1, "6"))
+        self.assertEqual(parse_unit_machine_label("11-2"), (2, "11"))
 
         upload = ExcelUpload.objects.create(title="mach-label", uploaded_by=self.expert)
         table = ExcelTable.objects.create(
@@ -1210,6 +1220,38 @@ class ProductDataTests(TestCase):
                 ProductionProgram.Status.TEMP_STOP,
             },
         )
+
+    def test_ensure_running_fills_missing_plan_number_into_hub(self):
+        """Excel rows without شماره برنامه still appear in ثبت و کنترل تولید."""
+        from datetime import date
+
+        from catalog.models import Machine, Product
+        from production.models import ProductionProgram
+        from production.sync import ensure_running_history_in_production
+
+        product = Product.objects.first()
+        machine = Machine.objects.select_related("unit").first()
+        uid = "36009999001077"
+        ProductionHistoryRecord.objects.filter(program_uid=uid).delete()
+        ProductionHistoryRecord.objects.create(
+            program_uid=uid,
+            plan_number="",
+            plan_date=date(1405, 6, 10),
+            actual_start_date=date(1405, 6, 11),
+            product_code=product.code,
+            product_name=product.name,
+            unit_number=machine.unit.number,
+            machine_number=machine.number,
+            status="در حال تولید",
+        )
+        stats = ensure_running_history_in_production(user=self.admin)
+        self.assertGreaterEqual(stats["ok"] + stats["refreshed"], 1, msg=stats)
+        prog = ProductionProgram.objects.filter(item__lines__uid=uid).first()
+        self.assertIsNotNone(prog)
+        self.assertEqual(prog.status, ProductionProgram.Status.RUNNING)
+        self.client.login(username="admin", password="erp12345")
+        hub = self.client.get(reverse("program_list"))
+        self.assertContains(hub, uid)
 
     def test_deleting_archive_from_system_data_removes_history_list_row(self):
         """Admin delete of archive must also remove live twin so سوابق stays clean."""

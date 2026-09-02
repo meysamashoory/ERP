@@ -80,7 +80,10 @@
     if (!table || table.dataset.tableNavBound === "1") return;
     if (table.classList.contains("excel-grid")) return;
     if (table.classList.contains("plan-matrix-table")) return;
+    if (table.classList.contains("product-data-table")) return;
     if (table.getAttribute("data-erp-nav") === "off") return;
+    // System-data accordion / hub menus are not navigable data tables
+    if (table.closest(".system-accordion, .system-acc-body, .system-acc-group")) return;
     table.dataset.tableNavBound = "1";
     table.classList.add("js-table-nav");
     if (!table.hasAttribute("tabindex")) table.setAttribute("tabindex", "0");
@@ -157,8 +160,11 @@
 
   function init(root) {
     var scope = root || document;
-    scope.querySelectorAll(".table-scroll table.table, table.table.js-table-nav, table.table-nav-cells, table.table-list-nav").forEach(bindTable);
-    scope.querySelectorAll("main table.table").forEach(bindTable);
+    // Opt-in only: scrollable list tables and explicit nav classes.
+    // Do NOT bind every main table (system-data accordion menus must stay plain).
+    scope.querySelectorAll(
+      ".table-scroll table.table, table.table.js-table-nav, table.table-nav-cells, table.table-list-nav"
+    ).forEach(bindTable);
   }
 
   window.ERPTableNav = { init: init, bind: bindTable, activateRow: activateRow };

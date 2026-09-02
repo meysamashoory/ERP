@@ -535,10 +535,11 @@ def _parse_row(
                     prod_type = ptype
             continue
         if f.key in {"unit_number", "machine_number"}:
-            # Combined labels like «دستگاه 6 واحد1» may be mapped to either column
+            # Combined labels like «دستگاه 6 واحد1» or «6/1» may be mapped to either column
             unit, machine = parse_unit_machine_label(raw)
             has_label = ("دستگاه" in raw) or ("واحد" in raw)
-            if has_label and (unit is not None or machine is not None):
+            combined = unit is not None and machine is not None
+            if (has_label or combined) and (unit is not None or machine is not None):
                 _apply_unit_machine_from_label(values, raw)
                 continue
             if f.key == "unit_number":

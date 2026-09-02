@@ -272,19 +272,29 @@ def _normalize_status_label(raw: str) -> str:
     if not text:
         return ""
     low = text.replace("ي", "ی").replace("ك", "ک").lower()
+    low = " ".join(low.split())
     mapping = {
         "finished": "finished",
         "اتمام": "finished",
         "اتمام تولید": "finished",
         "پایان": "finished",
+        "پایان تولید": "finished",
+        "تمام شده": "finished",
+        "تمام‌شده": "finished",
         "running": "running",
         "در حال تولید": "running",
         "درحال تولید": "running",
+        "در جریان": "running",
+        "درجریان": "running",
+        "فعال": "running",
         "awaiting": "awaiting",
         "در انتظار": "awaiting",
         "در انتظار تولید": "awaiting",
+        "منتظر": "awaiting",
         "temp_stop": "temp_stop",
         "توقف موقت": "temp_stop",
+        "توقف‌موقت": "temp_stop",
+        "استاپ موقت": "temp_stop",
     }
     if low in mapping:
         return mapping[low]
@@ -292,6 +302,30 @@ def _normalize_status_label(raw: str) -> str:
         if key in low:
             return code
     return text
+
+
+def ensure_plan_number_for_history(rec) -> str:
+    """Guarantee a stable plan_number for hub/planning sync (Excel sometimes omits it)."""
+    plan_number = normalize_plan_number(getattr(rec, "plan_number", "") or "")
+    if plan_number:
+        return plan_number
+    uid = (getattr(rec, "program_uid", "") or "").strip()
+    digits = "".join(ch for ch in _fa_digits_to_en(uid) if ch.isdigit())
+    if len(digits) >= 5:
+        # Classic layout: YY(2) + program(3) …
+        plan_number = digits[2:5].lstrip("0") or digits[2:5]
+    elif uid:
+        plan_number = f"EX-{uid[-8:]}"
+    else:
+        plan_number = f"EX-{getattr(rec, 'pk', 0) or 0}"
+    plan_number = normalize_plan_number(plan_number)[:30]
+    if (rec.plan_number or "").strip() != plan_number:
+        rec.plan_number = plan_number
+        try:
+            rec.save(update_fields=["plan_number", "updated_at"])
+        except Exception:  # noqa: BLE001
+            pass
+    return plan_number
 
 
 def _apply_program_state_from_history(rec, program) -> None:
@@ -447,7 +481,7 @@ def sync_history_record_to_planning(
 
     result: dict[str, Any] = {"ok": False, "created": False, "error": ""}
     uid = (rec.program_uid or "").strip()
-    plan_number = normalize_plan_number(getattr(rec, "plan_number", "") or "")
+    plan_number = ensure_plan_number_for_history(rec)
     if not plan_number:
         result["error"] = "شماره برنامه خالی است."
         return result
@@ -826,43 +860,47 @@ def ensure_running_history_in_production(*, user=None) -> dict[str, int]:
 
     stats = {"ok": 0, "failed": 0, "skipped": 0, "refreshed": 0}
     live_uids = _live_program_uids()
-    for rec in ProductionHistoryRecord.objects.exclude(plan_number="").iterator(
-        chunk_size=200
-    ):
-        inferred = infer_history_status(
-            actual_start=rec.actual_start_date,
-            actual_end=rec.actual_end_date,
-            status_text=rec.status or "",
-        )
-        if inferred == "finished":
-            stats["skipped"] += 1
-            continue
-        if not (rec.product_code or rec.product_name or (rec.program_uid or "").strip()):
-            stats["skipped"] += 1
-            continue
-        # Do NOT require unit/machine here — sync_history_record_to_planning /
-        # ensure_machine_for_history can infer them from UID / labels.
-        uid = (rec.program_uid or "").strip()
-        if uid and uid in live_uids:
-            prog = _find_program_by_uid(uid)
-            if prog is not None:
-                _apply_program_state_from_history(rec, prog)
-                _sync_history_quantities_to_program(rec, prog, user=user)
-                stats["refreshed"] += 1
-            else:
-                # UID marked live but program missing — try recreate
-                out = sync_history_record_to_planning(rec, user=user, live_uids=set())
-                if out.get("ok"):
-                    stats["ok"] += 1
+    # Include blank plan_number rows — ensure_plan_number_for_history fills them.
+    qs = ProductionHistoryRecord.objects.all().iterator(chunk_size=200)
+    for rec in qs:
+        try:
+            ensure_plan_number_for_history(rec)
+            inferred = infer_history_status(
+                actual_start=rec.actual_start_date,
+                actual_end=rec.actual_end_date,
+                status_text=rec.status or "",
+            )
+            if inferred == "finished":
+                stats["skipped"] += 1
+                continue
+            if not (rec.product_code or rec.product_name or (rec.program_uid or "").strip()):
+                stats["skipped"] += 1
+                continue
+            # Do NOT require unit/machine here — sync_history_record_to_planning /
+            # ensure_machine_for_history can infer them from UID / labels.
+            uid = (rec.program_uid or "").strip()
+            if uid and uid in live_uids:
+                prog = _find_program_by_uid(uid)
+                if prog is not None:
+                    _apply_program_state_from_history(rec, prog)
+                    _sync_history_quantities_to_program(rec, prog, user=user)
+                    stats["refreshed"] += 1
                 else:
-                    stats["skipped"] += 1
-            continue
-        out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
-        if out.get("ok"):
-            stats["ok"] += 1
-            if uid:
-                live_uids.add(uid)
-        else:
+                    # UID marked live but program missing — try recreate
+                    out = sync_history_record_to_planning(rec, user=user, live_uids=set())
+                    if out.get("ok"):
+                        stats["ok"] += 1
+                    else:
+                        stats["skipped"] += 1
+                continue
+            out = sync_history_record_to_planning(rec, user=user, live_uids=live_uids)
+            if out.get("ok"):
+                stats["ok"] += 1
+                if uid:
+                    live_uids.add(uid)
+            else:
+                stats["failed"] += 1
+        except Exception:  # noqa: BLE001 — one bad archive row must not block the hub
             stats["failed"] += 1
     return stats
 

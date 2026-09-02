@@ -16,37 +16,18 @@
   </div>
   <button type="button" class="btn btn-sm btn-ghost" id="history-filter-clear">پاک کردن</button>
   <span class="muted list-filter-count" id="history-filter-count"></span>
+  <a class="btn btn-sm {% if conflict_count %}btn-warn{% else %}btn-ghost{% endif %}"
+     href="{% url 'production_conflicts' %}">بررسی تداخل برنامه{% if conflict_count %} ({{ conflict_count }}){% endif %}</a>
+</div>
+{% else %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'production_conflicts' %}">بررسی تداخل برنامه</a>
 </div>
 {% endif %}
 {% endblock %}
 {% block nav_history %}active{% endblock %}
 
 {% block content %}
-{% if production_conflicts %}
-<div class="panel panel-compact conflict-banner">
-  <div class="panel-head panel-head-compact">
-    <h2>تداخل‌های تولید ({{ conflict_count }} دستگاه)</h2>
-  </div>
-  <p class="panel-hint" style="margin:0 12px 8px">
-    فقط ردیف‌های متداخل مشخص شده‌اند.
-    ردیف‌های بدون مشکل: {{ ok_count }} · ردیف‌های درگیر تداخل: {{ conflict_row_count }}.
-    فیلتر «فقط تداخل‌ها» را می‌توانید از نوار بالا بزنید.
-  </p>
-  <ul class="conflict-list">
-    {% for c in production_conflicts %}
-    <li>
-      <div class="conflict-msg">{{ c.message }}</div>
-      <div class="conflict-links">
-        {% for link in c.links %}
-        <a class="btn btn-sm btn-ghost" href="{{ link.url }}">ویرایش «{{ link.uid }}»</a>
-        {% endfor %}
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
-
 <div class="panel panel-list">
   {% if rows %}
   <div class="list-filter-bar list-filter-bar-compact" style="padding:8px 10px;gap:8px;align-items:center">
@@ -149,12 +130,12 @@
     var countEl = document.getElementById("history-conflict-filter-count");
     if (countEl) countEl.textContent = "نمایش " + shown + " از " + rows.length + " ردیف";
   }
-  var btnAll = document.getElementById("history-filter-conflicts");
-  var btnOk = document.getElementById("history-filter-ok-only");
-  var btnConflict = document.getElementById("history-filter-conflict-only");
-  if (btnAll) btnAll.addEventListener("click", function () { applyConflictFilter("all"); });
-  if (btnOk) btnOk.addEventListener("click", function () { applyConflictFilter("ok"); });
-  if (btnConflict) btnConflict.addEventListener("click", function () { applyConflictFilter("conflict"); });
+  var allBtn = document.getElementById("history-filter-conflicts");
+  var okBtn = document.getElementById("history-filter-ok-only");
+  var conflictBtn = document.getElementById("history-filter-conflict-only");
+  if (allBtn) allBtn.addEventListener("click", function () { applyConflictFilter("all"); });
+  if (okBtn) okBtn.addEventListener("click", function () { applyConflictFilter("ok"); });
+  if (conflictBtn) conflictBtn.addEventListener("click", function () { applyConflictFilter("conflict"); });
   applyConflictFilter("all");
 })();
 </script>

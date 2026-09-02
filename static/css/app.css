@@ -863,52 +863,70 @@ a.tab { text-decoration: none; display: inline-block; }
 .list-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 12px;
-  align-items: flex-end;
+  gap: 10px 14px;
+  align-items: center;
   padding: 0 4px 12px;
 }
-.list-filter-bar .field { margin: 0; min-width: 160px; }
+.list-filter-bar .field {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
 .list-filter-bar .field-grow { flex: 1 1 220px; min-width: 180px; }
 .list-filter-bar label {
-  display: block;
+  display: inline-block;
   font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin: 0;
+  white-space: nowrap;
+  line-height: 1.2;
 }
-.list-filter-count { font-size: 12px; padding-bottom: 8px; }
+.list-filter-count {
+  font-size: 12px;
+  padding: 0;
+  align-self: center;
+}
 
 .list-filter-bar-compact {
-  gap: 6px 8px;
+  gap: 6px 10px;
   padding: 0 4px 10px;
 }
 .list-filter-bar-compact .field-search {
-  flex: 0 1 220px;
-  max-width: 260px;
-  min-width: 140px;
+  flex: 0 1 260px;
+  max-width: 320px;
+  min-width: 160px;
 }
 .list-filter-bar-compact .field-grow,
 .list-filter-bar .field-grow {
   flex: 1 1 180px;
 }
 .list-filter-bar-compact .field {
-  min-width: 96px;
+  min-width: 0;
 }
-.list-filter-bar-compact .field-search input {
-  width: 100%;
-  max-width: 260px;
+.list-filter-bar-compact .field-search input,
+.list-filter-bar .field select,
+.list-filter-bar .field input {
+  width: auto;
+  min-width: 110px;
+  max-width: 220px;
+  flex: 1 1 auto;
 }
-/* Compact filter in the top bar (history etc.) */
+/* Compact filter in the top bar (history / planning / lists) */
 .topbar-filter.list-filter-bar {
   padding: 0;
   margin: 0;
   flex-wrap: nowrap;
-  align-items: flex-end;
-  gap: 6px 8px;
-  max-width: min(720px, 62vw);
+  align-items: center;
+  gap: 6px 10px;
+  max-width: min(760px, 68vw);
 }
 .topbar-filter .field label {
-  font-size: 11px;
-  margin-bottom: 2px;
+  font-size: 12px;
+  margin: 0;
 }
 .topbar-filter .input-sm,
 .topbar-filter .input {
@@ -917,15 +935,15 @@ a.tab { text-decoration: none; display: inline-block; }
   min-height: 32px;
 }
 .topbar-filter .field {
-  min-width: 88px;
+  min-width: 0;
 }
 .topbar-filter .field-search {
-  flex: 1 1 160px;
-  min-width: 120px;
-  max-width: 220px;
+  flex: 1 1 180px;
+  min-width: 140px;
+  max-width: 260px;
 }
 .topbar-filter .list-filter-count {
-  padding-bottom: 6px;
+  padding: 0;
   white-space: nowrap;
   font-size: 11.5px;
 }
@@ -1033,9 +1051,10 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   margin-bottom: 16px;
 }
 .plan-workspace-main {
-  display: grid;
-  /* RTL: first track = right (form), second = left (glass) */
-  grid-template-columns: minmax(0, 1.55fr) minmax(200px, 0.85fr);
+  /* RTL flex: first child (form) on the right; glass pinned to the left edge.
+     Width coefficient changes the shared border (form ↔ glass), not the page left edge. */
+  display: flex;
+  flex-direction: row;
   gap: 14px;
   align-items: stretch;
   min-width: 0;
@@ -1045,12 +1064,17 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .plan-workspace-main > .panel-compact {
   margin-bottom: 0;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .plan-workspace-main > .insight-glass {
   margin: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  flex: 0 0 calc(280px * var(--insight-scale, 1));
+  width: calc(280px * var(--insight-scale, 1));
+  max-width: min(48%, calc(420px * var(--insight-scale, 1)));
+  box-sizing: border-box;
 }
 .plan-workspace-main .form-grid-compact,
 .plan-workspace-main .panel-compact .repeat-row {
@@ -1133,7 +1157,14 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 }
 @media (max-width: 1100px) {
   .plan-workspace-main {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+  .plan-workspace-main > .insight-glass {
+    flex: 0 0 auto;
+    width: calc(100% * var(--insight-scale, 1));
+    max-width: 100%;
+    /* Pin to inline-end (left in RTL) so shared/top edge with form moves with scale */
+    margin-inline-start: auto;
   }
   .plan-form-grid,
   .plan-lines .plan-line-row,
@@ -1207,7 +1238,9 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   padding: 8px 10px;
 }
 
-/* Glass insight strip — width scales with --insight-scale (ضریب عرض) */
+/* Glass insight strip — width scales with --insight-scale (ضریب عرض).
+   Outside the side-by-side workspace, pin to the left (RTL inline-end)
+   so shrinking does not leave a gap on the left. */
 .insight-glass {
   margin: 12px 0 0;
   border-radius: 16px;
@@ -1218,6 +1251,7 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
   width: calc(100% * var(--insight-scale, 1));
   max-width: 100%;
   box-sizing: border-box;
+  margin-inline-start: auto;
 }
 .insight-glass-inner {
   display: grid;
@@ -1244,6 +1278,7 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 }
 .mold-glass-green {
   margin: 16px 0 20px;
+  margin-inline-start: auto;
   background: linear-gradient(135deg, rgba(134,239,172,.8), rgba(74,222,128,.4), rgba(34,197,94,.55));
   box-shadow: 0 8px 28px rgba(22,163,74,.18);
   width: calc(100% * var(--insight-scale, 1));

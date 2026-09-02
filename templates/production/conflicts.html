@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}بررسی تداخل برنامه{% endblock %}
+{% block heading %}بررسی تداخل برنامه{% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'production_history' %}">بازگشت به سوابق تولید</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="panel panel-compact">
+  <div class="panel-head panel-head-compact">
+    <h2>تداخل‌های تولید{% if conflict_count %} ({{ conflict_count }} دستگاه){% endif %}</h2>
+  </div>
+  <p class="panel-hint" style="margin:0 12px 10px">
+    فقط ردیف‌های متداخل فهرست شده‌اند.
+    ردیف‌های بدون مشکل در سوابق: {{ ok_count }} · ردیف‌های درگیر تداخل: {{ conflict_row_count }}.
+  </p>
+  {% if production_conflicts %}
+  <ul class="conflict-list" style="padding:0 12px 12px">
+    {% for c in production_conflicts %}
+    <li>
+      <div class="conflict-msg">{{ c.message }}</div>
+      <div class="conflict-links">
+        {% for link in c.links %}
+        <a class="btn btn-sm btn-ghost" href="{{ link.url }}">ویرایش «{{ link.uid }}»</a>
+        {% endfor %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="padding:12px">تداخلی ثبت نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}

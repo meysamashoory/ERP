@@ -25,6 +25,7 @@ def parse_unit_machine_label(raw: str) -> tuple[int | None, str | None]:
     Supports combined labels used in exports, e.g.:
     - ``دستگاه 6 واحد1`` / ``دستگاه 6 واحد 1`` → ``(1, "6")``
     - ``واحد 2 دستگاه 03`` → ``(2, "3")``
+    - ``6/1`` / ``6-1`` (دستگاه/واحد as in planning UI) → ``(1, "6")``
     - plain ``6`` / ``۰۶`` → ``(None, "6")`` (caller decides which field)
     """
     text = normalize_digits(str(raw or "")).strip()
@@ -50,6 +51,11 @@ def parse_unit_machine_label(raw: str) -> tuple[int | None, str | None]:
     match = re.search(r"دستگاه\s*(\d+)", text)
     if match and "واحد" not in text:
         return None, str(int(match.group(1)))
+
+    # Compact «ماشین/واحد» as shown in weekly planning: 6/1 → machine 6, unit 1
+    match = re.fullmatch(r"(\d+)\s*[/\-]\s*(\d+)", text)
+    if match:
+        return int(match.group(2)), str(int(match.group(1)))
 
     nums = re.findall(r"\d+", text)
     if len(nums) == 1:

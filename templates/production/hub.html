@@ -5,30 +5,15 @@
 
 {% block content %}
 {% if production_conflicts %}
-<div class="panel panel-compact conflict-banner">
-  <div class="panel-head panel-head-compact">
-    <h2>هشدار تداخل — فقط «در حال تولید» / «توقف موقت»</h2>
+<div class="panel panel-compact conflict-banner conflict-banner-compact">
+  <div class="panel-head panel-head-compact" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <h2 style="margin:0">هشدار تداخل — {{ production_conflicts|length }} دستگاه</h2>
+    <a class="btn btn-sm btn-warn" href="{% url 'production_conflicts' %}">بررسی تداخل برنامه</a>
   </div>
-  <p class="panel-hint" style="margin:0 12px 8px">
+  <p class="panel-hint" style="margin:0 12px 10px">
     روی یک دستگاه نباید هم‌زمان بیش از یک قالب در وضعیت در حال تولید یا توقف موقت باشد.
-    موارد سالم در فهرست پایین جداگانه دیده می‌شوند؛ فقط موارد متداخل زیر را اصلاح کنید.
+    جزئیات کامل را در صفحه بررسی تداخل ببینید.
   </p>
-  <ul class="conflict-list">
-    {% for c in production_conflicts %}
-    <li>
-      <div class="conflict-msg">{{ c.message }}</div>
-      <div class="conflict-links">
-        {% for link in c.links %}
-        <a class="btn btn-sm btn-ghost link-edit" href="{{ link.url }}" title="{{ link.status }}">
-          ویرایش {% if link.kind == 'live' %}برنامه زنده{% else %}سابقه{% endif %}
-          «{{ link.uid }}»
-          {% if link.status %}<span class="muted">({{ link.status }})</span>{% endif %}
-        </a>
-        {% endfor %}
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
 </div>
 {% endif %}
 
