@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+{% block title %}{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}{% endblock %}
+{% block heading %}
+<div class="entity-heading entity-heading-stack" id="entity-heading">
+  <div class="entity-heading-view" id="heading-view" {% if mode != 'edit' and not form.title.value %}hidden{% endif %}>
+    <span class="entity-heading-text" id="heading-text">{% if report %}{{ report.heading_label }}{% elif form.title.value %}{{ form.number.value }}- {{ form.title.value }}{% if form.description.value %} ({{ form.description.value }}){% endif %}{% endif %}</span>
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش</button>
+  </div>
+  <div class="entity-heading-edit" id="heading-edit" {% if mode == 'edit' or form.title.value %}hidden{% endif %}>
+    <span class="muted">پس از تایید اطلاعات، عنوان اینجا نمایش داده می‌شود.</span>
+  </div>
+</div>
+{% endblock %}
+{% block nav_reports %}{% endblock %}
+{% block nav_report_list %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">بازگشت به لیست</a>
+  <button class="btn btn-sm" type="submit" form="report-builder-form" id="top-submit" hidden>ثبت گزارش</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="report-builder-form" class="builder-compact">
+  {% csrf_token %}
+  {{ form.columns_json }}
+  <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
+  {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
+
+  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="form-grid form-grid-compact form-grid-2">
+        <div class="field">
+          <label>{{ form.title.label }}</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
+        <div class="field">
+          <label>{{ form.number.label }} (۱–۹۹۹)</label>
+          {{ form.number }}
+          {{ form.number.errors }}
+        </div>
+      </div>
+      <div class="form-grid form-grid-compact form-grid-2">
+        <div class="field">
+          <label>{{ form.description.label }}</label>
+          {{ form.description }}
+        </div>
+        <div class="field">
+          <label>{{ form.access_mode.label }}</label>
+          {{ form.access_mode }}
+          {{ form.access_mode.errors }}
+        </div>
+      </div>
+      {% if form.is_manager %}
+      <div class="field field-check">
+        <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+      </div>
+      {% endif %}
+      {{ form.columns_json.errors }}
+      <div class="line-actions">
+        <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" hidden>انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel panel-compact" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="col-builder col-builder-compact">
+        <div class="col-builder-right">
+          <div class="field">
+            <label>منبع داده اصلی</label>
+            <details class="source-menu" id="source-menu">
+              <summary class="source-menu-summary">افزودن منبع ▾</summary>
+              <div class="source-menu-list" id="source-menu-list"></div>
+            </details>
+          </div>
+          <div class="source-trees" id="source-trees"></div>
+          <div class="source-link-bar">
+            <button type="button" class="btn btn-sm btn-ghost" id="link-sources-btn" hidden>ربط منابع (نقطه اشتراک)</button>
+            <div class="source-links-summary muted" id="source-links-summary"></div>
+          </div>
+        </div>
+        <div class="col-builder-left">
+          <div class="selected-head">
+            <strong>نحوه نمایش</strong>
+            <div class="move-controls">
+              <button type="button" class="btn btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا">▲</button>
+              <button type="button" class="btn btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین">▼</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده">کپی</button>
+            </div>
+          </div>
+          <div class="selected-cols" id="selected-cols"></div>
+          <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<dialog id="source-link-dialog" class="dialog">
+  <div class="dialog-head"><h3>ربط منابع — نقطه اشتراک</h3></div>
+  <p class="muted">برای هر منبع، ستونی را انتخاب کنید که شناسه مشترک است (مثلاً کد کالا در هر منبع با نام متفاوت).</p>
+  <div id="link-fields"></div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="save-links-btn">ذخیره ربط</button>
+    <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+{{ column_groups|json_script:"column-groups" }}
+{{ columns_data|json_script:"columns-initial" }}
+{{ source_links_data|json_script:"links-initial" }}
+<script>
+(function () {
+  var mode = "{{ mode }}";
+  var groups = JSON.parse(document.getElementById("column-groups").textContent);
+  var hidden = document.getElementById("id_columns_json");
+  var linksHidden = document.getElementById("id_source_links_json");
+  var selected = [];
+  var sourceLinks = [];
+  try { selected = JSON.parse(document.getElementById("columns-initial").textContent || "[]"); } catch (e) { selected = []; }
+  try { sourceLinks = JSON.parse(document.getElementById("links-initial").textContent || "[]"); } catch (e) { sourceLinks = []; }
+
+  function newUid() {
+    return "c" + Math.random().toString(16).slice(2, 10);
+  }
+
+  selected = (selected || []).map(function (item) {
+    if (typeof item === "string") {
+      return { key: item, source: "fitting", level: 1, label: item, origLabel: item, uid: newUid() };
+    }
+    item.origLabel = item.origLabel || item.label || item.key;
+    if (!item.uid) item.uid = newUid();
+    return item;
+  });
+
+  var addedSources = [];
+  selected.forEach(function (c) {
+    if (c.source && addedSources.indexOf(c.source) < 0) addedSources.push(c.source);
+  });
+  var activeIdx = -1;
+
+  var metaEditor = document.getElementById("meta-editor");
+  var builderPanel = document.getElementById("builder-panel");
+  var topSubmit = document.getElementById("top-submit");
+  var cancelBtn = document.getElementById("cancel-meta-btn");
+  var titleInput = document.getElementById("id_title");
+  var numberInput = document.getElementById("id_number");
+  var descInput = document.getElementById("id_description");
+  var stdInput = document.getElementById("id_is_standard");
+  var accessInput = document.getElementById("id_access_mode");
+  var headingView = document.getElementById("heading-view");
+  var headingEdit = document.getElementById("heading-edit");
+  var headingText = document.getElementById("heading-text");
+  var confirmedOnce = (mode === "edit");
+
+  function formatHeading() {
+    var num = (numberInput.value || "").trim();
+    var title = (titleInput.value || "").trim();
+    var desc = (descInput.value || "").trim();
+    if (!title) return "";
+    var text = (num || "—") + "- " + title;
+    if (desc) text += " (" + desc + ")";
+    return text;
+  }
+
+  function syncHeading() {
+    var text = formatHeading();
+    if (headingText) headingText.textContent = text || "—";
+  }
+
+  function showBuilder() {
+    confirmedOnce = true;
+    metaEditor.hidden = true;
+    builderPanel.hidden = false;
+    topSubmit.hidden = false;
+    cancelBtn.hidden = false;
+    if (headingView) headingView.hidden = false;
+    if (headingEdit) headingEdit.hidden = true;
+    syncHeading();
+    renderAll();
+  }
+  function showMetaEditor() {
+    metaEditor.hidden = false;
+    builderPanel.hidden = true;
+    topSubmit.hidden = true;
+    cancelBtn.hidden = !confirmedOnce;
+    if (confirmedOnce) {
+      if (headingView) headingView.hidden = false;
+      if (headingEdit) headingEdit.hidden = true;
+    } else {
+      if (headingView) headingView.hidden = true;
+      if (headingEdit) headingEdit.hidden = false;
+    }
+  }
+
+  document.getElementById("confirm-meta-btn").addEventListener("click", function () {
+    if (!titleInput.value.trim()) { alert("عنوان گزارش را وارد کنید."); return; }
+    if (!numberInput.value) { alert("شماره گزارش را وارد کنید."); return; }
+    showBuilder();
+  });
+  document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
+  cancelBtn.addEventListener("click", showBuilder);
+
+  var trees = document.getElementById("source-trees");
+  var list = document.getElementById("selected-cols");
+  var pathEl = document.getElementById("col-path");
+  var menuList = document.getElementById("source-menu-list");
+  var linkBtn = document.getElementById("link-sources-btn");
+  var linkSummary = document.getElementById("source-links-summary");
+  var linkDialog = document.getElementById("source-link-dialog");
+
+  function syncHidden() {
+    hidden.value = JSON.stringify(selected);
+    linksHidden.value = JSON.stringify(sourceLinks);
+  }
+
+  function groupLabel(sid) {
+    var g = groups.find(function (x) { return x.id === sid; });
+    return g ? g.label : sid;
+  }
+  function labelOf(source, key) {
+    var g = groups.find(function (x) { return x.id === source; });
+    if (!g) return key;
+    var hit = g.columns.find(function (c) { return c[0] === key; });
+    return hit ? hit[1] : key;
+  }
+
+  function fillSourceMenu() {
+    menuList.innerHTML = "";
+    var available = groups.filter(function (g) { return addedSources.indexOf(g.id) < 0; });
+    if (!available.length) {
+      menuList.innerHTML = '<p class="muted">همه منابع اضافه شده‌اند.</p>';
+      return;
+    }
+    available.forEach(function (g) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "source-menu-item";
+      btn.textContent = g.label;
+      btn.addEventListener("click", function () {
+        addSource(g.id);
+        document.getElementById("source-menu").open = false;
+      });
+      menuList.appendChild(btn);
+    });
+  }
+
+  function addSource(sid) {
+    if (!sid || addedSources.indexOf(sid) >= 0) return;
+    addedSources.push(sid);
+    renderAll();
+    if (addedSources.filter(function (s) { return s !== "file"; }).length >= 2) {
+      linkBtn.hidden = false;
+    }
+  }
+
+  function removeSource(sid) {
+    var count = selected.filter(function (c) { return c.source === sid; }).length;
+    if (count && !confirm("از این منبع " + count + " ستون انتخاب شده است. با حذف منبع حذف می‌شوند. ادامه؟")) return;
+    selected = selected.filter(function (c) { return c.source !== sid; });
+    addedSources = addedSources.filter(function (s) { return s !== sid; });
+    sourceLinks = sourceLinks.filter(function (L) {
+      return !(L.keys && L.keys[sid]);
+    });
+    if (activeIdx >= selected.length) activeIdx = -1;
+    renderAll();
+  }
+
+  function renderTrees() {
+    trees.innerHTML = "";
+    addedSources.forEach(function (sid) {
+      var g = groups.find(function (x) { return x.id === sid; });
+      if (!g) return;
+      var box = document.createElement("div");
+      box.className = "source-tree";
+      var head = document.createElement("div");
+      head.className = "source-tree-head-row";
+      var toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "source-tree-head";
+      toggle.textContent = "▾ " + g.label;
+      var body = document.createElement("div");
+      body.className = "source-tree-body";
+      toggle.addEventListener("click", function () {
+        body.hidden = !body.hidden;
+        toggle.textContent = (body.hidden ? "▸ " : "▾ ") + g.label;
+      });
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "btn btn-xs btn-ghost";
+      rm.textContent = "حذف منبع";
+      rm.addEventListener("click", function () { removeSource(sid); });
+      head.appendChild(toggle);
+      head.appendChild(rm);
+      g.columns.forEach(function (pair) {
+        var key = pair[0], lab = pair[1];
+        var labEl = document.createElement("label");
+        labEl.className = "chk";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = selected.some(function (c) { return c.key === key && c.source === sid; });
+        cb.addEventListener("change", function () {
+          if (cb.checked) {
+            selected.push({ key: key, source: sid, level: 1, label: lab, origLabel: lab, uid: newUid() });
+          } else {
+            selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
+          }
+          renderSelected();
+          syncHidden();
+        });
+        labEl.appendChild(cb);
+        labEl.appendChild(document.createTextNode(" " + lab));
+        body.appendChild(labEl);
+      });
+      box.appendChild(head);
+      box.appendChild(body);
+      trees.appendChild(box);
+    });
+  }
+
+  function moveActive(dir) {
+    if (activeIdx < 0) return;
+    var j = activeIdx + dir;
+    if (j < 0 || j >= selected.length) return;
+    var tmp = selected[activeIdx]; selected[activeIdx] = selected[j]; selected[j] = tmp;
+    activeIdx = j;
+    renderSelected(); syncHidden();
+  }
+
+  document.getElementById("move-up").addEventListener("click", function () { moveActive(-1); });
+  document.getElementById("move-down").addEventListener("click", function () { moveActive(1); });
+  document.getElementById("copy-col").addEventListener("click", function () {
+    if (activeIdx < 0 || !selected[activeIdx]) {
+      alert("ابتدا یک ردیف را انتخاب کنید.");
+      return;
+    }
+    var src = selected[activeIdx];
+    var copy = {
+      key: src.key,
+      source: src.source,
+      level: src.level,
+      label: (src.label || src.origLabel || src.key) + " (کپی)",
+      origLabel: src.origLabel || src.label || src.key,
+      uid: newUid()
+    };
+    selected.splice(activeIdx + 1, 0, copy);
+    activeIdx = activeIdx + 1;
+    renderSelected();
+    syncHidden();
+  });
+
+  function updatePath() {
+    if (activeIdx < 0 || !selected[activeIdx]) {
+      pathEl.textContent = "ردیفی انتخاب نشده است.";
+      return;
+    }
+    var c = selected[activeIdx];
+    pathEl.textContent = "منبع: " + groupLabel(c.source) + "  ←  " + (c.origLabel || labelOf(c.source, c.key)) + "  (" + c.key + ")";
+  }
+
+  function renderSelected() {
+    list.innerHTML = "";
+    if (!selected.length) {
+      list.innerHTML = '<p class="muted">ستونی انتخاب نشده است.</p>';
+      updatePath();
+      return;
+    }
+    selected.forEach(function (c, idx) {
+      var row = document.createElement("div");
+      row.className = "selected-col-row" + (idx === activeIdx ? " is-active" : "");
+      row.dataset.idx = String(idx);
+      var opts = "";
+      for (var n = 1; n <= 10; n++) {
+        opts += '<option value="' + n + '"' + (Number(c.level) === n ? " selected" : "") + ">" + n + "</option>";
+      }
+      row.innerHTML =
+        '<input class="input sel-rename" data-label="' + idx + '" value="' + (c.label || "").replace(/"/g, "&quot;") + '">' +
+        '<label class="level-label">سطح <select data-level="' + idx + '">' + opts + "</select></label>" +
+        '<button type="button" class="btn btn-xs btn-danger" data-rm="' + idx + '">×</button>';
+      list.appendChild(row);
+    });
+    updatePath();
+  }
+
+  list.addEventListener("click", function (e) {
+    var rm = e.target.closest("[data-rm]");
+    if (rm) {
+      var i = parseInt(rm.getAttribute("data-rm"), 10);
+      selected.splice(i, 1);
+      if (activeIdx === i) activeIdx = -1;
+      else if (activeIdx > i) activeIdx -= 1;
+      renderTrees(); renderSelected(); syncHidden();
+      return;
+    }
+    if (e.target.closest("select") || e.target.closest("input")) return;
+    var row = e.target.closest(".selected-col-row");
+    if (!row) return;
+    activeIdx = parseInt(row.dataset.idx, 10);
+    renderSelected();
+  });
+  list.addEventListener("change", function (e) {
+    var sel = e.target.closest("[data-level]");
+    if (sel) {
+      selected[parseInt(sel.getAttribute("data-level"), 10)].level = parseInt(sel.value, 10);
+      syncHidden();
+    }
+  });
+  list.addEventListener("input", function (e) {
+    var inp = e.target.closest("[data-label]");
+    if (!inp) return;
+    var i = parseInt(inp.getAttribute("data-label"), 10);
+    selected[i].label = inp.value;
+    syncHidden();
+  });
+
+  function updateLinkUi() {
+    var multi = addedSources.length >= 2;
+    linkBtn.hidden = !multi;
+    if (!sourceLinks.length) {
+      linkSummary.textContent = multi ? "هنوز نقطه اشتراکی تعریف نشده است." : "";
+      return;
+    }
+    linkSummary.textContent = sourceLinks.map(function (L) {
+      return Object.keys(L.keys || {}).map(function (s) {
+        return groupLabel(s) + " ← " + labelOf(s, L.keys[s]);
+      }).join("  ≈  ");
+    }).join(" | ");
+  }
+
+  linkBtn.addEventListener("click", function () {
+    var box = document.getElementById("link-fields");
+    box.innerHTML = "";
+    addedSources.forEach(function (sid) {
+      var g = groups.find(function (x) { return x.id === sid; });
+      if (!g) return;
+      var field = document.createElement("div");
+      field.className = "field";
+      var lab = document.createElement("label");
+      lab.textContent = "ستون مشترک در «" + g.label + "»";
+      var sel = document.createElement("select");
+      sel.dataset.source = sid;
+      sel.innerHTML = '<option value="">انتخاب ستون…</option>';
+      g.columns.forEach(function (pair) {
+        var opt = document.createElement("option");
+        opt.value = pair[0];
+        opt.textContent = pair[1];
+        var existing = sourceLinks[0] && sourceLinks[0].keys && sourceLinks[0].keys[sid];
+        if (existing === pair[0]) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      field.appendChild(lab);
+      field.appendChild(sel);
+      box.appendChild(field);
+    });
+    if (typeof linkDialog.showModal === "function") linkDialog.showModal();
+    else linkDialog.setAttribute("open", "");
+  });
+
+  document.getElementById("save-links-btn").addEventListener("click", function () {
+    var keys = {};
+    document.querySelectorAll("#link-fields select").forEach(function (sel) {
+      if (sel.value) keys[sel.dataset.source] = sel.value;
+    });
+    if (Object.keys(keys).length < 2) {
+      alert("حداقل برای دو منبع ستون مشترک انتخاب کنید.");
+      return;
+    }
+    sourceLinks = [{ keys: keys }];
+    syncHidden();
+    updateLinkUi();
+    if (typeof linkDialog.close === "function") linkDialog.close();
+    else linkDialog.removeAttribute("open");
+  });
+  linkDialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) {
+      if (typeof linkDialog.close === "function") linkDialog.close();
+      else linkDialog.removeAttribute("open");
+    }
+  });
+
+  function renderAll() {
+    fillSourceMenu();
+    renderTrees();
+    renderSelected();
+    updateLinkUi();
+    syncHidden();
+  }
+
+  {% if form.errors %}
+  showMetaEditor();
+  renderAll();
+  {% elif mode == 'edit' %}
+  showBuilder();
+  {% else %}
+  showMetaEditor();
+  renderAll();
+  {% endif %}
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}جزئیات سابقه تولید{% endblock %}
+{% block heading %}جزئیات سابقه تولید{% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-sm btn-ghost" href="{% url 'production_history' %}">بازگشت به سوابق</a>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2 title="{{ row.product_name }} · {{ row.change_uid }}">{{ row.product_name }} · {{ row.change_uid }}</h2>
+  </div>
+  <div class="panel-body">
+    <p class="history-summary">{{ summary }}</p>
+    <dl class="detail-meta">
+      <div><dt>شناسه تعویض</dt><dd class="num">{{ row.change_uid|default:"—" }}</dd></div>
+      <div><dt>کد کالا</dt><dd>{{ row.product_code }}</dd></div>
+      <div><dt>وضعیت</dt><dd><span class="badge status-{{ row.status_code }}">{{ row.status_label }}</span></dd></div>
+      <div><dt>نام کامل محصول</dt><dd>{{ row.product_name }}</dd></div>
+      <div><dt>شماره برنامه</dt><dd>{{ row.plan_number }}</dd></div>
+    </dl>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head panel-head-compact">
+    <h2>اسناد ثبت‌شده روزانه</h2>
+  </div>
+  {% if entries %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>شناسه تعویض</th>
+          <th>کد کالا</th>
+          <th>وضعیت</th>
+          <th>تاریخ سند</th>
+          <th>مقدار تولید شده</th>
+          <th>ضایعات</th>
+          <th>انحراف آمار تولید</th>
+          <th>علت انحراف آمار</th>
+          <th>انحراف زمان تولید (ثانیه)</th>
+          <th>علت انحراف زمان</th>
+          <th>توضیحات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td class="num">{{ e.program_uid }}</td>
+          <td>{{ e.product_code }}</td>
+          <td><span class="badge status-{{ e.status_code }}">{{ e.status_label }}</span></td>
+          <td class="num">{{ e.date_display }}</td>
+          <td class="num">{{ e.produced }}</td>
+          <td class="num">{{ e.scrap }}</td>
+          <td class="num">{{ e.qty_deviation }}</td>
+          <td>{{ e.qty_reason }}</td>
+          <td class="num">{{ e.time_deviation }}</td>
+          <td>{{ e.time_reason }}</td>
+          <td>{{ e.description }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">
+    {% if program %}
+    هنوز سند روزانه برای این برنامه ثبت نشده است.
+    {% else %}
+    این ردیف از آرشیو اکسل است و سند روزانه جداگانه ندارد.
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}
