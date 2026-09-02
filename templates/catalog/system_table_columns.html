@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}سرستون‌های جداول{% endblock %}
+{% block heading %}سرستون‌های جداول سامانه{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'system_naming_keys' %}">کلیدهای نام‌گذاری</a>
+  <a class="btn btn-sm btn-ghost" href="{% url 'system_data' %}">بازگشت به داده‌های سیستم</a>
+</div>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="panel panel-list naming-cols-panel">
+  <p class="panel-hint">
+    برای هر جدول سامانه می‌توانید عنوان سرستون را تغییر دهید، ستون را پنهان کنید،
+    به بخش دیگری ربط دهید، یا ستون سفارشی اضافه کنید.
+  </p>
+
+  <form class="list-filter-bar naming-filter-bar" method="get">
+    <label class="field" style="min-width:min(420px,100%)">
+      <span>جدول</span>
+      <select class="input" name="table" onchange="this.form.submit()">
+        {% for t in tables %}
+        <option value="{{ t.table_key }}" {% if table_key == t.table_key %}selected{% endif %}>
+          {{ t.label }} — {{ t.table_key }}
+        </option>
+        {% empty %}
+        <option value="">جدولی ثبت نشده — ابتدا همگام‌سازی کلیدها را اجرا کنید</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if table_meta %}
+  <div class="naming-table-meta">
+    <div><strong>{{ table_meta.label }}</strong></div>
+    <div class="muted">کلید جدول: <code>{{ table_key }}</code></div>
+    <div class="muted naming-address">آدرس: {{ table_meta.address|default:"—" }}</div>
+  </div>
+  {% endif %}
+
+  {% if table_key %}
+  <div class="table-scroll">
+    <table class="table table-compact naming-cols-table">
+      <thead>
+        <tr>
+          <th style="width:60px">ترتیب</th>
+          <th>کلید ستون</th>
+          <th>عنوان سرستون</th>
+          <th>آدرس دقیق</th>
+          <th style="width:160px">ربط به بخش</th>
+          <th style="width:90px">نمایش</th>
+          {% if can_edit %}<th style="width:120px">عملیات</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody id="naming-cols-body">
+        {% for row in columns %}
+        <tr data-id="{{ row.pk }}" class="{% if not row.is_active %}is-inactive{% endif %}">
+          <td>
+            {% if can_edit %}
+            <input class="input naming-order-input" data-field="order" type="number" min="0" value="{{ row.order }}">
+            {% else %}{{ row.order }}{% endif %}
+          </td>
+          <td><code class="naming-key-code">{{ row.column_key|default:row.key }}</code>
+            {% if row.is_custom %}<span class="naming-badge">سفارشی</span>{% endif %}
+          </td>
+          <td>
+            {% if can_edit %}
+            <input class="input naming-label-input" data-field="label" maxlength="200" value="{{ row.label }}">
+            {% else %}{{ row.label }}{% endif %}
+          </td>
+          <td><div class="naming-address" title="{{ row.address }}">{{ row.address|default:"—" }}</div></td>
+          <td>
+            {% if can_edit %}
+            <select class="input naming-link-select" data-field="linked_section_key">
+              {% for val, lab in section_choices %}
+              <option value="{{ val }}" {% if row.linked_section_key == val %}selected{% endif %}>{{ lab }}</option>
+              {% endfor %}
+            </select>
+            {% else %}{{ row.linked_section_key|default:"—" }}{% endif %}
+          </td>
+          <td>
+            {% if can_edit %}
+            <input type="checkbox" data-field="is_active" {% if row.is_active %}checked{% endif %}>
+            {% else %}{% if row.is_active %}بله{% else %}خیر{% endif %}{% endif %}
+          </td>
+          {% if can_edit %}
+          <td class="col-ops">
+            <button type="button" class="btn btn-sm btn-primary-soft col-save-btn">ذخیره</button>
+            {% if row.is_custom %}
+            <button type="button" class="btn btn-sm btn-danger-soft col-delete-btn">حذف</button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="empty">ستونی برای این جدول نیست.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if can_edit %}
+  <div class="naming-add-col panel" style="margin-top:14px;padding:12px 14px">
+    <h3 class="import-heading">افزودن سرستون سفارشی</h3>
+    <div class="excel-import-form">
+      <label class="field">
+        <span>کلید ستون (لاتین)</span>
+        <input class="input" id="add-col-key" maxlength="80" placeholder="مثلاً custom_note">
+      </label>
+      <label class="field">
+        <span>عنوان نمایشی</span>
+        <input class="input" id="add-col-label" maxlength="200" placeholder="عنوان فارسی">
+      </label>
+      <label class="field">
+        <span>ربط به بخش</span>
+        <select class="input" id="add-col-link">
+          {% for val, lab in section_choices %}
+          <option value="{{ val }}">{{ lab }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="button" class="btn btn-primary-soft" id="add-col-btn">افزودن ستون</button>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+  <p class="muted" id="cols-status" style="margin-top:8px;min-height:1.2em"></p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if can_edit and table_key %}
+<script>
+(function () {
+  var csrf = (document.querySelector("[name=csrfmiddlewaretoken]") || {}).value
+    || (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+  var tableKey = "{{ table_key|escapejs }}";
+  var statusEl = document.getElementById("cols-status");
+  function setStatus(msg, isError) {
+    statusEl.textContent = msg || "";
+    statusEl.style.color = isError ? "#b91c1c" : "#0f766e";
+  }
+  function saveRow(tr) {
+    var body = {
+      id: Number(tr.getAttribute("data-id")),
+      label: (tr.querySelector('[data-field="label"]') || {}).value,
+      order: Number((tr.querySelector('[data-field="order"]') || {}).value || 0),
+      linked_section_key: (tr.querySelector('[data-field="linked_section_key"]') || {}).value,
+      is_active: !!(tr.querySelector('[data-field="is_active"]') || {}).checked
+    };
+    return fetch("{% url 'system_naming_key_save' %}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrf,
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      credentials: "same-origin",
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+  document.querySelectorAll(".col-save-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tr = btn.closest("tr");
+      saveRow(tr).then(function (data) {
+        if (!data.ok) { setStatus(data.error || "خطا", true); return; }
+        tr.classList.toggle("is-inactive", !data.is_active);
+        setStatus("ذخیره شد.");
+      });
+    });
+  });
+  document.querySelectorAll(".col-delete-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (!confirm("ستون سفارشی حذف شود؟")) return;
+      var tr = btn.closest("tr");
+      fetch("{% url 'system_naming_key_delete' %}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ id: Number(tr.getAttribute("data-id")) })
+      }).then(function (r) { return r.json(); }).then(function (data) {
+        if (!data.ok) { setStatus(data.error || "خطا", true); return; }
+        tr.remove();
+        setStatus("حذف شد.");
+      });
+    });
+  });
+  var addBtn = document.getElementById("add-col-btn");
+  if (addBtn) {
+    addBtn.addEventListener("click", function () {
+      var colKey = (document.getElementById("add-col-key").value || "").trim();
+      var label = (document.getElementById("add-col-label").value || "").trim();
+      var link = document.getElementById("add-col-link").value || "";
+      if (!colKey || !label) {
+        setStatus("کلید و عنوان الزامی است.", true);
+        return;
+      }
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(colKey)) {
+        setStatus("کلید ستون باید لاتین/زیرخط باشد.", true);
+        return;
+      }
+      var key = "ui.table." + tableKey + ".col." + colKey;
+      fetch("{% url 'system_naming_key_save' %}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          key: key,
+          label: label,
+          category: "column",
+          table_key: tableKey,
+          column_key: colKey,
+          linked_section_key: link,
+          address: "custom:" + tableKey + "#" + colKey,
+          is_active: true,
+          order: 999
+        })
+      }).then(function (r) { return r.json(); }).then(function (data) {
+        if (!data.ok) { setStatus(data.error || "خطا", true); return; }
+        window.location.reload();
+      });
+    });
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

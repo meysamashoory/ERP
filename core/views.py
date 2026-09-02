@@ -35,13 +35,23 @@ def machines_json(request):
 
 @login_required
 def products_json(request):
-    """Active products of a subgroup with their code (dependent dropdown)."""
+    """Active products, optionally filtered by subgroup / product kind."""
+    from catalog.models import ProductKind
+
     subgroup_id = request.GET.get("subgroup")
-    qs = Product.objects.filter(is_active=True)
+    kind = request.GET.get("kind")
+    qs = Product.objects.filter(is_active=True).select_related("subgroup")
     if subgroup_id:
         qs = qs.filter(subgroup_id=subgroup_id)
+    if kind:
+        qs = qs.filter(subgroup__group__kind=kind)
     data = [
-        {"id": p.id, "name": p.name, "code": p.code}
+        {
+            "id": p.id,
+            "name": p.name,
+            "code": p.code,
+            "subgroup_id": p.subgroup_id,
+        }
         for p in qs.order_by("name")
     ]
     return JsonResponse({"results": data})
@@ -149,7 +159,7 @@ def _fit_material_scrap(r):
 
 # Fitting report reads plan-driven day entries. (key, label, getter)
 FITTING_COLUMNS = [
-    ("uid", "شناسه برنامه", lambda r: r.program.item.uid),
+    ("uid", "شناسه برنامه", lambda r: r.program.resolved_uid),
     ("date", "تاریخ", lambda r: str(r.date)),
     ("machine", "دستگاه/واحد", lambda r: r.program.machine_label),
     ("code", "کد کالا", lambda r: r.program.item.product.code),

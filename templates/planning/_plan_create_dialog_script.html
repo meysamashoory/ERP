@@ -1,0 +1,154 @@
+{% if profile.can_create_plans %}
+<script>
+(function () {
+  var dialog = document.getElementById("plan-create-dialog");
+  if (!dialog) return;
+  var stepMode = document.getElementById("plan-create-step-mode");
+  var stepForm = document.getElementById("plan-create-step-form");
+  var modeInput = document.getElementById("plan-create-mode-input");
+  var titleEl = document.getElementById("plan-create-dialog-title");
+  var hintEl = document.getElementById("plan-create-mode-hint");
+  var form = document.getElementById("plan-create-form");
+  var errEl = document.getElementById("plan-create-error");
+  var submitBtn = document.getElementById("plan-create-submit");
+  var backBtn = document.getElementById("plan-create-back");
+  var programInput = document.getElementById("plan-create-program-number");
+  var dateInput = document.getElementById("plan-create-date");
+
+  function csrfToken() {
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    if (m) return m[1];
+    var el = document.querySelector("[name=csrfmiddlewaretoken]");
+    return el ? el.value : "";
+  }
+  function openDialog() {
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+  function closeDialog() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  function showModeStep() {
+    stepMode.hidden = false;
+    stepForm.hidden = true;
+    titleEl.textContent = "برنامه جدید";
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  function showFormStep(mode) {
+    mode = mode === "systemic" ? "systemic" : "manual";
+    modeInput.value = mode;
+    stepMode.hidden = true;
+    stepForm.hidden = false;
+    titleEl.textContent = mode === "systemic" ? "برنامه سیستمی" : "برنامه دستی";
+    hintEl.textContent = mode === "systemic"
+      ? "پس از ثبت، از سفارشات و موجودی/سقف دپو/BOM ردیف پیشنهادی ساخته می‌شود."
+      : "شماره برنامه و تاریخ شمسی را وارد کنید. روز هفته خودکار محاسبه می‌شود.";
+    submitBtn.textContent = mode === "systemic" ? "ساخت برنامه سیستمی" : "ثبت و ادامه";
+    errEl.hidden = true;
+    errEl.textContent = "";
+    document.querySelectorAll("#plan-create-form .field").forEach(function (f) {
+      f.classList.remove("has-error");
+    });
+    // Re-wire jalali datepicker for dialog inputs
+    if (window.jalaliDatepicker && typeof window.jalaliDatepicker.startWatch === "function") {
+      try { window.jalaliDatepicker.startWatch({ time: false, autoHide: true, zIndex: 100000 }); } catch (e) {}
+    }
+    setTimeout(function () {
+      if (programInput && !programInput.value) programInput.focus();
+      else if (dateInput) dateInput.focus();
+    }, 50);
+  }
+  function openCreate(mode) {
+    showModeStep();
+    openDialog();
+    if (mode === "manual" || mode === "systemic") showFormStep(mode);
+  }
+
+  document.querySelectorAll("[data-plan-create-open]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      openCreate(btn.getAttribute("data-plan-mode") || "");
+    });
+  });
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); closeDialog(); }
+  });
+  dialog.querySelectorAll("[data-plan-mode]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      showFormStep(btn.getAttribute("data-plan-mode"));
+    });
+  });
+  if (backBtn) {
+    backBtn.addEventListener("click", function () { showModeStep(); });
+  }
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      errEl.hidden = true;
+      errEl.textContent = "";
+      document.querySelectorAll("#plan-create-form .field").forEach(function (f) {
+        f.classList.remove("has-error");
+      });
+      submitBtn.disabled = true;
+      var original = submitBtn.textContent;
+      submitBtn.textContent = "در حال ایجاد…";
+      var fd = new FormData(form);
+      fetch(form.action, {
+        method: "POST",
+        body: fd,
+        headers: {
+          "X-CSRFToken": csrfToken(),
+          "X-Requested-With": "XMLHttpRequest",
+          "Accept": "application/json"
+        },
+        credentials: "same-origin"
+      }).then(function (r) {
+        return r.json().then(function (data) {
+          return { status: r.status, data: data };
+        });
+      }).then(function (res) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = original;
+        if (res.data && res.data.ok && res.data.redirect_url) {
+          window.location = res.data.redirect_url;
+          return;
+        }
+        var msgs = [];
+        var errors = (res.data && res.data.errors) || {};
+        Object.keys(errors).forEach(function (field) {
+          var box = form.querySelector('.field[data-field="' + field + '"]');
+          if (box) box.classList.add("has-error");
+          var list = errors[field];
+          if (Array.isArray(list)) {
+            list.forEach(function (item) {
+              if (item && item.message) msgs.push(item.message);
+              else if (typeof item === "string") msgs.push(item);
+            });
+          }
+        });
+        if (res.data && res.data.error) msgs.push(res.data.error);
+        if (!msgs.length) msgs.push("ثبت برنامه ممکن نشد. ورودی‌ها را بررسی کنید.");
+        errEl.textContent = msgs.join("\n");
+        errEl.hidden = false;
+      }).catch(function () {
+        submitBtn.disabled = false;
+        submitBtn.textContent = original;
+        errEl.textContent = "ارتباط با سرور برقرار نشد.";
+        errEl.hidden = false;
+      });
+    });
+  }
+
+  // Deep-link support: ?create=1 or ?create=systemic / #create
+  var params = new URLSearchParams(window.location.search);
+  var createParam = params.get("create");
+  if (createParam === "1" || createParam === "manual" || createParam === "systemic") {
+    openCreate(createParam === "1" ? "" : createParam);
+  } else if (window.location.hash === "#create" || window.location.hash === "#plan-create") {
+    openCreate("");
+  }
+})();
+</script>
+{% endif %}

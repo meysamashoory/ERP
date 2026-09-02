@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}منطق فرآیند برنامه‌ریزی{% endblock %}
+{% block heading %}منطق فرآیند برنامه‌ریزی{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-sm btn-ghost" href="{% url 'system_data' %}">بازگشت به داده‌های سیستم</a>
+{% endblock %}
+
+{% block content %}
+<p class="muted" style="margin-top:0">
+  مراحل شماره‌دار منطبق با PDF برنامه تولید. هر سوال بله/خیر به شماره مرحله بعدی وصل است
+  و هر مرحله می‌تواند به داده سیستم (سفارشات، موجودی، BOM، قالب، دستگاه و …) متصل باشد.
+  مدیر می‌تواند مراحل را بازتعریف کند.
+</p>
+
+<div class="panel panel-list">
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>کد</th>
+          <th>عنوان فرآیند</th>
+          <th>مرحله شروع</th>
+          <th>تعداد مراحل</th>
+          <th>سوال بله/خیر</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in processes %}
+        <tr>
+          <td dir="ltr">{{ p.code }}</td>
+          <td>
+            <span class="list-title">{{ p.title }}</span>
+            {% if p.description %}<div class="list-desc">{{ p.description }}</div>{% endif %}
+          </td>
+          <td class="num">{{ p.entry_step_number }}</td>
+          <td class="num">{{ p.step_count }}</td>
+          <td class="num">{{ p.decision_count }}</td>
+          <td>
+            <a class="btn btn-sm btn-ghost" href="{% url 'planning_process_detail' p.pk %}">مشاهده مراحل</a>
+            {% if can_edit %}
+            <a class="btn btn-sm" href="{% url 'planning_process_edit' p.pk %}">بازتعریف</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="muted">فرآیندی تعریف نشده است.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
