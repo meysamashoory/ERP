@@ -1,7 +1,4 @@
-"""Read Excel Tables (ListObjects) and CSV into import payloads.
-
-Sheets alone are not imported — only Insert→Table ranges (and CSV as one table).
-"""
+"""Read Excel Tables (ListObjects), whole sheets, and CSV into import payloads."""
 
 from __future__ import annotations
 
@@ -82,6 +79,41 @@ def _split_header_rows(matrix: list[list[Any]]) -> tuple[list[str], list[list[st
     return headers, rows
 
 
+def detect_csv_delimiter(text: str) -> str:
+    """Pick ``;`` or ``,`` from the first non-empty line (semicolon preferred when tied)."""
+    line = ""
+    for raw in text.splitlines():
+        if raw.strip():
+            line = raw
+            break
+    if not line:
+        return ","
+    semi = line.count(";")
+    comma = line.count(",")
+    if semi > 0 and semi >= comma:
+        return ";"
+    return ","
+
+
+def _decode_csv_text(content: bytes) -> str:
+    return content.decode("utf-8-sig", errors="replace")
+
+
+def _csv_matrix(content: bytes) -> tuple[list[list[str]], str]:
+    text = _decode_csv_text(content)
+    delimiter = detect_csv_delimiter(text)
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    matrix = [list(r) for r in reader]
+    return matrix, delimiter
+
+
+def _csv_display_name(uploaded_file) -> str:
+    table_name = (getattr(uploaded_file, "name", "") or "Table1").rsplit("/", 1)[-1]
+    if table_name.lower().endswith(".csv"):
+        table_name = table_name[:-4] or "Table1"
+    return table_name[:200] or "Table1"
+
+
 def _matrix_from_table(ws, table) -> tuple[list[str], list[list[str]]]:
     min_col, min_row, max_col, max_row = range_boundaries(table.ref)
     width = min(MAX_COLS, max_col - min_col + 1)
@@ -122,14 +154,49 @@ def _matrix_from_table(ws, table) -> tuple[list[str], list[list[str]]]:
     return headers, rows
 
 
+def _matrix_from_sheet(ws) -> tuple[list[str], list[list[str]]]:
+    """Read the used region of a worksheet as header + data rows."""
+    matrix: list[list[Any]] = []
+    for i, row in enumerate(ws.iter_rows(max_col=MAX_COLS)):
+        if i > MAX_IMPORT_ROWS:
+            break
+        cells = [
+            _cell_str(cell.value, number_format=str(cell.number_format or ""))
+            for cell in row
+        ]
+        matrix.append(cells)
+    # Trim trailing empty rows
+    while matrix and not any(matrix[-1]):
+        matrix.pop()
+    # Trim trailing empty columns
+    if matrix:
+        width = max((len(r) for r in matrix), default=0)
+        while width > 0 and all(
+            (len(r) < width or not str(r[width - 1]).strip()) for r in matrix
+        ):
+            width -= 1
+        matrix = [r[:width] for r in matrix]
+    return _split_header_rows(matrix)
+
+
 def _table_id(sheet_name: str, display_name: str) -> str:
     return f"{sheet_name}::{display_name}"
 
 
-def preview_workbook(uploaded_file) -> list[dict]:
-    """Return Excel Table previews (not whole sheets).
+def _sheet_id(sheet_name: str) -> str:
+    return f"sheet::{sheet_name}"
 
-    Each item: name (table display name), sheet_name, table_id, headers, counts.
+
+def inspect_workbook(uploaded_file) -> dict[str, Any]:
+    """Return both Excel Tables and whole sheets for preview UI.
+
+    Shape::
+        {
+          "tables": [...],
+          "sheets": [...],
+          "file_kind": "csv" | "xlsx",
+          "csv_delimiter": ";" | "," | None,
+        }
     """
     name = (getattr(uploaded_file, "name", "") or "").lower()
     content = uploaded_file.read()
@@ -137,31 +204,59 @@ def preview_workbook(uploaded_file) -> list[dict]:
         uploaded_file.seek(0)
 
     if name.endswith(".csv"):
-        text = content.decode("utf-8-sig", errors="replace")
-        reader = csv.reader(io.StringIO(text))
-        matrix = [list(r) for r in reader]
+        matrix, delimiter = _csv_matrix(content)
         headers, rows = _split_header_rows(matrix)
-        table_name = (getattr(uploaded_file, "name", "") or "Table1").rsplit("/", 1)[-1]
-        if table_name.lower().endswith(".csv"):
-            table_name = table_name[:-4] or "Table1"
-        return [{
-            "name": table_name[:200] or "Table1",
+        display = _csv_display_name(uploaded_file)
+        item = {
+            "name": display,
             "sheet_name": "CSV",
-            "table_id": _table_id("CSV", table_name[:200] or "Table1"),
+            "table_id": _table_id("CSV", display),
+            "sheet_id": _sheet_id("CSV"),
             "ref": "",
             "headers": headers,
             "row_count": len(rows),
             "column_count": len(headers),
             "preview_rows": rows[:MAX_PREVIEW_ROWS],
-        }]
+            "kind": "table",
+            "csv_delimiter": delimiter,
+        }
+        sheet_item = {
+            **item,
+            "kind": "sheet",
+            "name": "CSV",
+            "table_id": "",
+            "sheet_id": _sheet_id("CSV"),
+        }
+        return {
+            "tables": [item],
+            "sheets": [sheet_item],
+            "file_kind": "csv",
+            "csv_delimiter": delimiter,
+        }
 
     from openpyxl import load_workbook
 
     # Tables are unavailable in read_only mode.
     wb = load_workbook(io.BytesIO(content), data_only=True)
     tables_out: list[dict] = []
+    sheets_out: list[dict] = []
     try:
         for ws in wb.worksheets:
+            sheet_title = str(ws.title)[:200]
+            sheet_headers, sheet_rows = _matrix_from_sheet(ws)
+            sheets_out.append({
+                "name": sheet_title,
+                "sheet_name": sheet_title,
+                "table_id": "",
+                "sheet_id": _sheet_id(sheet_title),
+                "ref": "",
+                "headers": sheet_headers,
+                "row_count": len(sheet_rows),
+                "column_count": len(sheet_headers),
+                "preview_rows": sheet_rows[:MAX_PREVIEW_ROWS],
+                "kind": "sheet",
+                "table_count": len(list(getattr(ws, "tables", None) or {})),
+            })
             if not getattr(ws, "tables", None):
                 continue
             for key in list(ws.tables.keys()):
@@ -170,17 +265,29 @@ def preview_workbook(uploaded_file) -> list[dict]:
                 headers, rows = _matrix_from_table(ws, table)
                 tables_out.append({
                     "name": display[:200],
-                    "sheet_name": str(ws.title)[:200],
-                    "table_id": _table_id(str(ws.title), display),
+                    "sheet_name": sheet_title,
+                    "table_id": _table_id(sheet_title, display),
+                    "sheet_id": _sheet_id(sheet_title),
                     "ref": str(table.ref or ""),
                     "headers": headers,
                     "row_count": len(rows),
                     "column_count": len(headers),
                     "preview_rows": rows[:MAX_PREVIEW_ROWS],
+                    "kind": "table",
                 })
     finally:
         wb.close()
-    return tables_out
+    return {
+        "tables": tables_out,
+        "sheets": sheets_out,
+        "file_kind": "xlsx",
+        "csv_delimiter": None,
+    }
+
+
+def preview_workbook(uploaded_file) -> list[dict]:
+    """Backward-compatible: return Excel Table previews only."""
+    return inspect_workbook(uploaded_file)["tables"]
 
 
 def read_table_data(
@@ -196,9 +303,7 @@ def read_table_data(
         uploaded_file.seek(0)
 
     if name.endswith(".csv"):
-        text = content.decode("utf-8-sig", errors="replace")
-        reader = csv.reader(io.StringIO(text))
-        matrix = [list(r) for r in reader]
+        matrix, _delimiter = _csv_matrix(content)
         return _split_header_rows(matrix)
 
     from openpyxl import load_workbook
@@ -231,17 +336,15 @@ def read_table_data(
         wb.close()
 
 
-# Backward-compatible alias used by older call sites / tests
 def read_sheet_data(uploaded_file, sheet_name: str) -> tuple[list[str], list[list[str]]]:
-    """Deprecated: whole-sheet import. Prefer read_table_data."""
+    """Return headers+rows for an entire worksheet (or CSV body)."""
     name = (getattr(uploaded_file, "name", "") or "").lower()
     content = uploaded_file.read()
     if hasattr(uploaded_file, "seek"):
         uploaded_file.seek(0)
     if name.endswith(".csv"):
-        text = content.decode("utf-8-sig", errors="replace")
-        reader = csv.reader(io.StringIO(text))
-        return _split_header_rows([list(r) for r in reader])
+        matrix, _delimiter = _csv_matrix(content)
+        return _split_header_rows(matrix)
 
     from openpyxl import load_workbook
 
@@ -249,16 +352,7 @@ def read_sheet_data(uploaded_file, sheet_name: str) -> tuple[list[str], list[lis
     try:
         for ws in wb.worksheets:
             if str(ws.title) == sheet_name:
-                # If sheet has tables, return the first table only
-                if ws.tables:
-                    key = next(iter(ws.tables.keys()))
-                    return _matrix_from_table(ws, ws.tables[key])
-                matrix = []
-                for i, row in enumerate(ws.iter_rows(values_only=True)):
-                    if i > MAX_IMPORT_ROWS:
-                        break
-                    matrix.append(list(row) if row is not None else [])
-                return _split_header_rows(matrix)
+                return _matrix_from_sheet(ws)
         raise ValueError(f"شیت «{sheet_name}» در فایل یافت نشد.")
     finally:
         wb.close()

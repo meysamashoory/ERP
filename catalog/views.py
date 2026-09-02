@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from accounts.permissions import get_profile
 
 from .alarms import register_alarm
-from .excel_io import preview_workbook, read_table_data
+from .excel_io import inspect_workbook, read_sheet_data, read_table_data
 from .models import ExcelTable, ExcelUpload, SystemAlarm
 from .transfer import (
     group_transfer_alarms,
@@ -167,20 +167,19 @@ def excel_preview(request: HttpRequest) -> JsonResponse:
             status=400,
         )
     try:
-        tables = preview_workbook(uploaded)
+        inspected = inspect_workbook(uploaded)
     except Exception as exc:  # noqa: BLE001 — surface parse errors to UI
         return JsonResponse(
             {"ok": False, "error": f"خواندن فایل ممکن نشد: {exc}"},
             status=400,
         )
-    if not tables:
+    tables = inspected.get("tables") or []
+    sheets = inspected.get("sheets") or []
+    if not tables and not sheets:
         return JsonResponse(
             {
                 "ok": False,
-                "error": (
-                    "هیچ Table در فایل یافت نشد. "
-                    "در اکسل از Insert → Table جدول بسازید و دوباره تلاش کنید."
-                ),
+                "error": "فایل خالی است یا قابل خواندن نیست.",
             },
             status=400,
         )
@@ -189,8 +188,11 @@ def excel_preview(request: HttpRequest) -> JsonResponse:
         "ok": True,
         "filename": display_name,
         "tables": tables,
-        # keep "sheets" alias for older frontend temporarily
-        "sheets": tables,
+        "sheets": sheets,
+        "file_kind": inspected.get("file_kind") or "xlsx",
+        "csv_delimiter": inspected.get("csv_delimiter"),
+        "table_count": len(tables),
+        "sheet_count": len(sheets),
     })
 
 
@@ -210,28 +212,43 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "انتخاب جدول نامعتبر است."}, status=400)
     if not isinstance(selected, list) or not selected:
-        return JsonResponse({"ok": False, "error": "حداقل یک جدول را انتخاب کنید."}, status=400)
+        return JsonResponse({"ok": False, "error": "حداقل یک مورد را انتخاب کنید."}, status=400)
 
-    # Prefer [{"sheet":"...","table":"Inventory","name":"..."}, ...]
-    selections: list[tuple[str, str, str]] = []
+    # Prefer [{"sheet":"...","table":"Inventory","name":"...","kind":"table"|"sheet"}, ...]
+    selections: list[tuple[str, str, str, str]] = []
     for item in selected:
         if isinstance(item, dict):
             sheet = str(item.get("sheet") or item.get("sheet_name") or "").strip()
             table = str(item.get("table") or item.get("table_name") or "").strip()
+            kind = str(item.get("kind") or "").strip().lower()
+            if kind not in ("table", "sheet"):
+                kind = "sheet" if (not table and sheet) else "table"
             name = str(item.get("name") or table or sheet).strip()
-            if not table:
+            if kind == "table" and not table:
                 table = name or sheet
             if not sheet:
                 sheet = "CSV"
+            if kind == "sheet" and not name:
+                name = sheet
+            if kind == "table" and not table:
+                continue
+            if kind == "sheet" and not sheet:
+                continue
         else:
             sheet = "CSV"
             table = str(item).strip()
             name = table
-        if not table:
-            continue
-        selections.append((sheet[:200], table[:200], (name or table)[:200]))
+            kind = "table"
+            if not table:
+                continue
+        selections.append((
+            sheet[:200],
+            table[:200],
+            (name or table or sheet)[:200],
+            kind,
+        ))
     if not selections:
-        return JsonResponse({"ok": False, "error": "حداقل یک جدول را انتخاب کنید."}, status=400)
+        return JsonResponse({"ok": False, "error": "حداقل یک مورد را انتخاب کنید."}, status=400)
 
     upload = ExcelUpload(
         title=title,
@@ -243,17 +260,21 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
 
     created = 0
     errors: list[str] = []
-    for order, (sheet_name, excel_table_name, display_name) in enumerate(selections):
+    for order, (sheet_name, excel_table_name, display_name, kind) in enumerate(selections):
         if hasattr(uploaded, "seek"):
             uploaded.seek(0)
         try:
-            headers, rows = read_table_data(
-                uploaded,
-                sheet_name=sheet_name,
-                table_name=excel_table_name,
-            )
+            if kind == "sheet":
+                headers, rows = read_sheet_data(uploaded, sheet_name)
+            else:
+                headers, rows = read_table_data(
+                    uploaded,
+                    sheet_name=sheet_name,
+                    table_name=excel_table_name,
+                )
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"{excel_table_name}: {exc}")
+            label = sheet_name if kind == "sheet" else excel_table_name
+            errors.append(f"{label}: {exc}")
             continue
         ExcelTable.objects.create(
             upload=upload,
@@ -271,7 +292,7 @@ def excel_import_confirm(request: HttpRequest) -> JsonResponse:
         upload.delete()
         return JsonResponse({
             "ok": False,
-            "error": "هیچ جدولی وارد نشد. " + ("؛ ".join(errors) if errors else ""),
+            "error": "هیچ موردی وارد نشد. " + ("؛ ".join(errors) if errors else ""),
         }, status=400)
 
     return JsonResponse({

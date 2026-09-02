@@ -88,6 +88,15 @@ class ExcelManagementTests(TestCase):
         self.assertEqual(names, ["Inventory", "Prices"])
         self.assertNotIn("Extra", names)
         self.assertNotIn("Data", names)
+        # Sheets are listed separately (including ones without Tables)
+        sheet_names = [s["name"] for s in data["sheets"]]
+        self.assertEqual(sheet_names, ["Data", "Extra"])
+        self.assertEqual(data["sheet_count"], 2)
+        self.assertEqual(data["table_count"], 2)
+        inv = data["tables"][0]
+        self.assertEqual(inv["sheet_name"], "Data")
+        self.assertEqual(inv["row_count"], 2)
+        self.assertEqual(inv["column_count"], 3)
 
     def test_import_selected_tables_by_name(self):
         self.client.login(username="expert", password="erp12345")
@@ -97,8 +106,8 @@ class ExcelManagementTests(TestCase):
                 "file": self._xlsx("multi.xlsx"),
                 "title": "فایل تست",
                 "selected_sheets": json.dumps([
-                    {"sheet": "Data", "table": "Inventory", "name": "جدول موجودی"},
-                    {"sheet": "Data", "table": "Prices", "name": "قیمت‌ها"},
+                    {"sheet": "Data", "table": "Inventory", "name": "جدول موجودی", "kind": "table"},
+                    {"sheet": "Data", "table": "Prices", "name": "قیمت‌ها", "kind": "table"},
                 ]),
             },
         )
@@ -123,6 +132,71 @@ class ExcelManagementTests(TestCase):
         self.assertContains(detail, "excel-transfer-errors-dialog")
         self.assertNotContains(detail, "افزودن ردیف")
         self.assertNotContains(detail, "افزودن ستون")
+
+    def test_import_whole_sheet_without_table(self):
+        self.client.login(username="expert", password="erp12345")
+        confirm = self.client.post(
+            reverse("excel_import_confirm"),
+            {
+                "file": self._xlsx("multi.xlsx"),
+                "title": "شیت کامل",
+                "selected_sheets": json.dumps([
+                    {"sheet": "Extra", "table": "", "name": "شیت اضافه", "kind": "sheet"},
+                ]),
+            },
+        )
+        self.assertEqual(confirm.status_code, 200)
+        payload = confirm.json()
+        self.assertTrue(payload["ok"])
+        upload = ExcelUpload.objects.get(pk=payload["upload_id"])
+        table = upload.tables.get()
+        self.assertEqual(table.name, "شیت اضافه")
+        self.assertEqual(table.sheet_name, "Extra")
+        self.assertEqual(table.headers, ["X", "Y"])
+        self.assertEqual(table.rows, [["1", "2"]])
+
+    def test_semicolon_csv_preview_and_import(self):
+        self.client.login(username="expert", password="erp12345")
+        raw = "کد;نام;قیمت\nA1;قطعه;1000\nA2;قطعه دو;2000\n".encode("utf-8-sig")
+        csv_file = SimpleUploadedFile("parts.csv", raw, content_type="text/csv")
+        preview = self.client.post(reverse("excel_preview"), {"file": csv_file})
+        self.assertEqual(preview.status_code, 200)
+        data = preview.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["file_kind"], "csv")
+        self.assertEqual(data["csv_delimiter"], ";")
+        self.assertEqual(len(data["tables"]), 1)
+        self.assertEqual(len(data["sheets"]), 1)
+        self.assertEqual(data["tables"][0]["headers"], ["کد", "نام", "قیمت"])
+        self.assertEqual(data["tables"][0]["row_count"], 2)
+        self.assertEqual(data["tables"][0]["column_count"], 3)
+
+        csv_file2 = SimpleUploadedFile("parts.csv", raw, content_type="text/csv")
+        confirm = self.client.post(
+            reverse("excel_import_confirm"),
+            {
+                "file": csv_file2,
+                "title": "CSV سمیکالن",
+                "selected_sheets": json.dumps([
+                    {"sheet": "CSV", "table": "", "name": "قطعات", "kind": "sheet"},
+                ]),
+            },
+        )
+        self.assertEqual(confirm.status_code, 200)
+        payload = confirm.json()
+        self.assertTrue(payload["ok"])
+        table = ExcelUpload.objects.get(pk=payload["upload_id"]).tables.get()
+        self.assertEqual(table.headers, ["کد", "نام", "قیمت"])
+        self.assertEqual(table.rows[0], ["A1", "قطعه", "1000"])
+
+    def test_import_page_has_table_and_sheets_actions(self):
+        self.client.login(username="expert", password="erp12345")
+        resp = self.client.get(reverse("excel_import"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "مشاهده TABLE")
+        self.assertContains(resp, "مشاهده SHEETS")
+        self.assertContains(resp, "excel-view-tables")
+        self.assertContains(resp, "excel-view-sheets")
 
     def test_missing_table_does_not_import(self):
         self.client.login(username="expert", password="erp12345")
