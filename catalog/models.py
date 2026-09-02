@@ -345,11 +345,11 @@ class PlanningDisplaySettings(models.Model):
     """
 
     height_coefficient = models.DecimalField(
-        "ضریب ارتفاع کادر آبی",
+        "ضریب عرض کادر آبی",
         max_digits=4,
         decimal_places=2,
         default=1,
-        help_text="مثلاً ۱٫۲ یعنی ارتفاع کادر آبی ۲۰٪ بیشتر از حالت پایه.",
+        help_text="مثلاً ۱٫۲ یعنی عرض کادر آبی ۲۰٪ بیشتر از حالت پایه.",
     )
     matrix_unit_numbers = models.CharField(
         "واحدهای جدول ماتریس",
@@ -368,7 +368,7 @@ class PlanningDisplaySettings(models.Model):
         verbose_name_plural = "تنظیمات نمایش برنامه‌ریزی (کادر آبی و ماتریس)"
 
     def __str__(self) -> str:
-        return f"ضریب ارتفاع {self.height_coefficient} · واحدها {self.matrix_unit_numbers}"
+        return f"ضریب عرض {self.height_coefficient} · واحدها {self.matrix_unit_numbers}"
 
     @classmethod
     def load(cls) -> "PlanningDisplaySettings":

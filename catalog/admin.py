@@ -181,7 +181,7 @@ class PlanningDisplaySettingsAdmin(admin.ModelAdmin):
                     "show_group_breakdown",
                 ),
                 "description": (
-                    "ضریب ارتفاع ۱٫۰ = پایه؛ ۱٫۲ یعنی ۲۰٪ بلندتر. "
+                    "ضریب عرض ۱٫۰ = پایه؛ ۱٫۲ یعنی ۲۰٪ پهن‌تر. "
                     "واحدهای ماتریس را با ویرگول مشخص کنید (مثلاً ۱,۲,۴)."
                 ),
             },

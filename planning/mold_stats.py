@@ -97,5 +97,6 @@ def mold_change_stats(plan: WeeklyPlan) -> dict[str, Any]:
         "matrix_rows": matrix_rows,
         "matrix_units": unit_numbers,
         "height_coefficient": coef,
+        "width_coefficient": coef,
         "show_group_breakdown": settings.show_group_breakdown,
     }

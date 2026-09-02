@@ -108,7 +108,7 @@
       </div>
     </div>
 
-    <section class="insight-glass" style="--insight-scale: {{ mold_stats.height_coefficient }}" data-insights data-insights-url="{% url 'product_insights' %}">
+    <section class="insight-glass" style="--insight-scale: {{ mold_stats.width_coefficient }}" data-insights data-insights-url="{% url 'product_insights' %}">
       <div class="insight-glass-inner" data-insights-body>
         {% for card in insights %}
         <article class="insight-card">
@@ -126,7 +126,7 @@
 {% else %}
 <div class="panel"><div class="panel-body muted">حالت مشاهده — این برنامه فقط قابل مشاهده است. برای ویرایش، از فهرست برنامه‌ها گزینه «ویرایش» را انتخاب و اعمال کنید.</div></div>
 
-<section class="insight-glass mold-glass-green" style="--insight-scale: {{ mold_stats.height_coefficient }}">
+<section class="insight-glass mold-glass-green" style="--insight-scale: {{ mold_stats.width_coefficient }}">
   <div class="insight-glass-inner mold-glass-inner">
     {% for row in mold_stats.glass_rows %}
     <article class="insight-card mold-unit-card">
@@ -153,13 +153,13 @@
     <table class="table table-plan-items">
       <thead>
         <tr>
-          <th>شناسه تعویض</th>
+          <th class="col-data-hidden" data-col="change_uid">شناسه تعویض</th>
           <th>شماره برنامه</th>
           <th>تاریخ برنامه‌ریزی</th>
-          <th>شماره دستگاه/واحد</th>
+          <th>واحد دستگاه</th>
           <th>کد کالا</th>
           <th>نام جنس</th>
-          <th>شماره قالب</th>
+          <th class="col-data-hidden" data-col="mold_number">شماره قالب</th>
           <th>کد یکتا</th>
           <th>تاریخ شروع</th>
           <th>روز شروع</th>
@@ -174,14 +174,16 @@
       <tbody>
         {% for item in plan.items.all %}
           {% for line in item.lines.all %}
-          <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
-            <td dir="ltr">{{ item.uid }}</td>
+          <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}
+              data-change-uid="{{ item.uid }}"
+              data-mold-number="{% if item.mold %}{{ item.mold }}{% elif line.mold %}{{ line.mold }}{% endif %}">
+            <td class="col-data-hidden" data-col="change_uid" dir="ltr">{{ item.uid }}</td>
             <td>{{ plan.program_number|program_no }}</td>
             <td>{{ plan.date|jdate }}</td>
             <td>{{ item.machine.number }}/{{ item.unit.number }}</td>
             <td>{{ item.product.code }}</td>
             <td>{{ item.product.name }}</td>
-            <td>{% if item.mold %}{{ item.mold }}{% elif line.mold %}{{ line.mold }}{% else %}—{% endif %}</td>
+            <td class="col-data-hidden" data-col="mold_number">{% if item.mold %}{{ item.mold }}{% elif line.mold %}{{ line.mold }}{% else %}—{% endif %}</td>
             <td dir="ltr">{% if line.uid %}{{ line.uid }}{% else %}—{% endif %}</td>
             <td>{{ item.mold_change_date|jdate }}</td>
             <td>{{ item.get_mold_change_weekday_display }}</td>
@@ -209,14 +211,16 @@
             {% endif %}
           </tr>
           {% empty %}
-          <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}>
-            <td dir="ltr">{{ item.uid }}</td>
+          <tr {% if editing_item and editing_item.pk == item.pk %}class="row-edit"{% endif %}
+              data-change-uid="{{ item.uid }}"
+              data-mold-number="{% if item.mold %}{{ item.mold }}{% endif %}">
+            <td class="col-data-hidden" data-col="change_uid" dir="ltr">{{ item.uid }}</td>
             <td>{{ plan.program_number|program_no }}</td>
             <td>{{ plan.date|jdate }}</td>
             <td>{{ item.machine.number }}/{{ item.unit.number }}</td>
             <td>{{ item.product.code }}</td>
             <td>{{ item.product.name }}</td>
-            <td>{% if item.mold %}{{ item.mold }}{% else %}—{% endif %}</td>
+            <td class="col-data-hidden" data-col="mold_number">{% if item.mold %}{{ item.mold }}{% else %}—{% endif %}</td>
             <td>—</td>
             <td>{{ item.mold_change_date|jdate }}</td>
             <td>{{ item.get_mold_change_weekday_display }}</td>
