@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}سوابق تولید{% endblock %}
+{% block heading %}
+<span class="topbar-title-text">سوابق تولید</span>
+{% if rows %}
+<span class="heading-hint">(برای مشاهده جزئیات روی هر ردیف کلیک کنید.)</span>
+<div class="topbar-filter list-filter-bar list-filter-bar-compact" id="history-filter-bar">
+  <div class="field">
+    <label for="history-filter-col">ستون</label>
+    <select id="history-filter-col" class="input input-sm"></select>
+  </div>
+  <div class="field field-search">
+    <label for="history-filter-q">جستجو</label>
+    <input type="search" id="history-filter-q" class="input input-sm" placeholder="عبارت…" autocomplete="off">
+  </div>
+  <button type="button" class="btn btn-sm btn-ghost" id="history-filter-clear">پاک کردن</button>
+  <span class="muted list-filter-count" id="history-filter-count"></span>
+  {% if profile and profile.can_view_conflicts %}
+  <a class="btn btn-sm {% if conflict_count %}btn-warn{% else %}btn-ghost{% endif %}"
+     href="{% url 'production_conflicts' %}">بررسی تداخل برنامه{% if conflict_count %} ({{ conflict_count }}){% endif %}</a>
+  {% endif %}
+</div>
+{% else %}
+{% if profile and profile.can_view_conflicts %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'production_conflicts' %}">بررسی تداخل برنامه</a>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block content %}
+<div class="panel panel-list">
+  {% if rows %}
+  <div class="list-filter-bar list-filter-bar-compact" style="padding:8px 10px;gap:8px;align-items:center">
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-conflicts" data-mode="all">نمایش همه</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-ok-only">فقط بدون تداخل</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="history-filter-conflict-only">فقط تداخل‌ها</button>
+    <span class="muted" id="history-conflict-filter-count"></span>
+  </div>
+  <div class="table-scroll table-scroll-wide">
+    <table class="table table-compact table-list-nav" id="history-list-table">
+      <thead>
+        <tr>
+          <th data-col="plan_number">شماره برنامه</th>
+          <th data-col="plan_date">تاریخ برنامه‌ریزی</th>
+          <th data-col="machine">شناسه دستگاه</th>
+          <th data-col="product_name">نام جنس</th>
+          <th data-col="mold_number">شماره قالب</th>
+          <th data-col="unique_code">کد یکتا</th>
+          <th data-col="plan_start">تاریخ شروع برنامه</th>
+          <th data-col="actual_start">تاریخ شروع واقعی</th>
+          <th data-col="actual_end">تاریخ پایان تولید</th>
+          <th data-col="planned_qty">مقدار تولید برنامه (عدد)</th>
+          <th data-col="actual_qty">مقدار تولید واقعی (عدد)</th>
+          <th data-col="planned_cycle">سیکل تولید برنامه (ثانیه)</th>
+          <th data-col="last_cycle">آخرین سیکل تولید (ثانیه)</th>
+          <th data-col="planned_hours">ساعت تولید برنامه</th>
+          <th data-col="active_cavities">تعداد حفره فعال</th>
+          <th data-col="last_cavities">آخرین وضعیت حفره</th>
+          <th data-col="scrap">ضایعات تولید</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="list-row{% if row.has_conflict %} is-conflict-row{% endif %}"
+            data-href="{{ row.detail_url }}"
+            data-conflict="{% if row.has_conflict %}1{% else %}0{% endif %}"
+            tabindex="0">
+          <td class="cell-nav" data-col="plan_number" data-value="{{ row.plan_number }}"><strong>{{ row.plan_number }}</strong>{% if row.has_conflict %} <span class="conflict-tag">تداخل</span>{% endif %}</td>
+          <td class="num cell-nav" data-col="plan_date" data-value="{{ row.plan_date_display }}">{{ row.plan_date_display }}</td>
+          <td class="cell-nav" data-col="machine" data-value="{{ row.machine }}">{{ row.machine }}</td>
+          <td class="cell-nav" data-col="product_name" data-value="{{ row.product_name }}" title="{{ row.product_name }}">{{ row.product_name }}</td>
+          <td class="cell-nav" data-col="mold_number" data-value="{{ row.mold_number }}">{{ row.mold_number }}</td>
+          <td class="cell-nav" data-col="unique_code" data-value="{{ row.unique_code }}">{{ row.unique_code }}</td>
+          <td class="num cell-nav" data-col="plan_start" data-value="{{ row.plan_start_display }}">{{ row.plan_start_display }}</td>
+          <td class="num cell-nav" data-col="actual_start" data-value="{{ row.actual_start_display }}">{{ row.actual_start_display }}</td>
+          <td class="num cell-nav" data-col="actual_end" data-value="{{ row.actual_end_display }}">{{ row.actual_end_display }}</td>
+          <td class="num cell-nav" data-col="planned_qty" data-value="{{ row.planned_qty }}">{{ row.planned_qty }}</td>
+          <td class="num cell-nav" data-col="actual_qty" data-value="{{ row.actual_qty }}">{{ row.actual_qty }}</td>
+          <td class="num cell-nav" data-col="planned_cycle" data-value="{{ row.planned_cycle }}">{{ row.planned_cycle }}</td>
+          <td class="num cell-nav" data-col="last_cycle" data-value="{{ row.last_cycle }}">{{ row.last_cycle }}</td>
+          <td class="num cell-nav" data-col="planned_hours" data-value="{{ row.planned_hours_display }}">{{ row.planned_hours_display }}</td>
+          <td class="num cell-nav" data-col="active_cavities" data-value="{{ row.active_cavities }}">{{ row.active_cavities }}</td>
+          <td class="num cell-nav" data-col="last_cavities" data-value="{{ row.last_cavities }}">{{ row.last_cavities }}</td>
+          <td class="num cell-nav" data-col="scrap" data-value="{{ row.scrap }}">{{ row.scrap }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">سابقه‌ای ثبت نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/list_filter.js' %}?v=2"></script>
+<script>
+(function () {
+  if (window.initColumnFilter) {
+    window.initColumnFilter({
+      tableId: "history-list-table",
+      colSelectId: "history-filter-col",
+      queryId: "history-filter-q",
+      clearId: "history-filter-clear",
+      countId: "history-filter-count",
+      defaultCol: "product_name",
+    });
+  }
+  document.querySelectorAll("#history-list-table tbody tr[data-href]").forEach(function (tr) {
+    // First click selects (table_nav); second click on same selected row opens detail.
+    tr.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        var href = tr.getAttribute("data-href");
+        if (href && tr.classList.contains("is-row-selected")) window.location = href;
+      }
+    });
+  });
+
+  function applyConflictFilter(mode) {
+    var rows = document.querySelectorAll("#history-list-table tbody tr[data-conflict]");
+    var shown = 0;
+    rows.forEach(function (tr) {
+      var isConflict = tr.getAttribute("data-conflict") === "1";
+      var show = mode === "all" || (mode === "ok" && !isConflict) || (mode === "conflict" && isConflict);
+      tr.style.display = show ? "" : "none";
+      if (show) shown += 1;
+    });
+    var countEl = document.getElementById("history-conflict-filter-count");
+    if (countEl) countEl.textContent = "نمایش " + shown + " از " + rows.length + " ردیف";
+  }
+  var allBtn = document.getElementById("history-filter-conflicts");
+  var okBtn = document.getElementById("history-filter-ok-only");
+  var conflictBtn = document.getElementById("history-filter-conflict-only");
+  if (allBtn) allBtn.addEventListener("click", function () { applyConflictFilter("all"); });
+  if (okBtn) okBtn.addEventListener("click", function () { applyConflictFilter("ok"); });
+  if (conflictBtn) conflictBtn.addEventListener("click", function () { applyConflictFilter("conflict"); });
+  applyConflictFilter("all");
+})();
+</script>
+{% endblock %}
