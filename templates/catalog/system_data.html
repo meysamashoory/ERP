@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}داده‌های سیستم{% endblock %}
+{% block heading %}داده‌های سیستم{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block content %}
+<div class="panel panel-compact panel-list">
+  <p class="panel-hint">
+    هر بخش امکانات کامل مدیریت داده را در همین ظاهر سامانه باز می‌کند
+    (فهرست، افزودن، ویرایش، مجوزها و فیلترها). پس از ذخیره، روی دادهٔ همان بخش اثر می‌گذارد.
+  </p>
+  {% if groups %}
+  <div class="system-accordion" id="system-accordion">
+    {% for g in groups %}
+    <details class="system-acc-group">
+      <summary class="system-acc-summary">
+        <span class="system-acc-left">
+          <span class="system-acc-arrow" aria-hidden="true"></span>
+          <span class="system-acc-title">{{ g.title }}</span>
+        </span>
+        <span class="muted system-acc-count">{{ g.items|length }} مورد</span>
+      </summary>
+      <div class="system-acc-body">
+        <table class="table table-compact table-plan-list" data-erp-nav="off">
+          <thead>
+            <tr>
+              <th style="width:70px">ردیف</th>
+              <th>بخش</th>
+              <th style="width:100px">تعداد</th>
+              <th style="width:160px">عملیات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in g.items %}
+            <tr>
+              <td class="num">{{ forloop.counter }}</td>
+              <td>
+                <span class="list-title">{{ s.title }}</span>
+                {% if s.description %}<div class="list-desc">{{ s.description }}</div>{% endif %}
+              </td>
+              <td class="num">{{ s.count }}</td>
+              <td class="col-ops">
+                <div class="ops-inline row-actions-ops">
+                  <a class="btn btn-sm btn-ghost" href="{{ s.url }}">مشاهده / ویرایش</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">بخشی تعریف نشده است.</p>
+  {% endif %}
+</div>
+{% endblock %}

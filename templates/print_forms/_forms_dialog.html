@@ -1,0 +1,83 @@
+{# Shared forms count + dialog for planning / production / reports lists #}
+<dialog id="linked-forms-dialog" class="dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>فرم‌ها — <span id="linked-forms-title"></span></h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close>بستن</button>
+    </div>
+    <div id="linked-forms-body" class="linked-forms-body"></div>
+  </div>
+</dialog>
+<script>
+(function () {
+  var dialog = document.getElementById("linked-forms-dialog");
+  var titleEl = document.getElementById("linked-forms-title");
+  var body = document.getElementById("linked-forms-body");
+  if (!dialog) return;
+
+  function close() {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+  dialog.addEventListener("click", function (e) {
+    if (e.target.closest("[data-dialog-close]")) { e.preventDefault(); close(); }
+  });
+
+  function openForms(btn) {
+    var title = btn.getAttribute("data-forms-title") || "";
+    var ctx = btn.getAttribute("data-forms-ctx") || "";
+    var id = btn.getAttribute("data-forms-id") || "";
+    var item = btn.getAttribute("data-forms-item") || "";
+    var forms = [];
+    try { forms = JSON.parse(btn.getAttribute("data-forms-json") || "[]"); } catch (e) { forms = []; }
+    titleEl.textContent = title;
+    if (!forms.length) {
+      body.innerHTML = '<p class="empty">فرمی با این کاربرد ساخته نشده است.</p>';
+    } else {
+      var html = '<ul class="linked-forms-list">';
+      forms.forEach(function (f) {
+        var url = "/forms/" + f.id + "/print/?ctx=" + encodeURIComponent(ctx) +
+          "&id=" + encodeURIComponent(id) + (item ? "&item=" + encodeURIComponent(item) : "") + "&autoprint=1";
+        html += '<li><span class="linked-form-title">' + (f.number || "") + " — " + (f.title || "") +
+          '</span> <a class="btn btn-sm btn-primary-soft" href="' + url + '" target="_blank" rel="noopener">چاپ</a></li>';
+      });
+      html += "</ul>";
+      body.innerHTML = html;
+    }
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-open-forms]");
+    if (!btn) return;
+    e.preventDefault();
+    openForms(btn);
+  });
+})();
+</script>
+<style>
+.forms-cell { white-space: nowrap; }
+.forms-cell .forms-label { display: none; }
+.forms-count-btn,
+.plan-forms-btn {
+  border: none;
+  background: rgba(148,163,184,.18);
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+.forms-count-btn:hover,
+.plan-forms-btn:hover {
+  background: rgba(148,163,184,.3);
+}
+.linked-forms-list { list-style: none; margin: 0; padding: 0; }
+.linked-forms-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 8px 0; border-bottom: 1px solid #e2e8f0;
+}
+.linked-form-title { font-size: 13px; }
+</style>

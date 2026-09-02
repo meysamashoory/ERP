@@ -36,6 +36,20 @@ class UserProfile(models.Model):
         return self.is_manager
 
     @property
+    def can_view_conflicts(self) -> bool:
+        """Expert/clerk/manager may open conflict review; viewers cannot."""
+        return self.role in {
+            Role.PLANNING_MANAGER,
+            Role.PLANNING_EXPERT,
+            Role.PLANNING_CLERK,
+        }
+
+    @property
+    def can_resolve_conflicts(self) -> bool:
+        """Only the planning manager may apply conflict fixes."""
+        return self.is_manager
+
+    @property
     def can_enter_data(self) -> bool:
         """Viewers are read-only; everyone else may enter operational data."""
         return self.role in {
@@ -56,6 +70,11 @@ class UserProfile(models.Model):
     @property
     def can_backup(self) -> bool:
         return self.is_manager
+
+    @property
+    def can_create_reports(self) -> bool:
+        """Viewers are read-only; everyone else may create reports/forms."""
+        return self.can_enter_data
 
     def can_edit_record(self, record) -> bool:
         """Whether this profile may edit a record with a ``created_by`` field."""
