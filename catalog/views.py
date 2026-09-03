@@ -76,28 +76,29 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
             item_row = naming_rows.get(item_key)
             if item_row is not None and not item_row.is_active:
                 continue
+            # Prefer Django-admin changelist (real system edit) over app-page shortcuts.
             url = ""
             add_url = ""
-            if getattr(item, "url_name", None):
-                try:
-                    url = reverse(item.url_name)
-                except NoReverseMatch:
-                    url = ""
-            if not url and item.admin_changelist:
+            if item.admin_changelist:
                 try:
                     url = reverse(item.admin_changelist)
                 except NoReverseMatch:
                     url = ""
+            if not url and getattr(item, "url_name", None):
+                try:
+                    url = reverse(item.url_name)
+                except NoReverseMatch:
+                    url = ""
             if url and getattr(item, "url_query", ""):
                 url = f"{url}?{item.url_query}"
-            if item.can_add and getattr(item, "add_url_name", None):
-                try:
-                    add_url = reverse(item.add_url_name)
-                except NoReverseMatch:
-                    add_url = ""
-            elif item.can_add and item.admin_add:
+            if item.can_add and item.admin_add:
                 try:
                     add_url = reverse(item.admin_add)
+                except NoReverseMatch:
+                    add_url = ""
+            elif item.can_add and getattr(item, "add_url_name", None):
+                try:
+                    add_url = reverse(item.add_url_name)
                 except NoReverseMatch:
                     add_url = ""
             item_title = (item_row.label if item_row and item_row.label else item.title)
@@ -135,14 +136,20 @@ def system_section(request: HttpRequest, key: str) -> HttpResponse:
         for item in group.items:
             if item.key != key:
                 continue
-            if getattr(item, "url_name", None):
-                try:
-                    return redirect(reverse(item.url_name))
-                except NoReverseMatch:
-                    break
             if item.admin_changelist:
                 try:
-                    return redirect(reverse(item.admin_changelist))
+                    url = reverse(item.admin_changelist)
+                    if getattr(item, "url_query", ""):
+                        url = f"{url}?{item.url_query}"
+                    return redirect(url)
+                except NoReverseMatch:
+                    break
+            if getattr(item, "url_name", None):
+                try:
+                    url = reverse(item.url_name)
+                    if getattr(item, "url_query", ""):
+                        url = f"{url}?{item.url_query}"
+                    return redirect(url)
                 except NoReverseMatch:
                     break
     messages.error(request, "بخش یافت نشد.")

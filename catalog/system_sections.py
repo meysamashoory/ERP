@@ -55,6 +55,7 @@ def build_system_groups() -> list[SystemGroup]:
         ExcelTable,
         ExcelUpload,
         FlexibleDataset,
+        FlexibleRow,
         Machine,
         MoldOption,
         PipeProductLine,
@@ -165,18 +166,6 @@ def build_system_groups() -> list[SystemGroup]:
                     can_add=False,
                 ),
                 SystemItem(
-                    key="systemic_intelligence",
-                    title="هوش برنامه‌ریزی سیستمی",
-                    admin_changelist="",
-                    url_name="systemic_intelligence",
-                    description=(
-                        "تراز تقاضا و تأمین، کسری BOM، بار دستگاه، انحراف برنامه–واقعی "
-                        "و پیام‌های برنامه‌ریزی متناسب با برنامه هفتگی قالب."
-                    ),
-                    count_fn=lambda: WeeklyPlan.objects.filter(planning_mode="systemic").count(),
-                    can_add=False,
-                ),
-                SystemItem(
                     key="weekly_plans",
                     title="برنامه‌ریزی هفتگی",
                     admin_changelist="admin:planning_weeklyplan_changelist",
@@ -265,12 +254,13 @@ def build_system_groups() -> list[SystemGroup]:
                 SystemItem(
                     key="excel_uploads",
                     title="فایل‌های اکسل / CSV",
-                    admin_changelist="",
-                    url_name="excel_list",
-                    description="ورود، مشاهده TABLE/SHEETS و انتقال داده",
+                    admin_changelist="admin:catalog_excelupload_changelist",
+                    admin_add="admin:catalog_excelupload_add",
+                    description=(
+                        "مدیریت فایل‌های بارگذاری‌شده، عنوان، یادداشت و جداول وابسته — "
+                        "ویرایش کامل در ظاهر داده‌های سیستم."
+                    ),
                     count_fn=_count(ExcelUpload),
-                    can_add=True,
-                    add_url_name="excel_import",
                 ),
                 SystemItem(
                     key="transfer_dialog_labels",
@@ -289,29 +279,31 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="product_data_hub",
-                    title="دیتای محصولات (هاب)",
-                    admin_changelist="",
-                    url_name="product_data",
+                    title="جداول پویا مقصد (دیتای محصولات)",
+                    admin_changelist="admin:catalog_flexibledataset_changelist",
+                    admin_add="admin:catalog_flexibledataset_add",
+                    url_query="destination_id__exact=product_data",
                     description=(
-                        "تب‌های خام محصولات/BOM/مواد مصرفی/مشخصات فنی؛ "
-                        "جدول پس از انتقال اکسل ساخته می‌شود. تب‌ها و سرستون‌ها و ستون‌های کلیدی از نام‌گذاری سیستم."
+                        "اسکیما و متادیتای تب‌های پویا (محصولات/BOM/مواد/مشخصات فنی/حواله): "
+                        "مقصد، سطح، ستون‌ها و کلیدها — نه میان‌بر به صفحه عملیاتی."
                     ),
                     count_fn=lambda: FlexibleDataset.objects.filter(
                         destination_id="product_data"
                     ).count(),
-                    can_add=False,
                 ),
                 SystemItem(
                     key="vouchers_hub",
-                    title="حواله‌ها (تب در دیتای محصولات)",
-                    admin_changelist="",
-                    url_name="product_data",
-                    url_query="tab=vouchers",
-                    description="حواله‌ها به‌عنوان تب دیتای محصولات — خام تا انتقال اکسل",
-                    count_fn=lambda: FlexibleDataset.objects.filter(
-                        destination_id="product_data", level_id="vouchers"
+                    title="ردیف‌های جدول پویا (حواله و سایر تب‌ها)",
+                    admin_changelist="admin:catalog_flexiblerow_changelist",
+                    admin_add="admin:catalog_flexiblerow_add",
+                    description=(
+                        "ویرایش ردیف‌های JSON جداول پویا (شامل حواله‌ها) با کلید هویت — "
+                        "مدیریت داده در داده‌های سیستم."
+                    ),
+                    count_fn=lambda: FlexibleRow.objects.filter(
+                        dataset__destination_id="product_data",
+                        dataset__level_id="vouchers",
                     ).count(),
-                    can_add=False,
                 ),
                 SystemItem(
                     key="machines",
@@ -364,13 +356,12 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="pipe_calc",
-                    title="محاسبات زمان تولید لوله",
+                    title="خطوط و پروفایل محاسبه لوله",
                     admin_changelist="admin:catalog_pipeproductline_changelist",
                     admin_add="admin:catalog_pipeproductline_add",
-                    url_name="pipe_calc",
                     description=(
-                        "خطوط پروتکت/جنرال/سایلنت/PE/تیپ/خرطومی/PC/راند — "
-                        "زمان خط و بلینگ، سقف دپو، کسری BOM؛ جزئیات نرخ‌ها قابل ویرایش."
+                        "تعریف خطوط محصول، حالت لایه، بلینگ، اسکلت/فعال، و پروفایل سایز "
+                        "(سرعت، بلینگ، بسته، سقف دپو) — تنظیمات سیستم، نه صفحه محاسبه عملیاتی."
                     ),
                     count_fn=_count(PipeProductLine),
                 ),

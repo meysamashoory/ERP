@@ -4,6 +4,8 @@ from .models import (
     DeviationReason,
     ExcelTable,
     ExcelUpload,
+    FlexibleDataset,
+    FlexibleRow,
     Machine,
     MoldOption,
     PlanningDisplaySettings,
@@ -396,6 +398,53 @@ class ExcelUploadAdmin(admin.ModelAdmin):
         return format_html('<a href="{}" download>دانلود فایل</a>', obj.file.url)
 
     download_link.short_description = "سوابق / دانلود"
+
+
+class FlexibleRowInline(admin.TabularInline):
+    model = FlexibleRow
+    extra = 0
+    fields = ("identity_key", "values", "order")
+    show_change_link = True
+
+
+@admin.register(FlexibleDataset)
+class FlexibleDatasetAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "destination_id",
+        "level_id",
+        "title",
+        "column_count",
+        "row_count_display",
+        "updated_at",
+    )
+    list_display_links = ("id", "destination_id")
+    list_editable = ("title",)
+    list_filter = ("destination_id", "level_id")
+    search_fields = ("destination_id", "level_id", "title")
+    readonly_fields = ("created_at", "updated_at", "row_count_display")
+    inlines = [FlexibleRowInline]
+
+    def column_count(self, obj):
+        return len(obj.columns or [])
+
+    column_count.short_description = "تعداد ستون"
+
+    def row_count_display(self, obj):
+        return obj.row_count
+
+    row_count_display.short_description = "تعداد ردیف"
+
+
+@admin.register(FlexibleRow)
+class FlexibleRowAdmin(admin.ModelAdmin):
+    list_display = ("id", "dataset", "identity_key", "order", "updated_at")
+    list_display_links = ("id",)
+    list_editable = ("order",)
+    list_filter = ("dataset__destination_id", "dataset__level_id")
+    search_fields = ("identity_key", "dataset__destination_id", "dataset__level_id")
+    raw_id_fields = ("dataset",)
+    readonly_fields = ("updated_at", "created_at")
 
 
 @admin.register(ExcelTable)
