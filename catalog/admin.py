@@ -2,15 +2,26 @@ from django.contrib import admin
 
 from .models import (
     DeviationReason,
+    ExcelTable,
+    ExcelUpload,
+    FlexibleDataset,
+    FlexibleRow,
     Machine,
     MoldOption,
+    PlanningDisplaySettings,
+    PlanningInsightField,
     Product,
+    ProductBomLine,
+    ProductConsumable,
     ProductGroup,
     ProductSubGroup,
     ProductionTypeOption,
     ProductionUnit,
     ProgramChangeReason,
+    ProgramUidScheme,
     StoppageReason,
+    SystemAlarm,
+    SystemNamingKey,
 )
 
 
@@ -21,14 +32,18 @@ class MachineInline(admin.TabularInline):
 
 @admin.register(ProductionUnit)
 class ProductionUnitAdmin(admin.ModelAdmin):
-    list_display = ("number", "name")
+    list_display = ("id", "number", "name")
+    list_display_links = ("id",)
+    list_editable = ("number", "name")
     inlines = [MachineInline]
     search_fields = ("name",)
 
 
 @admin.register(Machine)
 class MachineAdmin(admin.ModelAdmin):
-    list_display = ("unit", "machine_type", "number", "is_active")
+    list_display = ("id", "unit", "machine_type", "number", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("unit", "machine_type", "number", "is_active")
     list_filter = ("unit", "machine_type", "is_active")
     search_fields = ("number",)
 
@@ -40,15 +55,18 @@ class ProductSubGroupInline(admin.TabularInline):
 
 @admin.register(ProductGroup)
 class ProductGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "kind", "order")
+    list_display = ("id", "name", "kind", "order")
+    list_display_links = ("id",)
     list_filter = ("kind",)
-    list_editable = ("kind", "order")
+    list_editable = ("name", "kind", "order")
     inlines = [ProductSubGroupInline]
 
 
 @admin.register(ProductSubGroup)
 class ProductSubGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "group", "order")
+    list_display = ("id", "name", "group", "order")
+    list_display_links = ("id",)
+    list_editable = ("name", "group", "order")
     list_filter = ("group",)
     search_fields = ("name",)
 
@@ -84,31 +102,444 @@ class ProductAdmin(admin.ModelAdmin):
         return obj.needs_reorder
 
 
+@admin.register(ProductBomLine)
+class ProductBomLineAdmin(admin.ModelAdmin):
+    list_display = ("parent", "component_code", "component_name", "quantity", "unit", "order")
+    list_filter = ("parent__subgroup__group",)
+    search_fields = ("parent__code", "component_code", "component_name")
+    list_editable = ("quantity", "unit", "order")
+
+
+@admin.register(ProductConsumable)
+class ProductConsumableAdmin(admin.ModelAdmin):
+    list_display = (
+        "product",
+        "material_code",
+        "material_name",
+        "quantity_per_unit",
+        "unit",
+        "order",
+    )
+    search_fields = ("product__code", "material_code", "material_name")
+    list_editable = ("quantity_per_unit", "unit", "order")
+
+
 @admin.register(ProductionTypeOption)
 class ProductionTypeOptionAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(StoppageReason)
 class StoppageReasonAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(DeviationReason)
 class DeviationReasonAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(ProgramChangeReason)
 class ProgramChangeReasonAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
 
 
 @admin.register(MoldOption)
 class MoldOptionAdmin(admin.ModelAdmin):
-    list_display = ("label", "order", "is_active")
-    list_editable = ("order", "is_active")
+    list_display = ("id", "label", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active")
+
+
+@admin.register(PlanningInsightField)
+class PlanningInsightFieldAdmin(admin.ModelAdmin):
+    list_display = ("id", "label", "source", "source_key", "order", "is_active")
+    list_display_links = ("id",)
+    list_editable = ("label", "order", "is_active", "source", "source_key")
+    list_filter = ("source", "is_active")
+    search_fields = ("label", "source_key")
+    ordering = ("order", "id")
+
+
+@admin.register(PlanningDisplaySettings)
+class PlanningDisplaySettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "height_coefficient", "matrix_unit_numbers", "show_group_breakdown")
+    list_display_links = ("id",)
+    list_editable = ("height_coefficient", "matrix_unit_numbers", "show_group_breakdown")
+    fieldsets = (
+        (
+            "کادر آبی و ماتریس تعویض قالب",
+            {
+                "fields": (
+                    "height_coefficient",
+                    "matrix_unit_numbers",
+                    "show_group_breakdown",
+                ),
+                "description": (
+                    "ضریب عرض ۱٫۰ = پایه؛ ۱٫۲ یعنی ۲۰٪ پهن‌تر. "
+                    "واحدهای ماتریس را با ویرگول مشخص کنید (مثلاً ۱,۲,۴)."
+                ),
+            },
+        ),
+    )
+
+    def has_add_permission(self, request):
+        # Keep a single settings row when possible.
+        if PlanningDisplaySettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+@admin.register(ProgramUidScheme)
+class ProgramUidSchemeAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "is_active",
+        "base_year",
+        "total_digits_display",
+        "updated_at",
+    )
+    list_display_links = ("name",)
+    list_editable = ("is_active", "base_year")
+    readonly_fields = ("updated_at", "example_preview")
+    fieldsets = (
+        (
+            "قانون فعال",
+            {
+                "fields": ("name", "is_active", "notes", "example_preview"),
+                "description": (
+                    "این قانون شناسه ۱۴ رقمی برنامه‌ریزی را تعریف می‌کند. "
+                    "با تغییر ارقام یا سال مبدأ، شناسه‌های جدید بر اساس تنظیمات ساخته می‌شوند. "
+                    "برای اعمال روی برنامه‌های موجود از اکشن «بازسازی شناسه‌ها» استفاده کنید."
+                ),
+            },
+        ),
+        (
+            "سال و ارقام",
+            {
+                "fields": (
+                    "base_year",
+                    "year_digits",
+                    "program_digits",
+                    "unit_digits",
+                    "machine_digits",
+                    "date_sum_digits",
+                    "production_type_digits",
+                    "mold_row_digits",
+                ),
+            },
+        ),
+        (
+            "تعریف قطعات (بازتعریف آینده)",
+            {
+                "fields": ("segments_json",),
+                "classes": ("collapse",),
+            },
+        ),
+        (None, {"fields": ("updated_at",)}),
+    )
+    actions = ("rebuild_all_uids",)
+
+    def total_digits_display(self, obj):
+        return obj.total_digits
+
+    total_digits_display.short_description = "مجموع ارقام"
+
+    def example_preview(self, obj):
+        import jdatetime
+        from planning.uid import build_program_uid
+
+        sample = build_program_uid(
+            plan_date=jdatetime.date(1405, 5, 26),
+            program_number=159,
+            unit_number=4,
+            machine_number=2,
+            mold_change_date=jdatetime.date(1405, 5, 27),
+            production_type_index=2,
+            mold_row=23,
+            scheme=obj,
+        )
+        return f"نمونه (برنامه ۱۵۹ / واحد۴ / دستگاه۲ / نوع۲ / ردیف۲۳): {sample}"
+
+    example_preview.short_description = "پیش‌نمایش نمونه"
+
+    def has_add_permission(self, request):
+        if ProgramUidScheme.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    @admin.action(description="بازسازی شناسه همه کالاهای برنامه‌ها با قانون فعال")
+    def rebuild_all_uids(self, request, queryset):
+        from planning.models import WeeklyPlan
+        from planning.uid import refresh_plan_uids
+
+        scheme = ProgramUidScheme.load()
+        items = 0
+        collisions = 0
+        for plan in WeeklyPlan.objects.all().iterator():
+            n_before = plan.items.count()
+            cols = refresh_plan_uids(plan, scheme=scheme)
+            items += n_before
+            collisions += len(cols)
+        msg = f"شناسه {items} کالا بازسازی شد."
+        if collisions:
+            msg += f" {collisions} مورد تکرار شناسه در آلارم‌های سیستم ثبت شد."
+        self.message_user(request, msg)
+
+
+@admin.register(SystemAlarm)
+class SystemAlarmAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "severity",
+        "kind",
+        "status",
+        "title",
+        "short_suggestion",
+    )
+    list_filter = ("severity", "kind", "status", "created_at")
+    search_fields = ("title", "message", "suggestion")
+    readonly_fields = ("created_at", "reviewed_at", "reviewed_by", "details")
+    list_display_links = ("title",)
+    actions = ("mark_reviewed", "mark_cleared", "hard_delete")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "severity",
+                    "kind",
+                    "status",
+                    "title",
+                    "message",
+                    "suggestion",
+                    "details",
+                    "created_at",
+                    "reviewed_at",
+                    "reviewed_by",
+                ),
+                "description": (
+                    "آلارم‌های جدی (مثل تکرار شناسه) اینجا ثبت می‌شوند. "
+                    "پس از بررسی می‌توانید وضعیت را به بررسی‌شده یا پاک‌شده تغییر دهید."
+                ),
+            },
+        ),
+    )
+
+    def short_suggestion(self, obj):
+        text = (obj.suggestion or "")[:80]
+        return text + ("…" if obj.suggestion and len(obj.suggestion) > 80 else "")
+
+    short_suggestion.short_description = "پیشنهاد اصلاح"
+
+    @admin.action(description="علامت‌گذاری به‌عنوان بررسی‌شده")
+    def mark_reviewed(self, request, queryset):
+        for alarm in queryset:
+            alarm.mark_reviewed(user=request.user)
+        self.message_user(request, f"{queryset.count()} آلارم بررسی‌شده شد.")
+
+    @admin.action(description="علامت‌گذاری به‌عنوان پاک‌شده")
+    def mark_cleared(self, request, queryset):
+        for alarm in queryset:
+            alarm.mark_cleared(user=request.user)
+        self.message_user(request, f"{queryset.count()} آلارم پاک‌شده شد.")
+
+    @admin.action(description="حذف دائمی از فهرست")
+    def hard_delete(self, request, queryset):
+        n = queryset.count()
+        queryset.delete()
+        self.message_user(request, f"{n} آلارم برای همیشه حذف شد.")
+
+
+class ExcelTableInline(admin.TabularInline):
+    model = ExcelTable
+    extra = 0
+    fields = ("name", "sheet_name", "order", "row_count_display", "updated_at")
+    readonly_fields = ("row_count_display", "updated_at")
+    show_change_link = True
+
+    def row_count_display(self, obj):
+        if not obj.pk:
+            return "—"
+        return f"{obj.row_count} × {obj.column_count}"
+
+    row_count_display.short_description = "ردیف × ستون"
+
+
+@admin.register(ExcelUpload)
+class ExcelUploadAdmin(admin.ModelAdmin):
+    list_display = ("title", "original_name", "table_count", "uploaded_by", "created_at", "download_link")
+    list_display_links = ("title",)
+    search_fields = ("title", "original_name", "notes")
+    list_filter = ("created_at",)
+    readonly_fields = ("original_name", "uploaded_by", "created_at", "updated_at", "download_link")
+    fields = (
+        "title", "file", "notes", "original_name",
+        "uploaded_by", "created_at", "updated_at", "download_link",
+    )
+    inlines = [ExcelTableInline]
+
+    def save_model(self, request, obj, form, change):
+        if not obj.uploaded_by_id:
+            obj.uploaded_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def download_link(self, obj):
+        if not obj.pk or not obj.file:
+            return "—"
+        from django.utils.html import format_html
+        return format_html('<a href="{}" download>دانلود فایل</a>', obj.file.url)
+
+    download_link.short_description = "سوابق / دانلود"
+
+
+class FlexibleRowInline(admin.TabularInline):
+    model = FlexibleRow
+    extra = 0
+    fields = ("identity_key", "values", "order")
+    show_change_link = True
+
+
+@admin.register(FlexibleDataset)
+class FlexibleDatasetAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "destination_id",
+        "level_id",
+        "title",
+        "column_count",
+        "row_count_display",
+        "updated_at",
+    )
+    list_display_links = ("id", "destination_id")
+    list_editable = ("title",)
+    list_filter = ("destination_id", "level_id")
+    search_fields = ("destination_id", "level_id", "title")
+    readonly_fields = ("created_at", "updated_at", "row_count_display")
+    inlines = [FlexibleRowInline]
+
+    def column_count(self, obj):
+        return len(obj.columns or [])
+
+    column_count.short_description = "تعداد ستون"
+
+    def row_count_display(self, obj):
+        return obj.row_count
+
+    row_count_display.short_description = "تعداد ردیف"
+
+
+@admin.register(FlexibleRow)
+class FlexibleRowAdmin(admin.ModelAdmin):
+    list_display = ("id", "dataset", "identity_key", "order", "updated_at")
+    list_display_links = ("id",)
+    list_editable = ("order",)
+    list_filter = ("dataset__destination_id", "dataset__level_id")
+    search_fields = ("identity_key", "dataset__destination_id", "dataset__level_id")
+    raw_id_fields = ("dataset",)
+    readonly_fields = ("updated_at", "created_at")
+
+
+@admin.register(ExcelTable)
+class ExcelTableAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "upload", "sheet_name", "order", "row_count", "column_count", "updated_at")
+    list_display_links = ("id",)
+    list_editable = ("name", "order")
+    list_filter = ("upload",)
+    search_fields = ("name", "sheet_name", "upload__title")
+    readonly_fields = ("created_at", "updated_at", "source_id_display")
+    fields = (
+        "upload", "name", "sheet_name", "order",
+        "headers", "rows", "source_id_display", "created_at", "updated_at",
+    )
+
+    def source_id_display(self, obj):
+        return obj.source_id if obj.pk else "—"
+
+    source_id_display.short_description = "شناسه منبع گزارش"
+
+
+@admin.register(SystemNamingKey)
+class SystemNamingKeyAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "key", "label", "category", "table_key", "column_key",
+        "section_key", "linked_section_key", "order", "is_active", "is_key", "is_custom", "updated_at",
+    )
+    list_display_links = ("id", "key")
+    list_editable = ("label", "is_active", "is_key", "linked_section_key", "order")
+    list_filter = ("category", "is_active", "is_key", "is_custom", "section_key")
+    search_fields = ("key", "label", "address", "table_key", "column_key", "default_label")
+    readonly_fields = ("created_at", "updated_at", "default_label")
+    ordering = ("category", "table_key", "order", "key")
+
+
+# ---- Pipe production calculation ----
+from .pipe_calc.models import (  # noqa: E402
+    PipeLayerSpec,
+    PipeLengthCut,
+    PipeProductLine,
+    PipeSizeProfile,
+)
+
+
+class PipeLengthCutInline(admin.TabularInline):
+    model = PipeLengthCut
+    extra = 0
+
+
+class PipeLayerSpecInline(admin.TabularInline):
+    model = PipeLayerSpec
+    extra = 0
+
+
+class PipeSizeProfileInline(admin.TabularInline):
+    model = PipeSizeProfile
+    extra = 0
+    fields = (
+        "size_mm",
+        "line_speed_m_per_min",
+        "billing_pieces_per_hour",
+        "pack_qty",
+        "depot_ceiling",
+        "stock_on_hand",
+        "is_active",
+    )
+
+
+@admin.register(PipeProductLine)
+class PipeProductLineAdmin(admin.ModelAdmin):
+    list_display = (
+        "code",
+        "name",
+        "layer_mode",
+        "needs_billing",
+        "is_scaffold",
+        "is_active",
+        "order",
+    )
+    list_filter = ("layer_mode", "needs_billing", "is_scaffold", "is_active")
+    search_fields = ("code", "name")
+    inlines = [PipeSizeProfileInline]
+
+
+@admin.register(PipeSizeProfile)
+class PipeSizeProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "line",
+        "size_mm",
+        "line_speed_m_per_min",
+        "billing_pieces_per_hour",
+        "pack_qty",
+        "depot_ceiling",
+        "stock_on_hand",
+        "is_active",
+    )
+    list_filter = ("line", "is_active")
+    inlines = [PipeLengthCutInline, PipeLayerSpecInline]

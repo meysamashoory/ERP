@@ -74,20 +74,48 @@ scripts\windows_serve.bat
 > نکته: روی ویندوز از **Waitress** استفاده می‌شود؛ `gunicorn` روی ویندوز اجرا نمی‌شود
 > (به‌همین دلیل در `requirements.txt` با مارکر `sys_platform` فقط روی لینوکس/مک نصب می‌شود).
 
-پس از اجرا، از سایر سیستم‌های شبکه با آدرس زیر وارد شوید:
+پس از اجرا، از سایر سیستم‌های شبکه با یکی از آدرس‌های زیر وارد شوید:
 
 ```
+http://planning.poliran:8000/
 http://<آی‌پیِ-سرور>:8000/
 ```
+
+### دسترسی با نام `planning.poliran` (شبکه داخلی)
+`127.0.0.1` فقط روی همان سیستمی که برنامه روی آن اجرا می‌شود کار می‌کند.
+برای ورود بقیه کاربران با نام دامنهٔ داخلی:
+
+1. **سرور را روی همه کارت‌های شبکه گوش کنید** (نه فقط localhost):
+   ```bat
+   python manage.py runserver 0.0.0.0:8000
+   ```
+   یا از `scripts\windows_serve.bat` استفاده کنید.
+2. **آی‌پی داخلی سرور را پیدا کنید** (مثلاً `192.168.1.50`).
+3. **نام `planning.poliran` را به همان آی‌پی وصل کنید** — یکی از دو راه:
+   - **DNS داخلی شرکت** (بهترین راه): از واحد IT بخواهید رکورد A برای `planning.poliran` → آی‌پی سرور بسازند.
+   - **فایل hosts روی هر کلاینت** (راه موقت بدون DNS):
+     - ویندوز: فایل `C:\Windows\System32\drivers\etc\hosts` را با Notepad به‌عنوان Administrator باز کنید و این خط را اضافه کنید:
+       ```
+       192.168.1.50   planning.poliran
+       ```
+       (به‌جای `192.168.1.50` آی‌پی واقعی سرور را بگذارید.)
+4. در مرورگر کلاینت‌ها باز کنید:
+   ```
+   http://planning.poliran:8000/
+   ```
+
+> نکته: خود برنامه از قبل `planning.poliran` را در `ALLOWED_HOSTS` می‌پذیرد.
+> اگر متغیر محیطی `DJANGO_ALLOWED_HOSTS` را دستی تنظیم می‌کنید، حتماً این نام را هم در آن بگذارید.
 
 ### دسترسی از شبکه (فایروال و هاست‌ها)
 1. **باز کردن پورت در فایروال ویندوز** (یک‌بار، در PowerShell با دسترسی Administrator):
    ```powershell
    New-NetFirewallRule -DisplayName "ERP 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow
    ```
-2. **تعیین هاست‌های مجاز** برای حالت پروداکشن (به‌جای `*` بهتر است آی‌پی سرور را بگذارید):
+2. **تعیین هاست‌های مجاز** برای حالت پروداکشن:
    ```bat
-   set DJANGO_ALLOWED_HOSTS=192.168.1.50,localhost
+   set DJANGO_ALLOWED_HOSTS=planning.poliran,192.168.1.50,localhost
+   set DJANGO_CSRF_TRUSTED_ORIGINS=http://planning.poliran:8000,http://planning.poliran
    set DJANGO_SECRET_KEY=یک-کلید-تصادفی-و-طولانی
    scripts\windows_serve.bat
    ```
@@ -109,7 +137,8 @@ http://<آی‌پیِ-سرور>:8000/
 | --- | --- |
 | `DJANGO_SECRET_KEY` | کلید توسعه (در تولید تغییر دهید) |
 | `DJANGO_DEBUG` | `True` |
-| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0` |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,0.0.0.0,planning.poliran` |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | `http://planning.poliran:8000,...` |
 | `DJANGO_TIME_ZONE` | `Asia/Tehran` |
 
 پایگاه داده پیش‌فرض SQLite است (بدون نیاز به سرویس جانبی). برای تولید می‌توان به

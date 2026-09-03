@@ -10,6 +10,7 @@ from planning.models import WeeklyPlan
 from production.models import (
     PipeProduction,
     ProductionDayEntry,
+    ProductionProgram,
     ProductionStoppage,
 )
 
@@ -35,13 +36,23 @@ def machines_json(request):
 
 @login_required
 def products_json(request):
-    """Active products of a subgroup with their code (dependent dropdown)."""
+    """Active products, optionally filtered by subgroup / product kind."""
+    from catalog.models import ProductKind
+
     subgroup_id = request.GET.get("subgroup")
-    qs = Product.objects.filter(is_active=True)
+    kind = request.GET.get("kind")
+    qs = Product.objects.filter(is_active=True).select_related("subgroup")
     if subgroup_id:
         qs = qs.filter(subgroup_id=subgroup_id)
+    if kind:
+        qs = qs.filter(subgroup__group__kind=kind)
     data = [
-        {"id": p.id, "name": p.name, "code": p.code}
+        {
+            "id": p.id,
+            "name": p.name,
+            "code": p.code,
+            "subgroup_id": p.subgroup_id,
+        }
         for p in qs.order_by("name")
     ]
     return JsonResponse({"results": data})
@@ -112,11 +123,61 @@ def dashboard(request):
         for row in by_reason
     ]
 
+    # Efficiency / OEE proxy: actual vs planned
+    fitting_efficiency = round(fitting_produced / fitting_planned * 100) if fitting_planned else 0
+    scrap_rate = round(fitting_scrap / fitting_produced * 100, 1) if fitting_produced else 0
+
+    # Active programs + machines
+    active_programs = ProductionProgram.objects.filter(
+        status__in=["producing", "setup", "temp_stop"]
+    ).count()
+    total_machines = Machine.objects.count() if "Machine" in dir() else 0
+    try:
+        from catalog.models import Machine as MachineModel
+        total_machines = MachineModel.objects.count()
+    except Exception:
+        pass
+    active_machines = ProductionProgram.objects.filter(
+        status="producing"
+    ).values("item__machine").distinct().count()
+
+    # Top 5 products by production volume
+    from django.db.models import F
+    top_products = (
+        fitting_qs.values(
+            name=F("program__item__product__name"),
+            code=F("program__item__product__code"),
+        )
+        .annotate(total=Sum("produced_quantity"), scrap=Sum("scrap_quantity"))
+        .order_by("-total")[:5]
+    )
+    top_max = max((row["total"] or 0 for row in top_products), default=0)
+    top_product_bars = [
+        {
+            "label": f"{row['code']} — {row['name']}" if row.get("code") else (row.get("name") or "—"),
+            "value": row["total"] or 0,
+            "scrap": row["scrap"] or 0,
+            "pct": round((row["total"] or 0) / top_max * 100) if top_max else 0,
+        }
+        for row in top_products
+    ]
+
+    # Deviation trend: per-unit deviation
+    from collections import defaultdict
+    deviation_by_unit: dict[str, list[int]] = defaultdict(list)
+    for entry in fitting_qs.values(
+        unit=F("program__item__machine__unit__number")
+    ).annotate(dev=Sum(F("produced_quantity") - F("planned_quantity"))):
+        label = f"واحد {entry['unit']}"
+        deviation_by_unit[label].append(entry["dev"] or 0)
+
     context = {
         "fitting_produced": fitting_produced,
         "fitting_planned": fitting_planned,
         "fitting_deviation": fitting_produced - fitting_planned,
         "fitting_scrap": fitting_scrap,
+        "fitting_efficiency": fitting_efficiency,
+        "scrap_rate": scrap_rate,
         "pipe_produced": pipe_produced,
         "stoppage_minutes": stoppage_minutes,
         "low_stock": low_stock[:8],
@@ -124,11 +185,15 @@ def dashboard(request):
         "pending_plans": WeeklyPlan.objects.filter(
             status=WeeklyPlan.Status.DRAFT
         ).count(),
+        "active_programs": active_programs,
+        "total_machines": total_machines,
+        "active_machines": active_machines,
         "unit_bars": unit_bars,
         "reason_bars": reason_bars,
+        "top_product_bars": top_product_bars,
         "recent_fittings": fitting_qs.select_related(
             "program__item__product", "program__item__machine__unit"
-        )[:6],
+        )[:8],
     }
     return render(request, "dashboard.html", context)
 
@@ -149,7 +214,7 @@ def _fit_material_scrap(r):
 
 # Fitting report reads plan-driven day entries. (key, label, getter)
 FITTING_COLUMNS = [
-    ("uid", "شناسه برنامه", lambda r: r.program.item.uid),
+    ("uid", "شناسه برنامه", lambda r: r.program.resolved_uid),
     ("date", "تاریخ", lambda r: str(r.date)),
     ("machine", "دستگاه/واحد", lambda r: r.program.machine_label),
     ("code", "کد کالا", lambda r: r.program.item.product.code),
