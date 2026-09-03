@@ -736,7 +736,9 @@ tr.is-conflict-row > td {
 .table.col-resize-enabled .cell-reveal-track,
 .table.table-fit-width .cell-reveal-track {
   display: block;
-  width: max-content;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
   max-width: 100%;
   line-height: inherit;
   will-change: transform;
@@ -744,6 +746,8 @@ tr.is-conflict-row > td {
 .table.col-resize-enabled .cell-reveal-track.is-revealing,
 .table.table-fit-width .cell-reveal-track.is-revealing {
   max-width: none;
+  overflow: visible;
+  white-space: nowrap;
 }
 .table.col-resize-enabled th .col-resizer {
   position: absolute;

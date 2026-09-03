@@ -203,18 +203,44 @@
   }
 
   function playCellReveal(cell) {
-    if (!cell || cell.tagName !== "TD" && cell.tagName !== "TH") return;
+    if (!cell || (cell.tagName !== "TD" && cell.tagName !== "TH")) return;
     if (cellHasOwnControls(cell)) return;
 
     var track = ensureRevealTrack(cell);
     if (!track) return;
 
-    // Measure overflow against the cell box.
+    // Measure true overflow: prefer single-line horizontal reveal (RTL),
+    // then vertical if row height still clips wrapped text.
+    track.classList.add("is-revealing");
+    track.style.whiteSpace = "nowrap";
+    track.style.width = "max-content";
+    track.style.maxWidth = "none";
+    track.style.transform = "translate(0, 0)";
+    track.style.transition = "none";
+    void track.offsetWidth;
+
     var overflowX = Math.max(0, Math.ceil(track.scrollWidth - cell.clientWidth + 4));
-    var overflowY = Math.max(0, Math.ceil(track.scrollHeight - cell.clientHeight + 2));
-    if (overflowX <= 1 && overflowY <= 1) return;
+    var overflowY = 0;
+    if (overflowX <= 1) {
+      track.style.whiteSpace = "normal";
+      track.style.width = cell.clientWidth + "px";
+      void track.offsetWidth;
+      overflowY = Math.max(0, Math.ceil(track.scrollHeight - cell.clientHeight + 2));
+      track.style.width = "max-content";
+    }
+    if (overflowX <= 1 && overflowY <= 1) {
+      track.classList.remove("is-revealing");
+      track.style.whiteSpace = "";
+      track.style.width = "";
+      track.style.maxWidth = "";
+      return;
+    }
 
     stopReveal();
+    track.classList.add("is-revealing");
+    if (overflowX > 1) {
+      track.style.whiteSpace = "nowrap";
+    }
 
     // RTL: clipped text sits toward the left; move content right (+) to reveal.
     var tx = overflowX > 1 ? overflowX : 0;
@@ -222,10 +248,8 @@
     var distance = Math.abs(tx) + Math.abs(ty);
     var duration = Math.max(1400, Math.min(6000, distance * 28));
 
-    track.classList.add("is-revealing");
     track.style.transition = "none";
     track.style.transform = "translate(0, 0)";
-    // Force reflow then animate slowly.
     void track.offsetWidth;
     track.style.transition = "transform " + duration + "ms linear";
     track.style.transform = "translate(" + tx + "px, " + ty + "px)";
@@ -235,6 +259,9 @@
       track.style.transform = "translate(0, 0)";
       var resetTimer = setTimeout(function () {
         track.classList.remove("is-revealing");
+        track.style.whiteSpace = "";
+        track.style.width = "";
+        track.style.maxWidth = "";
         if (activeReveal && activeReveal.track === track) activeReveal = null;
       }, 480);
       if (activeReveal && activeReveal.track === track) {

@@ -171,13 +171,16 @@ body.admin-embed .admin-resizable-table td {
 }
 body.admin-embed .admin-resizable-table .cell-reveal-track {
   display: block;
-  width: max-content;
+  overflow: hidden;
+  white-space: nowrap;
   max-width: 100%;
   line-height: inherit;
   will-change: transform;
 }
 body.admin-embed .admin-resizable-table .cell-reveal-track.is-revealing {
   max-width: none;
+  overflow: visible;
+  white-space: nowrap;
 }
 body.admin-embed .admin-th-resizable {
   position: relative;
