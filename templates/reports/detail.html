@@ -71,10 +71,18 @@
     {% endif %}
   </div>
   {% if headers %}
-  <div class="table-scroll">
+  <div class="table-scroll" data-table-section="reports">
     <table class="table table-nav-cells {% if deeper %}table-drill{% endif %}" id="report-data-table" tabindex="0"
-           data-editing="0" data-erp-nav="off">
-      <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+           data-editing="0" data-erp-nav="off" data-table-section="reports">
+      <thead>
+        <tr>
+          {% for cell in header_cells %}
+          <th{% if cell.width %} style="width:{{ cell.width }}px;min-width:{{ cell.width }}px"{% endif %}{% if cell.is_key %} data-is-key="1"{% endif %}>{{ cell.label }}</th>
+          {% empty %}
+          {% for h in headers %}<th>{{ h }}</th>{% endfor %}
+          {% endfor %}
+        </tr>
+      </thead>
       <tbody>
         {% for row in rows %}
         <tr class="data-row {% if deeper %}drill-row{% endif %}"
@@ -102,6 +110,7 @@
 {{ filters|json_script:"report-filters" }}
 {{ entry_meta_json|json_script:"entry-meta" }}
 {{ entry_row_sheets|json_script:"entry-row-sheets" }}
+{{ display_meta_json|json_script:"report-display-meta" }}
 <script>
 (function () {
   var editTitleBtn = document.getElementById("edit-title-btn");
@@ -292,9 +301,16 @@
     var params = new URLSearchParams();
     params.set("level", String(level + 1));
     Object.keys(filters).forEach(function (k) { params.set("f_" + k, filters[k]); });
-    Object.keys(payload).forEach(function (k) {
-      if (k === "_entry_sig" || k === "_row_index" || k === "_sheet") return;
-      params.set("f_" + k, payload[k]);
+    var drill = payload._drill_keys;
+    if (!drill || typeof drill !== "object") {
+      drill = {};
+      Object.keys(payload).forEach(function (k) {
+        if (k === "_entry_sig" || k === "_row_index" || k === "_sheet" || k === "_drill_keys") return;
+        drill[k] = payload[k];
+      });
+    }
+    Object.keys(drill).forEach(function (k) {
+      params.set("f_" + k, drill[k]);
     });
     window.location = "?" + params.toString();
   }

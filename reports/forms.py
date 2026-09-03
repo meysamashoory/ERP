@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 
 from accounts.permissions import get_profile
 
-from .columns import get_column_groups, normalize_columns
+from .columns import get_column_groups, normalize_columns, validate_report_level_keys
 from .models import PrintForm, ReportAccessMode, SavedReport
 
 User = get_user_model()
@@ -101,6 +101,8 @@ class SavedReportForm(forms.ModelForm):
         cols = normalize_columns(data)
         if not cols and not self.allow_empty_columns:
             raise ValidationError("حداقل یک ستون انتخاب کنید.")
+        for msg in validate_report_level_keys(cols):
+            raise ValidationError(msg)
         return cols
 
     def clean_is_standard(self):

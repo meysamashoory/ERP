@@ -29,7 +29,9 @@ from .access import (
 )
 from .columns import (
     get_column_groups,
+    column_keyability_map,
     entry_sheet_count,
+    level_display_meta,
     level_entry_meta,
     normalize_columns,
     persist_column_uids,
@@ -231,6 +233,7 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
         {
             "form": form,
             "column_groups": get_column_groups(),
+            "column_keyability": column_keyability_map(),
             "columns_data": columns_data,
             "source_links_data": list(report.source_links or []),
             "mode": "edit",
@@ -393,6 +396,15 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         path_label = f"سطح {level} — " + " ← ".join(parts)
 
     entry_meta = level_entry_meta(report.columns or [], level=level)
+    display_meta = level_display_meta(report.columns or [], level=level)
+    header_cells = []
+    for i, h in enumerate(headers):
+        meta = display_meta[i] if i < len(display_meta) else {}
+        header_cells.append({
+            "label": h,
+            "width": int(meta.get("width") or 0) if isinstance(meta, dict) else 0,
+            "is_key": bool(meta.get("is_key")) if isinstance(meta, dict) else False,
+        })
     is_editable_report = report.access_mode == ReportAccessMode.EDITABLE
     can_edit_entry = is_editable_report and can_edit_report(request.user, report) and bool(entry_meta)
     can_edit_meta = can_edit_report(request.user, report)
@@ -405,6 +417,7 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         {
             "report": report,
             "headers": headers,
+            "header_cells": header_cells,
             "rows": rows,
             "payloads": payloads,
             "deeper": deeper,
@@ -419,6 +432,8 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "can_edit_meta": can_edit_meta,
             "entry_meta": entry_meta,
             "entry_meta_json": entry_meta,
+            "display_meta": display_meta,
+            "display_meta_json": display_meta,
             "entry_sheet_count": sheet_count,
             "entry_row_sheets": row_sheets,
         },

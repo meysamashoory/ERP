@@ -30,8 +30,9 @@ class ReportFlowTests(TestCase):
                 "description": "توضیح نمونه",
                 "number": 100,
                 "columns_json": (
-                    '[{"key":"date","source":"fitting","level":1,"label":"تاریخ"},'
+                    '[{"key":"date","source":"fitting","level":1,"label":"تاریخ","is_key":true},'
                     '{"key":"product","source":"fitting","level":1,"label":"نام محصول"},'
+                    '{"key":"code","source":"fitting","level":2,"label":"کد","is_key":true},'
                     '{"key":"produced","source":"fitting","level":2,"label":"تولید"}]'
                 ),
             },
@@ -40,7 +41,7 @@ class ReportFlowTests(TestCase):
         report = SavedReport.objects.get(number=100, owner=self.expert)
         self.assertEqual(report.title, "گزارش تست")
         self.assertEqual(report.description, "توضیح نمونه")
-        self.assertEqual(len(report.columns), 3)
+        self.assertEqual(len(report.columns), 4)
         self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
 
         list_resp = self.client.get(reverse("report_list"))
@@ -130,11 +131,17 @@ class ReportFlowTests(TestCase):
         ed = self.client.get(reverse("report_edit", args=[editable.pk]))
         self.assertEqual(ro.status_code, 200)
         self.assertEqual(ed.status_code, 200)
-        self.assertContains(ro, "sourceAllowedForAccess")
-        self.assertContains(ro, 'mode === "editable"')
-        self.assertContains(ro, 'sourceId === "data_entry"')
-        self.assertContains(ro, 'sourceId !== "data_entry"')
+        self.assertContains(ro, "report_builder_display.js")
+        self.assertContains(ro, "ERPReportBuilderDisplay")
         self.assertContains(ed, 'id="id_access_mode"')
+        # Logic lives in static JS; verify file still enforces access-mode source filter.
+        from pathlib import Path
+
+        js = Path("static/js/report_builder_display.js").read_text(encoding="utf-8")
+        self.assertIn("sourceAllowedForAccess", js)
+        self.assertIn('m === "editable"', js)
+        self.assertIn('return sourceId === "data_entry"', js)
+        self.assertIn('return sourceId !== "data_entry"', js)
         # access mode values present in both forms
         self.assertContains(ro, 'value="readonly"')
         self.assertContains(ed, 'value="editable"')
@@ -834,3 +841,135 @@ class PrintFormFlowTests(TestCase):
         self.assertIn("داده برگه۲", body)
         # Client script builds one canvas per sheet
         self.assertIn("for (var s = 1; s <= sheetCount; s++)", body)
+
+
+class ReportColumnKeyAndWidthTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+        cls.expert = User.objects.get(username="expert")
+
+    def test_numeric_cannot_be_key_and_multilevel_requires_keys(self):
+        from reports.columns import column_can_be_key, normalize_columns, validate_report_level_keys
+
+        self.assertFalse(column_can_be_key("fitting", "produced"))
+        self.assertTrue(column_can_be_key("fitting", "code"))
+        cols = normalize_columns(
+            [
+                {"key": "produced", "source": "fitting", "level": 1, "is_key": True},
+                {"key": "code", "source": "fitting", "level": 2, "is_key": True},
+            ]
+        )
+        self.assertFalse(cols[0]["is_key"])
+        self.assertTrue(cols[1]["is_key"])
+        errs = validate_report_level_keys(
+            [
+                {"key": "code", "source": "fitting", "level": 1, "is_key": True},
+                {"key": "product", "source": "fitting", "level": 2, "is_key": False},
+            ]
+        )
+        self.assertTrue(any("سطح 2" in e for e in errs))
+
+    def test_edit_rejects_multilevel_without_keys(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="چندسطحی",
+            number=311,
+            data_source="fitting",
+            columns=[
+                {"key": "code", "source": "fitting", "level": 1, "label": "کد"},
+                {"key": "product", "source": "fitting", "level": 2, "label": "نام"},
+            ],
+        )
+        resp = self.client.post(
+            reverse("report_edit", args=[report.pk]),
+            {
+                "title": "چندسطحی",
+                "number": 311,
+                "description": "",
+                "access_mode": "readonly",
+                "columns_json": json.dumps(
+                    [
+                        {"key": "code", "source": "fitting", "level": 1, "label": "کد"},
+                        {"key": "product", "source": "fitting", "level": 2, "label": "نام"},
+                    ],
+                    ensure_ascii=False,
+                ),
+                "source_links_json": "[]",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "حداقل یک ستون کلید")
+
+    def test_width_and_key_persist_on_save(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="عرض",
+            number=312,
+            data_source="fitting",
+            columns=[],
+        )
+        resp = self.client.post(
+            reverse("report_edit", args=[report.pk]),
+            {
+                "title": "عرض",
+                "number": 312,
+                "description": "",
+                "access_mode": "readonly",
+                "columns_json": json.dumps(
+                    [
+                        {
+                            "key": "code",
+                            "source": "fitting",
+                            "level": 1,
+                            "label": "کد",
+                            "is_key": True,
+                            "width": 140,
+                        },
+                        {
+                            "key": "product",
+                            "source": "fitting",
+                            "level": 1,
+                            "label": "نام",
+                            "width": 200,
+                        },
+                    ],
+                    ensure_ascii=False,
+                ),
+                "source_links_json": "[]",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        report.refresh_from_db()
+        by_key = {c["key"]: c for c in report.columns}
+        self.assertTrue(by_key["code"]["is_key"])
+        self.assertEqual(by_key["code"]["width"], 140)
+        self.assertEqual(by_key["product"]["width"], 200)
+
+    def test_drill_uses_key_columns_only(self):
+        from reports.columns import run_report
+
+        columns = [
+            {"key": "code", "source": "product", "level": 1, "label": "کد", "is_key": True, "uid": "c1"},
+            {"key": "product", "source": "product", "level": 1, "label": "نام", "uid": "c2"},
+            {"key": "stock_finished", "source": "product", "level": 2, "label": "موجودی", "is_key": True, "uid": "c3"},
+        ]
+        # stock_finished is numeric — normalize would strip is_key; use code at level2 for key
+        columns[2] = {
+            "key": "code",
+            "source": "product",
+            "level": 2,
+            "label": "کد2",
+            "is_key": True,
+            "uid": "c3",
+        }
+        headers, rows, payloads, deeper = run_report("product", columns, level=1)
+        self.assertTrue(deeper)
+        self.assertTrue(payloads)
+        self.assertIn("_drill_keys", payloads[0])
+        self.assertIn("c1", payloads[0]["_drill_keys"])
+        self.assertNotIn("c2", payloads[0]["_drill_keys"])

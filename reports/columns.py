@@ -386,6 +386,172 @@ def available_keys(source: str) -> set[str]:
     return keys
 
 
+# Measure / numeric fields that must not be used as drill-down keys.
+_NUMERIC_METRIC_KEYS = frozenset({
+    "cycle",
+    "cavities",
+    "produced",
+    "planned",
+    "scrap",
+    "material_used",
+    "material_scrap",
+    "deviation",
+    "stock_finished",
+    "stock_unassembled",
+    "reorder_level",
+    "depot_ceiling",
+    "per_carton",
+    "per_bag",
+    "main_cavities",
+    "last_cycle",
+    "unit_weight_grams",
+    "planned_qty",
+    "actual_qty",
+    "planned_cycle",
+    "planned_hours",
+    "active_cavities",
+    "last_cavities",
+    "file_stock",
+})
+
+_NUMERIC_KEY_FRAGMENTS = (
+    "qty",
+    "quantity",
+    "weight",
+    "scrap",
+    "stock",
+    "hours",
+    "cycle",
+    "cavit",
+    "material",
+    "produced",
+    "planned",
+    "amount",
+    "price",
+    "count",
+    "total",
+    "sum",
+    "kg",
+    "gram",
+)
+
+_IDENTITY_KEY_FRAGMENTS = (
+    "code",
+    "uid",
+    "id",
+    "name",
+    "title",
+    "label",
+    "machine",
+    "product",
+    "mold",
+    "unique",
+    "identifier",
+    "sku",
+    "barcode",
+)
+
+
+def column_can_be_key(source: str, key: str) -> bool:
+    """Whether a column may be marked as a level key (identity, not a measure)."""
+    key = str(key or "").strip()
+    if not key:
+        return False
+    if key in _NUMERIC_METRIC_KEYS:
+        return False
+    if is_data_entry_key(key, source or ""):
+        # Data-entry fields are textual identity/selectors — allow as keys.
+        return True
+    low = key.lower()
+    if any(frag in low for frag in _IDENTITY_KEY_FRAGMENTS):
+        # e.g. product_code, unique_code, change_uid — allow even if mixed with numbers
+        if low in {"cycle", "last_cycle", "planned_cycle"}:
+            return False
+        return True
+    if any(frag in low for frag in _NUMERIC_KEY_FRAGMENTS):
+        return False
+    # Dates / status / type / unit / line — usable parent context, allow
+    if low in {
+        "date",
+        "document_date",
+        "file_document_date",
+        "plan_date",
+        "plan_start",
+        "actual_start",
+        "actual_end",
+        "status_label",
+        "type",
+        "unit",
+        "line",
+        "subgroup",
+        "deviation_reason",
+        "machine",
+        "product",
+        "code",
+        "uid",
+    }:
+        return True
+    # Unknown flex columns: allow unless clearly numeric-looking
+    return True
+
+
+def column_keyability_map() -> dict[str, dict[str, bool]]:
+    """source_id → {column_key: can_be_key} for the report builder UI."""
+    out: dict[str, dict[str, bool]] = {}
+    for group in get_column_groups():
+        sid = str(group.get("id") or "")
+        out[sid] = {
+            str(pair[0]): column_can_be_key(sid, str(pair[0]))
+            for pair in (group.get("columns") or [])
+            if pair
+        }
+    return out
+
+
+def clamp_column_width(raw) -> int:
+    """Column width in px; 0 means auto/default."""
+    try:
+        width = int(raw or 0)
+    except (TypeError, ValueError):
+        width = 0
+    if width <= 0:
+        return 0
+    return max(40, min(800, width))
+
+
+def validate_report_level_keys(columns) -> list[str]:
+    """Return Persian error messages when multi-level reports lack keys."""
+    specs = normalize_columns(columns)
+    if not specs:
+        return []
+    levels = sorted({int(s.get("level") or 1) for s in specs})
+    errors: list[str] = []
+    # Single-level reports do not require keys.
+    if len(levels) <= 1:
+        for spec in specs:
+            if spec.get("is_key") and not column_can_be_key(
+                spec.get("source") or "", spec.get("key") or ""
+            ):
+                label = spec.get("label") or spec.get("key")
+                errors.append(f"ستون «{label}» مقدار عددی است و نمی‌تواند کلید باشد.")
+        return errors
+    for level in levels:
+        level_cols = [s for s in specs if int(s.get("level") or 1) == level]
+        key_cols = [s for s in level_cols if s.get("is_key")]
+        if not key_cols:
+            errors.append(
+                f"سطح {level}: برای گزارش چندسطحی حداقل یک ستون کلید مشخص کنید."
+            )
+            continue
+        for spec in key_cols:
+            if not column_can_be_key(spec.get("source") or "", spec.get("key") or ""):
+                label = spec.get("label") or spec.get("key")
+                errors.append(
+                    f"سطح {level}: ستون «{label}» مقدار عددی است و نمی‌تواند کلید باشد."
+                )
+    return errors
+
+
 def normalize_columns(raw) -> list[dict]:
     """Accept legacy string keys or structured dicts → list of dicts.
 
@@ -411,6 +577,8 @@ def normalize_columns(raw) -> list[dict]:
                 "level": 1,
                 "label": key,
                 "uid": uid,
+                "width": 0,
+                "is_key": False,
             })
             continue
         if not isinstance(item, dict):
@@ -433,14 +601,45 @@ def normalize_columns(raw) -> list[dict]:
         if uid in seen_uids:
             uid = new_column_uid()
         seen_uids.add(uid)
+        width = clamp_column_width(item.get("width"))
+        is_key = bool(item.get("is_key"))
+        if is_key and not column_can_be_key(source, key):
+            is_key = False
         out.append({
             "key": key,
             "source": source,
             "level": level,
             "label": label,
             "uid": uid,
+            "width": width,
+            "is_key": is_key,
         })
     return out
+
+
+def level_display_meta(columns, level: int = 1) -> list[dict]:
+    """Width / key metadata for columns shown at a report level."""
+    specs = normalize_columns(columns)
+    level = max(1, min(10, int(level or 1)))
+    level_specs = [s for s in specs if int(s.get("level") or 1) == level]
+    if not level_specs:
+        available = sorted({int(s.get("level") or 1) for s in specs})
+        pick = None
+        for lv in available:
+            if lv <= level:
+                pick = lv
+        if pick is not None:
+            level_specs = [s for s in specs if int(s.get("level") or 1) == pick]
+    return [
+        {
+            "key": storage_key(s),
+            "data_key": data_key(s),
+            "label": s.get("label") or s.get("key") or "",
+            "width": int(s.get("width") or 0),
+            "is_key": bool(s.get("is_key")),
+        }
+        for s in level_specs
+    ]
 
 
 def columns_need_uid_persist(raw) -> bool:
@@ -794,6 +993,9 @@ def run_report(
     deeper = any(s["level"] > level for s in resolved)
     headers = [s["label"] for s in level_cols]
     keys = [storage_key(s) for s in level_cols]
+    key_specs = [s for s in level_cols if s.get("is_key")]
+    # Drill / uniqueness identity: marked keys when present, else all level cols.
+    identity_keys = [storage_key(s) for s in key_specs] if key_specs else list(keys)
     entry_keys_level = {
         storage_key(s)
         for s in level_cols
@@ -805,11 +1007,11 @@ def run_report(
     payloads: list[dict] = []
     seen = set()
     for row_i, row in enumerate(filtered):
-        values = tuple(str(row.get(k, "")) for k in keys)
+        identity_values = tuple(str(row.get(k, "")) for k in identity_keys)
         if deeper:
-            if values in seen:
+            if identity_values in seen:
                 continue
-            seen.add(values)
+            seen.add(identity_values)
         display_rows.append([row.get(k, "") for k in keys])
         payload = {k: row.get(k, "") for k in keys}
         # Also expose semantic keys when unique (forms bound before uid).
@@ -822,6 +1024,8 @@ def run_report(
             sk = storage_key(spec)
             if dk and key_counts.get(dk, 0) == 1 and dk not in payload:
                 payload[dk] = row.get(sk, "")
+        drill_keys = {k: row.get(k, "") for k in identity_keys}
+        payload["_drill_keys"] = drill_keys
         if data_source == "data_entry" and not non_entry_level:
             payload["_entry_sig"] = f"__row_{row_i}__"
             payload["_row_index"] = row_i
