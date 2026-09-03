@@ -927,18 +927,20 @@ def system_table_layout(request: HttpRequest) -> HttpResponse:
         except (TypeError, ValueError):
             height = 36
         settings.row_height_px = max(18, min(120, height))
-        locks = {}
-        for key, _label in TableLayoutSettings.SECTION_CHOICES:
-            locks[key] = request.POST.get(f"lock_{key}") == "1"
+        locks = settings.normalized_locks()
+        # Preserve other section flags; only reports lock is edited in UI.
+        locks["reports"] = request.POST.get("lock_reports") == "1"
         settings.section_width_locks = locks
         settings.save()
         messages.success(request, "تنظیمات نمایش جداول ذخیره شد.")
         return redirect("system_table_layout")
 
     locks = settings.normalized_locks()
+    # Interactive column resize exists only for reports; expose that lock alone.
     lock_items = [
         {"key": key, "label": label, "locked": locks.get(key, False)}
         for key, label in TableLayoutSettings.SECTION_CHOICES
+        if key == "reports"
     ]
     return render(
         request,

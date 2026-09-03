@@ -127,6 +127,13 @@ class PipeLengthCut(models.Model):
         decimal_places=2,
         default=Decimal("0"),
     )
+    line_speed_m_per_min = models.DecimalField(
+        "سرعت تولید خط (m/min)",
+        max_digits=10,
+        decimal_places=3,
+        default=Decimal("0"),
+        help_text="اگر صفر باشد از سرعت پروفایل سایز استفاده می‌شود.",
+    )
     stock_on_hand = models.IntegerField(
         "موجودی (عدد)",
         default=0,

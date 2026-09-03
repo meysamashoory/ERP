@@ -12,6 +12,11 @@ urlpatterns = [
         name="pipe_calc_save_stock",
     ),
     path(
+        "data/pipe-calc/defs/",
+        pipe_calc_views.pipe_calc_save_defs,
+        name="pipe_calc_save_defs",
+    ),
+    path(
         "data/pipe-calc/reseed/",
         pipe_calc_views.pipe_calc_reseed,
         name="pipe_calc_reseed",

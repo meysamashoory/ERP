@@ -265,3 +265,45 @@ class PipeCalcMatrixEngineTests(TestCase):
         self.assertEqual(row.deduct_from_depot_stock, 300)
         self.assertEqual(row.deduct_from_depot_remaining, 400)
         self.assertEqual(row.required_qty, 300)
+
+
+class PipeCalcDefsApiTests(TestCase):
+    def setUp(self):
+        seed_pipe_calc_defaults()
+        self.user = User.objects.create_user("pipedefs", password="pass12345")
+        UserProfile.objects.update_or_create(
+            user=self.user,
+            defaults={"role": Role.PLANNING_MANAGER},
+        )
+        self.client = Client()
+        self.client.login(username="pipedefs", password="pass12345")
+
+    def test_save_defs_and_readonly_hub(self):
+        profile = PipeSizeProfile.objects.filter(line__code=LINE_PROTECT, size_mm=110).first()
+        self.assertIsNotNone(profile)
+        cut = profile.length_cuts.filter(is_active=True).first()
+        resp = self.client.post(
+            "/data/pipe-calc/defs/",
+            data=__import__("json").dumps(
+                {
+                    "rows": [
+                        {
+                            "id": cut.id,
+                            "depot_ceiling": 1500,
+                            "avg_monthly_sales": 12.5,
+                            "line_speed_m_per_min": 6.25,
+                        }
+                    ]
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json().get("ok"))
+        cut.refresh_from_db()
+        self.assertEqual(cut.depot_ceiling, 1500)
+        self.assertEqual(float(cut.line_speed_m_per_min), 6.25)
+        hub = self.client.get("/data/pipe-calc/?line=protect&size=110")
+        self.assertContains(hub, "تعاریف اولیه")
+        self.assertContains(hub, "pcx-defs-dialog")
+        self.assertNotContains(hub, 'data-field="depot_ceiling"')

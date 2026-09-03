@@ -116,14 +116,19 @@
     }
 
     cells.forEach(function (th, idx) {
-      if (idx >= cells.length - 1) return;
       if (th.querySelector(".col-resizer")) return;
       if (!th.style.position || th.style.position === "static") {
         th.style.position = "relative";
       }
       var handle = document.createElement("span");
       handle.className = "col-resizer";
-      handle.title = "تغییر عرض ستون";
+      // Last column (visual left edge in RTL) also gets a handle.
+      if (idx >= cells.length - 1) {
+        handle.className = "col-resizer col-resizer-edge";
+        handle.title = "تغییر عرض ستون (لبه چپ جدول)";
+      } else {
+        handle.title = "تغییر عرض ستون";
+      }
       handle.addEventListener("mousedown", function (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -325,7 +330,12 @@
   }
 
   function enhanceAll() {
-    document.querySelectorAll("table.table").forEach(enhanceTable);
+    // Interactive column resize / fit-width only for reports.
+    document
+      .querySelectorAll(
+        'table.table[data-table-section="reports"], [data-table-section="reports"] table.table'
+      )
+      .forEach(enhanceTable);
   }
 
   function boot() {
