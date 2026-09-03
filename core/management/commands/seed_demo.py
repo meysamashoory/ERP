@@ -23,6 +23,7 @@ from catalog.models import (
     ProductionUnit,
     ProgramChangeReason,
     MoldOption,
+    PlanningInsightField,
     StoppageReason,
 )
 from planning.models import WeeklyPlan, WeeklyPlanItem, WeeklyPlanLine, Weekday
@@ -105,6 +106,25 @@ class Command(BaseCommand):
             ProgramChangeReason.objects.get_or_create(label=label, defaults={"order": i})
         for i, label in enumerate(MOLD_OPTIONS):
             MoldOption.objects.get_or_create(label=label, defaults={"order": i})
+
+        insight_defaults = [
+            ("آخرین سیکل تولیدشده", "last_production", "shot_cycle", 0),
+            ("آخرین دستگاه و واحد", "last_production", "machine_unit", 1),
+            ("تعداد حفره فعال", "last_production", "active_cavities", 2),
+            ("تعداد حفره اصلی", "product", "main_cavities", 3),
+        ]
+        for label, source, key, order in insight_defaults:
+            PlanningInsightField.objects.get_or_create(
+                label=label,
+                defaults={"source": source, "source_key": key, "order": order, "is_active": True},
+            )
+        from catalog.models import PlanningDisplaySettings
+        if not PlanningDisplaySettings.objects.exists():
+            PlanningDisplaySettings.objects.create(
+                height_coefficient=1,
+                matrix_unit_numbers="1,2,4",
+                show_group_breakdown=True,
+            )
 
     def _seed_units_and_machines(self):
         specs = {
@@ -252,7 +272,10 @@ class Command(BaseCommand):
             mold_change_date=today + jdatetime.timedelta(days=3), active_cavities=4,
         )
         ptype = ProductionTypeOption.objects.filter(label="پروتکت").first()
-        WeeklyPlanLine.objects.create(item=item, production_type=ptype, quantity=5000, cycle=30)
+        mold = MoldOption.objects.filter(label="قالب اصلی").first()
+        WeeklyPlanLine.objects.create(
+            item=item, production_type=ptype, mold=mold, quantity=5000, cycle=30
+        )
 
         # An approved, running demo program with a day of stats (mirrors the
         # spec example: دستگاه 2 واحد 2، زانو ۱۱۰ پروتکت، سیکل ۴۲).
@@ -263,7 +286,8 @@ class Command(BaseCommand):
         unit2 = units[2]
         m2 = Machine.objects.filter(unit=unit2, machine_type="injection").order_by("id")[1]
         approved = WeeklyPlan.objects.create(
-            program_number="BP-1000", date=today, status=WeeklyPlan.Status.APPROVED,
+            program_number="BP-1000", date=today - jdatetime.timedelta(days=7),
+            status=WeeklyPlan.Status.APPROVED,
             created_by=admin, approved_by=admin,
         )
         item2 = WeeklyPlanItem.objects.create(
@@ -272,10 +296,12 @@ class Command(BaseCommand):
             mold_change_weekday=Weekday.SHANBE, mold_change_date=today,
             active_cavities=4, sequence=1,
         )
-        WeeklyPlanLine.objects.create(item=item2, production_type=ptype, quantity=6000, cycle=42)
+        WeeklyPlanLine.objects.create(
+            item=item2, production_type=ptype, mold=mold, quantity=6000, cycle=42
+        )
         program = ProductionProgram.objects.create(
             item=item2, status=ProductionProgram.Status.RUNNING, change_type="setup",
-            production_type=1, start_date=today, start_time=_time(9, 0),
+            production_type=1, mold=mold, start_date=today, start_time=_time(9, 0),
         )
         ProductionDayEntry.objects.create(
             program=program, date=today, produced_quantity=1800, scrap_quantity=40,
