@@ -90,7 +90,7 @@
   <form method="post" data-action-form>
     {% csrf_token %}
     <div class="field"><label>نام فرم</label><input class="input" name="title" required></div>
-    <div class="field"><label>شماره فرم (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>شماره فرم (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description"></div>
     <div class="field"><label>کاربر مقصد</label>
       <select name="recipient" data-combo="1" required>
@@ -110,7 +110,7 @@
   <form method="post" data-action-form>
     {% csrf_token %}
     <div class="field"><label>نام فرم</label><input class="input" name="title" required></div>
-    <div class="field"><label>شماره فرم (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>شماره فرم (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description"></div>
     <div class="field"><label>کاربر</label><input class="input" value="{{ user.username }}" disabled></div>
     <div class="form-actions">

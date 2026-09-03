@@ -19,7 +19,7 @@ class ReportFlowTests(TestCase):
 
     def test_viewer_cannot_create_report(self):
         self.client.login(username="viewer", password="erp12345")
-        self.assertEqual(self.client.get(reverse("report_create")).status_code, 403)
+        self.assertEqual(self.client.post(reverse("report_create"), {"title": "x", "number": 1}).status_code, 403)
 
     def test_expert_can_create_and_list_report(self):
         self.client.login(username="expert", password="erp12345")
@@ -41,6 +41,7 @@ class ReportFlowTests(TestCase):
         self.assertEqual(report.title, "گزارش تست")
         self.assertEqual(report.description, "توضیح نمونه")
         self.assertEqual(len(report.columns), 3)
+        self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
 
         list_resp = self.client.get(reverse("report_list"))
         self.assertContains(list_resp, "گزارش تست")
@@ -49,6 +50,8 @@ class ReportFlowTests(TestCase):
         self.assertContains(list_resp, "نوع گزارش")
         self.assertContains(list_resp, "تعداد فرم")
         self.assertContains(list_resp, "+ ایجاد گزارش")
+        self.assertContains(list_resp, "btn-create-report")
+        self.assertContains(list_resp, "tpl-create")
         self.assertNotContains(list_resp, "th-filter-btn")
 
         detail = self.client.get(reverse("report_detail", args=[report.pk]))
@@ -64,6 +67,75 @@ class ReportFlowTests(TestCase):
         excel = self.client.get(reverse("report_detail", args=[report.pk]), {"export": "excel"})
         self.assertEqual(excel.status_code, 200)
         self.assertIn("spreadsheetml", excel["Content-Type"])
+
+    def test_create_report_meta_dialog_allows_empty_columns_and_strips_leading_zeros(self):
+        self.client.login(username="expert", password="erp12345")
+        resp = self.client.post(
+            reverse("report_create"),
+            {
+                "title": "گزارش دیالوگ",
+                "description": "",
+                "number": "05",
+                "access_mode": "readonly",
+                "columns_json": "[]",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        report = SavedReport.objects.get(title="گزارش دیالوگ", owner=self.expert)
+        self.assertEqual(report.number, 5)
+        self.assertEqual(report.columns, [])
+        self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
+
+        get_create = self.client.get(reverse("report_create"))
+        self.assertEqual(get_create.status_code, 302)
+        self.assertIn("/reports/", get_create["Location"])
+
+    def test_report_sources_include_history_not_excel(self):
+        from reports.columns import get_column_groups, run_report
+
+        ids = [g["id"] for g in get_column_groups()]
+        self.assertIn("history", ids)
+        self.assertIn("data_entry", ids)
+        self.assertTrue(all(not str(i).startswith("excel_table_") for i in ids))
+
+        headers, rows, _p, _d = run_report(
+            "history",
+            [{"key": "plan_number", "source": "history", "level": 1, "label": "شماره برنامه"}],
+        )
+        self.assertEqual(headers, ["شماره برنامه"])
+        self.assertIsInstance(rows, list)
+
+    def test_flex_product_data_source_from_transferred_rows(self):
+        from catalog.models import FlexibleDataset, FlexibleRow
+        from reports.columns import flex_source_id, get_column_groups, run_report
+
+        ds = FlexibleDataset.objects.create(
+            destination_id="product_data",
+            level_id="products",
+            title="محصولات",
+            columns=[
+                {"key": "code", "label": "کد کالا"},
+                {"key": "name", "label": "نام"},
+            ],
+        )
+        FlexibleRow.objects.create(
+            dataset=ds, order=0, identity_key="A1", values={"code": "A1", "name": "کالا ۱"}
+        )
+        FlexibleRow.objects.create(
+            dataset=ds, order=1, identity_key="B2", values={"code": "B2", "name": "کالا ۲"}
+        )
+        source = flex_source_id("product_data", "products")
+        ids = [g["id"] for g in get_column_groups()]
+        self.assertIn(source, ids)
+        headers, rows, _p, _d = run_report(
+            source,
+            [
+                {"key": "code", "source": source, "level": 1, "label": "کد کالا"},
+                {"key": "name", "source": source, "level": 1, "label": "نام"},
+            ],
+        )
+        self.assertEqual(headers, ["کد کالا", "نام"])
+        self.assertEqual(rows, [["A1", "کالا ۱"], ["B2", "کالا ۲"]])
 
     def test_editable_data_entry_report_save(self):
         self.client.login(username="expert", password="erp12345")

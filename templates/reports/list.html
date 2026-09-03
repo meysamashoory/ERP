@@ -7,7 +7,7 @@
 {% block topbar_actions %}
 {% if can_create %}
 <div class="topbar-actions">
-  <a class="btn btn-sm btn-primary-soft" href="{% url 'report_create' %}">+ ایجاد گزارش</a>
+  <button type="button" class="btn btn-sm btn-primary-soft" id="btn-create-report">+ ایجاد گزارش</button>
 </div>
 {% endif %}
 {% endblock %}
@@ -94,12 +94,39 @@
   <div data-dialog-body></div>
 </dialog>
 
+<template id="tpl-create">
+  <div class="dialog-head"><h3>ایجاد گزارش</h3></div>
+  <form method="post" action="{% url 'report_create' %}" data-action-form>
+    {% csrf_token %}
+    <input type="hidden" name="columns_json" value="[]">
+    <input type="hidden" name="source_links_json" value="[]">
+    <div class="field"><label>عنوان گزارش</label><input class="input" name="title" required maxlength="200"></div>
+    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری" maxlength="300"></div>
+    <div class="field"><label>نوع گزارش</label>
+      <select name="access_mode" class="input">
+        <option value="readonly" selected>فقط خواندنی</option>
+        <option value="editable">قابل اصلاح</option>
+      </select>
+    </div>
+    {% if profile and profile.is_manager %}
+    <div class="field field-check">
+      <label class="chk"><input type="checkbox" name="is_standard" value="1"> ایجاد گزارش استاندارد (قابل مشاهده برای همه)</label>
+    </div>
+    {% endif %}
+    <div class="form-actions">
+      <button class="btn" type="submit">ایجاد گزارش</button>
+      <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</template>
+
 <template id="tpl-send">
   <div class="dialog-head"><h3>ارسال گزارش به کاربر</h3></div>
   <form method="post" data-action-form>
     {% csrf_token %}
     <div class="field"><label>نام گزارش</label><input class="input" name="title" required></div>
-    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری"></div>
     <div class="field"><label>کاربر مقصد</label>
       <select name="recipient" data-combo="1" required>
@@ -119,7 +146,7 @@
   <form method="post" data-action-form>
     {% csrf_token %}
     <div class="field"><label>نام گزارش</label><input class="input" name="title" required></div>
-    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input" type="number" name="number" min="1" max="999" step="1" required></div>
+    <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری"></div>
     <div class="field"><label>کاربر</label><input class="input" value="{{ user.username }}" disabled></div>
     <div class="form-actions">
@@ -148,9 +175,22 @@
   var dialog = document.getElementById("report-action-dialog");
   var body = dialog.querySelector("[data-dialog-body]");
 
-  document.querySelectorAll("#report-list-table tbody tr").forEach(function (tr) {
-    // Navigation: first click selects, second click on same row opens (handled by table_nav.js)
-  });
+  function openFromTemplate(tplId, setup) {
+    var tpl = document.getElementById(tplId);
+    body.innerHTML = "";
+    body.appendChild(tpl.content.cloneNode(true));
+    if (typeof setup === "function") setup(body);
+    if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+    if (window.enhance) window.enhance(body);
+    if (window.ERPNormalizeNumbers) window.ERPNormalizeNumbers.init(body);
+  }
+
+  var createBtn = document.getElementById("btn-create-report");
+  if (createBtn) {
+    createBtn.addEventListener("click", function () {
+      openFromTemplate("tpl-create");
+    });
+  }
 
   document.querySelectorAll("[data-ops]").forEach(function (sel) {
     var apply = sel.parentElement.querySelector("[data-ops-apply]");
@@ -160,26 +200,24 @@
       var op = sel.value;
       var id = row.getAttribute("data-report-id");
       if (op === "edit") { window.location = "/reports/" + id + "/edit/"; return; }
-      var tpl = document.getElementById(op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete");
-      body.innerHTML = "";
-      body.appendChild(tpl.content.cloneNode(true));
-      var form = body.querySelector("[data-action-form]");
-      if (op === "delete") {
-        form.action = "/reports/" + id + "/delete/";
-        body.querySelector("[data-del-title]").textContent = row.getAttribute("data-title");
-      } else if (op === "send") {
-        form.action = "/reports/" + id + "/send/";
-        form.title.value = row.getAttribute("data-title");
-        form.number.value = row.getAttribute("data-number");
-        form.description.value = row.getAttribute("data-description") || "";
-      } else {
-        form.action = "/reports/" + id + "/copy/";
-        form.title.value = row.getAttribute("data-title");
-        form.number.value = row.getAttribute("data-number");
-        form.description.value = row.getAttribute("data-description") || "";
-      }
-      if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
-      if (window.enhance) window.enhance(body);
+      var tplId = op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete";
+      openFromTemplate(tplId, function (root) {
+        var form = root.querySelector("[data-action-form]");
+        if (op === "delete") {
+          form.action = "/reports/" + id + "/delete/";
+          root.querySelector("[data-del-title]").textContent = row.getAttribute("data-title");
+        } else if (op === "send") {
+          form.action = "/reports/" + id + "/send/";
+          form.title.value = row.getAttribute("data-title");
+          form.number.value = row.getAttribute("data-number");
+          form.description.value = row.getAttribute("data-description") || "";
+        } else {
+          form.action = "/reports/" + id + "/copy/";
+          form.title.value = row.getAttribute("data-title");
+          form.number.value = row.getAttribute("data-number");
+          form.description.value = row.getAttribute("data-description") || "";
+        }
+      });
     });
   });
   dialog.addEventListener("click", function (e) {

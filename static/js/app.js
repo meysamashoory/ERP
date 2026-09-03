@@ -414,6 +414,9 @@
     wireSubgroupProduct(root);
     wireChangeType(root);
     wireClearErrors(root);
+    if (window.ERPNormalizeNumbers && typeof window.ERPNormalizeNumbers.init === "function") {
+      window.ERPNormalizeNumbers.init(root);
+    }
   }
 
   window.ERP = { enhance: enhance };

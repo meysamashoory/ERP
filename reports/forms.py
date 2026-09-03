@@ -49,8 +49,9 @@ class SavedReportForm(forms.ModelForm):
             "number": forms.NumberInput(attrs={"min": 1, "max": 999, "step": 1}),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, allow_empty_columns=False, **kwargs):
         self.user = user
+        self.allow_empty_columns = bool(allow_empty_columns)
         super().__init__(*args, **kwargs)
         profile = get_profile(user) if user else None
         if not (profile and profile.is_manager):
@@ -75,6 +76,12 @@ class SavedReportForm(forms.ModelForm):
 
     def clean_number(self):
         number = self.cleaned_data["number"]
+        try:
+            number = int(number)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("شماره گزارش نامعتبر است.") from exc
+        if number < 1 or number > 999:
+            raise ValidationError("شماره گزارش باید بین ۱ تا ۹۹۹ باشد.")
         owner = self.user
         if self.instance and self.instance.pk:
             owner = self.instance.owner
@@ -92,7 +99,7 @@ class SavedReportForm(forms.ModelForm):
         except json.JSONDecodeError as exc:
             raise ValidationError("ساختار ستون‌ها نامعتبر است.") from exc
         cols = normalize_columns(data)
-        if not cols:
+        if not cols and not self.allow_empty_columns:
             raise ValidationError("حداقل یک ستون انتخاب کنید.")
         return cols
 
@@ -242,6 +249,12 @@ class PrintFormForm(forms.ModelForm):
 
     def clean_number(self):
         number = self.cleaned_data["number"]
+        try:
+            number = int(number)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("شماره فرم نامعتبر است.") from exc
+        if number < 1 or number > 999:
+            raise ValidationError("شماره فرم باید بین ۱ تا ۹۹۹ باشد.")
         owner = self.user
         if self.instance and self.instance.pk:
             owner = self.instance.owner

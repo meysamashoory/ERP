@@ -8,9 +8,6 @@
 {% block topbar_actions %}
 <div class="topbar-actions topbar-actions-pair">
   <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">انتقال از اکسل</a>
-  {% if can_edit_permission and has_schema %}
-  <button type="button" class="btn btn-sm" id="flexible-edit-toggle">ویرایش</button>
-  {% endif %}
 </div>
 {% endblock %}
 
@@ -19,12 +16,9 @@
   id="flexible-hub-root"
   data-tab="{{ active_tab }}"
   data-hub="product_data"
-  data-can-edit-permission="{% if can_edit_permission %}1{% else %}0{% endif %}"
+  data-can-edit-permission="0"
   data-can-edit="0"
-  data-save-url="{{ save_url }}"
-  data-delete-url="{{ delete_url }}"
 >
-  {% csrf_token %}
   {{ columns|json_script:"flexible-columns" }}
   {{ rows|json_script:"flexible-rows" }}
   <div class="tabs product-data-tabs">
@@ -45,18 +39,14 @@
       عناوین تب‌ها و سرستون‌ها (و ستون‌های کلیدی) از «داده‌های سیستم» قابل مدیریت‌اند.
     </p>
     {% else %}
-    <p class="panel-hint" id="flexible-view-hint">
-      حالت مشاهده — برای تغییر داده‌ها از «ویرایش» در بالای صفحه استفاده کنید.
+    <p class="panel-hint">
+      مشاهده دادهٔ منتقل‌شده — برای جابه‌جایی از کلیدهای جهت‌دار صفحه‌کلید استفاده کنید.
     </p>
     <div class="table-scroll">
-      <table class="table table-compact product-data-table view-mode" id="flexible-data-table">
+      <table class="table table-compact product-data-table view-mode js-table-nav" id="flexible-data-table">
         <thead><tr></tr></thead>
         <tbody></tbody>
       </table>
-    </div>
-    <div class="product-data-actions" hidden>
-      <button type="button" class="btn btn-primary-soft" id="flexible-save-btn">ذخیره تغییرات</button>
-      <button type="button" class="btn btn-ghost" id="flexible-add-row">ردیف جدید</button>
     </div>
     {% endif %}
   </div>
@@ -64,5 +54,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/flexible_hub.js' %}?v=2"></script>
+<script src="{% static 'js/flexible_hub.js' %}?v=3"></script>
 {% endblock %}

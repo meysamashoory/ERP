@@ -12,7 +12,7 @@
   <form method="post" class="entity-heading-form" id="heading-form" hidden>
     {% csrf_token %}
     <input type="hidden" name="action" value="update_meta">
-    <input class="input input-sm" type="number" name="number" min="1" max="999" value="{{ report.number }}" title="شماره" required>
+    <input class="input input-sm js-report-number" type="number" name="number" min="1" max="999" value="{{ report.number }}" title="شماره" required>
     <input class="input input-sm" type="text" name="title" value="{{ report.title }}" title="عنوان" required>
     <input class="input input-sm" type="text" name="description" value="{{ report.description }}" title="توضیحات" placeholder="توضیحات">
     <button class="btn btn-sm" type="submit">ذخیره</button>

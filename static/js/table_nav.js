@@ -80,7 +80,6 @@
     if (!table || table.dataset.tableNavBound === "1") return;
     if (table.classList.contains("excel-grid")) return;
     if (table.classList.contains("plan-matrix-table")) return;
-    if (table.classList.contains("product-data-table")) return;
     if (table.getAttribute("data-erp-nav") === "off") return;
     // System-data accordion / hub menus are not navigable data tables
     if (table.closest(".system-accordion, .system-acc-body, .system-acc-group")) return;

@@ -301,7 +301,8 @@ class ExcelManagementTests(TestCase):
         self.assertEqual(ok.status_code, 302)
         self.assertFalse(ExcelTable.objects.filter(pk=table.pk).exists())
 
-    def test_excel_tables_appear_in_report_sources(self):
+    def test_excel_tables_do_not_appear_as_direct_report_sources(self):
+        """Reports must use transferred destinations, not raw Excel tables."""
         upload = ExcelUpload.objects.create(title="منبع", uploaded_by=self.admin)
         table = ExcelTable.objects.create(
             upload=upload,
@@ -312,9 +313,9 @@ class ExcelManagementTests(TestCase):
         )
         groups = get_column_groups()
         ids = [g["id"] for g in groups]
-        self.assertIn(table.source_id, ids)
-        group = next(g for g in groups if g["id"] == table.source_id)
-        self.assertEqual(group["label"], "جدول فروش")
+        self.assertNotIn(table.source_id, ids)
+        self.assertIn("history", ids)
+        self.assertNotIn("file", ids)
 
         headers, rows, _payloads, _deeper = run_report(
             table.source_id,
@@ -323,5 +324,5 @@ class ExcelManagementTests(TestCase):
                 {"key": "col_1", "source": table.source_id, "level": 1, "label": "مقدار"},
             ],
         )
-        self.assertEqual(headers, ["کد", "مقدار"])
-        self.assertEqual(rows, [["C1", "9"], ["C2", "3"]])
+        self.assertEqual(headers, [])
+        self.assertEqual(rows, [])

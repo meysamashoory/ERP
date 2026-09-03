@@ -179,36 +179,28 @@ def report_list(request: HttpRequest) -> HttpResponse:
 def report_create(request: HttpRequest) -> HttpResponse:
     if not can_create_report(request.user):
         return HttpResponseForbidden("مشاهده‌گر مجاز به ایجاد گزارش نیست.")
-    if request.method == "POST":
-        form = SavedReportForm(request.POST, user=request.user)
-        if form.is_valid():
-            report = form.save(commit=False)
-            report.owner = request.user
-            report.created_by = request.user
-            report.columns = form.cleaned_data["columns_json"]
-            report.data_source = form.primary_source()
-            report.access_mode = form.cleaned_data.get("access_mode") or ReportAccessMode.READONLY
-            try:
-                report.source_links = json.loads(request.POST.get("source_links_json") or "[]")
-            except json.JSONDecodeError:
-                report.source_links = []
-            report.save()
-            messages.success(request, "گزارش ایجاد شد.")
-            return redirect("report_detail", pk=report.pk)
-    else:
-        form = SavedReportForm(user=request.user)
-    return render(
-        request,
-        "reports/form.html",
-        {
-            "form": form,
-            "column_groups": get_column_groups(),
-            "columns_data": [],
-            "source_links_data": [],
-            "mode": "create",
-            "page_title": "ایجاد گزارش",
-        },
-    )
+    if request.method != "POST":
+        return redirect("report_list")
+    form = SavedReportForm(request.POST, user=request.user, allow_empty_columns=True)
+    if form.is_valid():
+        report = form.save(commit=False)
+        report.owner = request.user
+        report.created_by = request.user
+        report.columns = form.cleaned_data["columns_json"] or []
+        report.data_source = form.primary_source()
+        report.access_mode = form.cleaned_data.get("access_mode") or ReportAccessMode.READONLY
+        try:
+            report.source_links = json.loads(request.POST.get("source_links_json") or "[]")
+        except json.JSONDecodeError:
+            report.source_links = []
+        report.save()
+        messages.success(request, "گزارش ایجاد شد. ستون‌ها را انتخاب کنید.")
+        return redirect("report_edit", pk=report.pk)
+    for field, errors in form.errors.items():
+        for err in errors:
+            label = form.fields[field].label if field in form.fields else field
+            messages.error(request, f"{label}: {err}" if label else str(err))
+    return redirect("report_list")
 
 
 @login_required

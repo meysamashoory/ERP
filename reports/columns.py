@@ -102,6 +102,34 @@ FILE_COLUMNS = [
 ]
 
 
+def _dict_get(key: str):
+    return lambda r, _k=key: (r.get(_k, "") if isinstance(r, dict) else "")
+
+
+HISTORY_COLUMNS = [
+    ("plan_number", "شماره برنامه", _dict_get("plan_number")),
+    ("plan_date", "تاریخ برنامه‌ریزی", _dict_get("plan_date_display")),
+    ("machine", "شناسه دستگاه", _dict_get("machine")),
+    ("product_name", "نام جنس", _dict_get("product_name")),
+    ("product_code", "کد کالا", _dict_get("product_code")),
+    ("mold_number", "شماره قالب", _dict_get("mold_number")),
+    ("unique_code", "کد یکتا", _dict_get("unique_code")),
+    ("plan_start", "تاریخ شروع برنامه", _dict_get("plan_start_display")),
+    ("actual_start", "تاریخ شروع واقعی", _dict_get("actual_start_display")),
+    ("actual_end", "تاریخ پایان تولید", _dict_get("actual_end_display")),
+    ("planned_qty", "مقدار تولید برنامه (عدد)", _dict_get("planned_qty")),
+    ("actual_qty", "مقدار تولید واقعی (عدد)", _dict_get("actual_qty")),
+    ("planned_cycle", "سیکل تولید برنامه (ثانیه)", _dict_get("planned_cycle")),
+    ("last_cycle", "آخرین سیکل تولید (ثانیه)", _dict_get("last_cycle")),
+    ("planned_hours", "ساعت تولید برنامه", _dict_get("planned_hours_display")),
+    ("active_cavities", "تعداد حفره فعال", _dict_get("active_cavities")),
+    ("last_cavities", "آخرین وضعیت حفره", _dict_get("last_cavities")),
+    ("scrap", "ضایعات تولید", _dict_get("scrap")),
+    ("status_label", "وضعیت", _dict_get("status_label")),
+    ("change_uid", "شناسه تعویض", _dict_get("change_uid")),
+]
+
+
 def is_excel_table_source(source: str) -> bool:
     return bool(source) and str(source).startswith("excel_table_")
 
@@ -116,6 +144,28 @@ def parse_excel_table_id(source: str) -> int | None:
         return None
 
 
+def is_flex_source(source: str) -> bool:
+    return bool(source) and str(source).startswith("flex__")
+
+
+def parse_flex_source(source: str) -> tuple[str, str] | None:
+    """Parse ``flex__{destination}__{level}`` → (destination_id, level_id)."""
+    if not is_flex_source(source):
+        return None
+    parts = str(source).split("__", 2)
+    if len(parts) != 3 or parts[0] != "flex":
+        return None
+    destination_id = (parts[1] or "").strip()
+    level_id = (parts[2] or "").strip()
+    if not destination_id or not level_id:
+        return None
+    return destination_id, level_id
+
+
+def flex_source_id(destination_id: str, level_id: str) -> str:
+    return f"flex__{destination_id}__{level_id}"
+
+
 def _excel_table_column_tuples(table) -> list[tuple[str, str, object]]:
     cols = []
     for key, label in table.column_defs():
@@ -123,39 +173,50 @@ def _excel_table_column_tuples(table) -> list[tuple[str, str, object]]:
     return cols
 
 
-def get_excel_table_groups() -> list[dict]:
-    """One report source group per imported Excel table (label = table name)."""
-    from catalog.models import ExcelTable
+def _flex_column_tuples(destination_id: str, level_id: str) -> list[tuple[str, str, object]]:
+    from catalog.flexible_data import load_schema_columns
+
+    out: list[tuple[str, str, object]] = []
+    for col in load_schema_columns(destination_id, level_id):
+        key = str(col.get("key") or "").strip()
+        if not key:
+            continue
+        label = str(col.get("label") or key)
+        out.append((key, label, _dict_get(key)))
+    return out
+
+
+def get_product_data_flex_groups() -> list[dict]:
+    """One source group per product-data tab that has a transferred schema."""
+    from catalog.flexible_data import DEFAULT_PRODUCT_TABS, list_tab_levels
 
     groups: list[dict] = []
-    qs = (
-        ExcelTable.objects.select_related("upload")
-        .order_by("upload__title", "order", "id")
-    )
-    for table in qs:
+    for tab in list_tab_levels("product_data", DEFAULT_PRODUCT_TABS):
+        level_id = tab["id"]
+        tuples = _flex_column_tuples("product_data", level_id)
+        if not tuples:
+            continue
         groups.append({
-            "id": table.source_id,
-            "label": table.name,
-            "hint": f"جدول واردشده از فایل «{table.upload.title}»",
-            "columns": [(k, label) for k, label, _ in _excel_table_column_tuples(table)],
+            "id": flex_source_id("product_data", level_id),
+            "label": f"دیتای محصولات — {tab['label']}",
+            "hint": "فقط داده‌های منتقل‌شده به این تب (نه فایل اکسل خام).",
+            "columns": [(k, label) for k, label, _ in tuples],
         })
     return groups
 
 
 def get_column_groups() -> list[dict]:
-    """Static built-in groups plus live Excel table sources."""
-    groups = [g for g in COLUMN_GROUPS if g.get("id") != "file"]
-    excel_groups = get_excel_table_groups()
-    if excel_groups:
-        groups.extend(excel_groups)
-    else:
-        groups.append({
-            "id": "file",
-            "label": "جداول اکسل (هنوز وارد نشده)",
-            "columns": [(k, label) for k, label, _ in FILE_COLUMNS],
-            "hint": "پس از وارد کردن فایل اکسل از «مدیریت داده‌ها»، نام هر جدول اینجا ظاهر می‌شود.",
-        })
+    """Built-in sources + history + transferred product-data tabs (no raw Excel)."""
+    groups = [g for g in COLUMN_GROUPS if g.get("id") not in ("file",)]
+    groups.append({
+        "id": "history",
+        "label": "سوابق تولید",
+        "hint": "ردیف‌های صفحه سوابق تولید (برنامه‌های زنده و بایگانی).",
+        "columns": [(k, label) for k, label, _ in HISTORY_COLUMNS],
+    })
+    groups.extend(get_product_data_flex_groups())
     return groups
+
 
 DATA_ENTRY_COLUMNS = [
     ("data_titles", "عناوین ورودی داده", None),
@@ -229,6 +290,7 @@ COLUMNS_BY_SOURCE = {
     "fitting": FITTING_COLUMNS,
     "pipe": PIPE_COLUMNS,
     "product": PRODUCT_COLUMNS,
+    "history": HISTORY_COLUMNS,
     "file": [(k, label, getter) for k, label, getter in FILE_COLUMNS],
     "data_entry": [(k, label, getter) for k, label, getter in DATA_ENTRY_COLUMNS],
 }
@@ -259,11 +321,11 @@ COLUMN_GROUPS = [
         "id": "file",
         "label": "ستون‌های فایل / داده خارجی",
         "columns": [(k, label) for k, label, _ in FILE_COLUMNS],
-        "hint": "پس از اتصال فایل، این ستون‌ها از اکسل خوانده می‌شوند.",
+        "hint": "استفاده مستقیم از فایل اکسل پشتیبانی نمی‌شود؛ داده را به مقصد منتقل کنید.",
     },
 ]
 
-# Prefer get_column_groups() at request time so imported Excel tables appear.
+# Prefer get_column_groups() at request time for history + transferred flex tabs.
 
 
 def is_data_entry_key(key: str, source: str = "") -> bool:
@@ -279,16 +341,14 @@ def row_signature(row: dict, keys: list[str]) -> str:
 
 
 def _columns_for_source(source: str) -> list[tuple[str, str, object]]:
+    # Legacy excel_table_* sources: do not expose raw Excel rows anymore.
     if is_excel_table_source(source):
-        from catalog.models import ExcelTable
-
-        pk = parse_excel_table_id(source)
-        if pk is None:
+        return []
+    if is_flex_source(source):
+        parsed = parse_flex_source(source)
+        if not parsed:
             return []
-        table = ExcelTable.objects.filter(pk=pk).first()
-        if not table:
-            return []
-        return _excel_table_column_tuples(table)
+        return _flex_column_tuples(parsed[0], parsed[1])
     return list(COLUMNS_BY_SOURCE.get(source, []))
 
 
@@ -298,7 +358,9 @@ def column_label_map(source: str) -> dict[str, str]:
         mapping[k] = label
     for k, label, _ in DATA_ENTRY_COLUMNS:
         mapping[k] = label
-    if is_excel_table_source(source):
+    for k, label, _ in HISTORY_COLUMNS:
+        mapping.setdefault(k, label)
+    if is_flex_source(source):
         for k, label, _ in _columns_for_source(source):
             mapping[k] = label
     # Overlay editable system naming registry (report.col.<source>.<key>)
@@ -406,20 +468,21 @@ def persist_column_uids(report) -> list[dict]:
 def _getter_map(source: str) -> dict:
     by_key = {}
     for k, label, getter in _columns_for_source(source):
-        if is_excel_table_source(source):
-            # Rows are plain dicts keyed by col_N
-            by_key[k] = (label, (lambda r, _k=k: r.get(_k, "") if isinstance(r, dict) else ""))
+        if is_flex_source(source) or is_excel_table_source(source) or source == "history":
+            by_key[k] = (label, getter or _dict_get(k))
         else:
             by_key[k] = (label, getter)
     for k, label, getter in FILE_COLUMNS:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
     for k, label, getter in DATA_ENTRY_COLUMNS:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
+    for k, label, getter in HISTORY_COLUMNS:
+        by_key.setdefault(k, (label, getter))
     return by_key
 
 
 def _queryset(data_source: str):
-    if is_excel_table_source(data_source):
+    if is_excel_table_source(data_source) or is_flex_source(data_source) or data_source == "history":
         return []
     if data_source == "pipe":
         return PipeProduction.objects.select_related(
@@ -436,19 +499,26 @@ def _queryset(data_source: str):
     ).all()
 
 
-def _excel_row_dicts(table) -> list[dict]:
-    headers = table.headers if isinstance(table.headers, list) else []
-    rows = table.rows if isinstance(table.rows, list) else []
-    width = len(headers)
+def _flex_row_dicts(destination_id: str, level_id: str) -> list[dict]:
+    from catalog.models import FlexibleDataset
+
+    ds = FlexibleDataset.objects.filter(
+        destination_id=destination_id, level_id=level_id
+    ).first()
+    if not ds:
+        return []
     out: list[dict] = []
-    for raw in rows:
-        if not isinstance(raw, list):
-            continue
-        cell = {}
-        for i in range(width):
-            cell[f"col_{i}"] = raw[i] if i < len(raw) and raw[i] is not None else ""
+    for row in ds.rows.all()[:10000]:
+        values = row.values if isinstance(row.values, dict) else {}
+        cell = dict(values)
+        cell["_row_id"] = row.pk
         out.append(cell)
     return out
+
+
+def _excel_row_dicts(table) -> list[dict]:
+    # Intentionally unused for report data — raw Excel must not feed reports.
+    return []
 
 
 def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
@@ -476,11 +546,11 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
                     "getter": getter or (lambda _r: ""),
                 }
             )
-        elif is_excel_table_source(src or data_source) and key.startswith("col_"):
+        elif is_flex_source(src or data_source) and key:
             resolved.append({
                 **spec,
                 "label": spec.get("label") or key,
-                "getter": (lambda r, _k=key: r.get(_k, "") if isinstance(r, dict) else ""),
+                "getter": _dict_get(key),
             })
     return resolved
 
@@ -588,11 +658,12 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
         return rows_out or [{"_sheet": 1}]
 
     if is_excel_table_source(data_source):
-        from catalog.models import ExcelTable
+        # Reports must not read Excel files directly — only transferred destinations.
+        return []
 
-        pk = parse_excel_table_id(data_source)
-        table = ExcelTable.objects.filter(pk=pk).first() if pk is not None else None
-        records = _excel_row_dicts(table) if table else []
+    if is_flex_source(data_source):
+        parsed = parse_flex_source(data_source)
+        records = _flex_row_dicts(parsed[0], parsed[1]) if parsed else []
         rows = []
         for record in records:
             cell = {}
@@ -604,6 +675,26 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
                     continue
                 try:
                     cell[sk] = spec["getter"](record) if spec.get("getter") else record.get(dk, "")
+                except Exception:
+                    cell[sk] = ""
+            rows.append(cell)
+        return rows
+
+    if data_source == "history":
+        from production.history import build_history_rows
+
+        records = build_history_rows()
+        rows = []
+        for record in records:
+            cell = {}
+            for spec in specs:
+                sk = storage_key(spec)
+                dk = data_key(spec)
+                if is_data_entry_key(dk, spec.get("source") or ""):
+                    cell[sk] = ""
+                    continue
+                try:
+                    cell[sk] = spec["getter"](record) if spec.get("getter") else ""
                 except Exception:
                     cell[sk] = ""
             rows.append(cell)
