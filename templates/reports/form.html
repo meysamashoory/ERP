@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}{% endblock %}
+{% block heading %}
+<div class="entity-heading entity-heading-stack" id="entity-heading">
+  <div class="entity-heading-view" id="heading-view" {% if mode != 'edit' and not form.title.value %}hidden{% endif %}>
+    <span class="entity-heading-text" id="heading-text">{% if report %}{{ report.heading_label }}{% elif form.title.value %}{{ form.number.value }}- {{ form.title.value }}{% if form.description.value %} ({{ form.description.value }}){% endif %}{% endif %}</span>
+    <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش</button>
+  </div>
+  <div class="entity-heading-edit" id="heading-edit" {% if mode == 'edit' or form.title.value %}hidden{% endif %}>
+    <span class="muted">پس از تایید اطلاعات، عنوان اینجا نمایش داده می‌شود.</span>
+  </div>
+</div>
+{% endblock %}
+{% block nav_reports %}{% endblock %}
+{% block nav_report_list %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'report_list' %}">بازگشت به لیست</a>
+  <button class="btn btn-sm" type="submit" form="report-builder-form" id="top-submit" hidden>ثبت گزارش</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="report-builder-form" class="builder-compact">
+  {% csrf_token %}
+  {{ form.columns_json }}
+  <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
+  {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
+
+  <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="form-grid form-grid-compact form-grid-2">
+        <div class="field">
+          <label>{{ form.title.label }}</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
+        <div class="field">
+          <label>{{ form.number.label }} (۱–۹۹۹)</label>
+          {{ form.number }}
+          {{ form.number.errors }}
+        </div>
+      </div>
+      <div class="form-grid form-grid-compact form-grid-2">
+        <div class="field">
+          <label>{{ form.description.label }}</label>
+          {{ form.description }}
+        </div>
+        <div class="field">
+          <label>{{ form.access_mode.label }}</label>
+          {{ form.access_mode }}
+          {{ form.access_mode.errors }}
+        </div>
+      </div>
+      {% if form.is_manager %}
+      <div class="field field-check">
+        <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+      </div>
+      {% endif %}
+      {{ form.columns_json.errors }}
+      <div class="line-actions">
+        <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" hidden>انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel panel-compact" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+    <div class="panel-body panel-body-compact">
+      <div class="col-builder col-builder-compact">
+        <div class="col-builder-right">
+          <div class="field">
+            <label>منبع داده اصلی</label>
+            <details class="source-menu" id="source-menu">
+              <summary class="source-menu-summary">افزودن منبع ▾</summary>
+              <div class="source-menu-list" id="source-menu-list"></div>
+            </details>
+          </div>
+          <div class="source-trees" id="source-trees"></div>
+          <div class="source-link-bar">
+            <button type="button" class="btn btn-sm btn-ghost" id="link-sources-btn" hidden>ربط منابع (نقطه اشتراک)</button>
+            <div class="source-links-summary muted" id="source-links-summary"></div>
+          </div>
+        </div>
+        <div class="col-builder-left">
+          <div class="selected-head">
+            <strong>نحوه نمایش</strong>
+            <div class="move-controls">
+              <button type="button" class="btn btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا">▲</button>
+              <button type="button" class="btn btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین">▼</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده">کپی</button>
+            </div>
+          </div>
+          <div class="col-header-preview" id="col-header-preview" hidden>
+            <div class="col-header-preview-track" id="col-header-preview-track"></div>
+          </div>
+          <div class="selected-cols" id="selected-cols"></div>
+          <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<dialog id="source-link-dialog" class="dialog">
+  <div class="dialog-head"><h3>ربط منابع — نقطه اشتراک</h3></div>
+  <p class="muted">برای هر منبع، ستونی را انتخاب کنید که شناسه مشترک است (مثلاً کد کالا در هر منبع با نام متفاوت).</p>
+  <div id="link-fields"></div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="save-links-btn">ذخیره ربط</button>
+    <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+{{ column_groups|json_script:"column-groups" }}
+{{ columns_data|json_script:"columns-initial" }}
+{{ source_links_data|json_script:"links-initial" }}
+{{ column_keyability|json_script:"column-keyability" }}
+<script src="{% static 'js/report_builder_display.js' %}?v=1"></script>
+<script>
+(function () {
+  if (window.ERPReportBuilderDisplay) {
+    window.ERPReportBuilderDisplay.init({
+      mode: "{{ mode }}",
+      hasErrors: {% if form.errors %}true{% else %}false{% endif %}
+    });
+  }
+})();
+</script>
+{% endblock %}

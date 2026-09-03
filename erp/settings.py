@@ -33,9 +33,16 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool("DJANGO_DEBUG", True)
 
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
+# Intranet hostname for Poliran LAN access (override with DJANGO_ALLOWED_HOSTS).
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    "localhost,127.0.0.1,0.0.0.0,planning.poliran",
+)
 
-CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    "http://planning.poliran:8000,http://planning.poliran,https://planning.poliran",
+)
 
 
 # Application definition
@@ -54,6 +61,7 @@ INSTALLED_APPS = [
     "catalog",
     "production",
     "planning",
+    "reports",
     "core",
 ]
 
@@ -81,6 +89,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.user_profile",
+                "core.context_processors.table_layout",
             ],
         },
     },
@@ -151,3 +160,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
+
+
+# Uploaded files (Excel archives in مدیریت داده‌ها, etc.)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"

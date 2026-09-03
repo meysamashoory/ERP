@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.permissions import get_profile
@@ -16,7 +17,12 @@ from .forms import (
     StoppageFormSetPipe,
     pipe_field_map,
 )
-from .models import PipeProduction, ProductionDayEntry, ProductionProgram
+from .models import (
+    PipeProduction,
+    ProductionDayEntry,
+    ProductionHistoryRecord,
+    ProductionProgram,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -122,57 +128,274 @@ def entry_edit(request, pk):
 
 @login_required
 def program_list(request):
-    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes)."""
+    """Hub with two tabs: دستگاه تزریق (fitting programs) and خط لوله (pipes).
+
+    Injection tab shows awaiting (to start), running, and temporarily stopped
+    programs. Finished programs appear only under «سوابق تولید».
+
+    Light backfill: push active Excel archive rows that are still missing a live
+    ProductionProgram so ثبت و کنترل تولید stays in sync after imports.
+    """
+    import logging
+
+    from production.sync import ensure_running_history_in_production
+
+    try:
+        ensure_running_history_in_production(user=request.user)
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).exception(
+            "ensure_running_history_in_production failed on hub load"
+        )
+
     profile = _profile(request)
-    programs = (
+    programs = list(
         ProductionProgram.objects.select_related(
             "item__product", "item__machine__unit", "item__plan"
         )
-        .order_by("-item__plan__date", "item__machine__unit__number",
-                  "item__machine__number", "item__sequence")
+        .prefetch_related("item__lines")
+        .filter(
+            status__in=[
+                ProductionProgram.Status.AWAITING,
+                ProductionProgram.Status.RUNNING,
+                ProductionProgram.Status.TEMP_STOP,
+            ]
+        )
+        .annotate(
+            agg_produced=Coalesce(Sum("entries__produced_quantity"), 0),
+            agg_planned=Coalesce(Sum("entries__planned_quantity"), 0),
+            agg_seconds=Coalesce(Sum("entries__active_seconds"), 0),
+        )
     )
-    rows = [{"program": p, "totals": program_totals(p)} for p in programs]
+    from core.natsort import natural_key
+
+    programs.sort(
+        key=lambda p: (
+            -(p.item.plan.date.toordinal() if p.item.plan_id and p.item.plan.date else 0),
+            p.item.machine.unit.number if p.item.machine_id else 0,
+            natural_key(p.item.machine.number if p.item.machine_id else ""),
+            p.item.sequence or 0,
+        )
+    )
+
+    def _totals_from_prog(p):
+        produced = int(getattr(p, "agg_produced", 0) or 0)
+        planned = int(getattr(p, "agg_planned", 0) or 0)
+        seconds = int(getattr(p, "agg_seconds", 0) or 0)
+        return {
+            "produced": produced,
+            "planned": planned,
+            "deviation": planned - produced,
+            "hours": round(seconds / 3600, 1),
+        }
+
+    rows = [{"program": p, "totals": _totals_from_prog(p)} for p in programs]
+    from .conflicts import conflict_counts
+
+    counts = conflict_counts()
 
     pipes = PipeProduction.objects.select_related("unit", "line", "product", "created_by")[:50]
     for rec in pipes:
         rec.can_edit = bool(profile and profile.can_edit_record(rec))
 
     active_tab = request.GET.get("tab", "injection")
+    from reports.form_purposes import PURPOSE_PRODUCTION, forms_for_purpose
+    import json as _json
+    forms_production = [
+        {"id": f.pk, "number": f.number, "title": f.title}
+        for f in forms_for_purpose(request.user, PURPOSE_PRODUCTION)
+    ]
     return render(request, "production/hub.html",
-                  {"rows": rows, "pipes": pipes, "profile": profile, "active_tab": active_tab})
+                  {
+                      "rows": rows,
+                      "pipes": pipes,
+                      "profile": profile,
+                      "active_tab": active_tab,
+                      "forms_production": forms_production,
+                      "forms_production_json": _json.dumps(forms_production, ensure_ascii=False),
+                      "conflict_count": counts.get("total", 0),
+                      "duplicate_count": counts.get("duplicate", 0),
+                      "precedence_count": counts.get("precedence", 0),
+                  })
+
+@login_required
+def production_history(request):
+    """All planning/production programs + Excel archives, sorted naturally.
+
+    Sync/conflict checks run during Excel transfer/update — not on every page load.
+    Conflict details open on a dedicated page so large lists do not bury the table.
+    """
+    from .conflicts import collect_in_production_conflicts, history_conflict_uids
+    from .history import build_history_rows
+
+    profile = _profile(request)
+    rows = build_history_rows()
+    conflict_uids = history_conflict_uids()
+    for row in rows:
+        uid = str(row.get("change_uid") or row.get("unique_code") or "").strip()
+        if uid in ("—", "-"):
+            uid = ""
+        row["has_conflict"] = bool(uid and uid in conflict_uids)
+    conflicts = collect_in_production_conflicts()
+    from .conflicts import conflict_counts
+
+    counts = conflict_counts()
+    return render(
+        request,
+        "production/history.html",
+        {
+            "rows": rows,
+            "profile": profile,
+            "production_conflicts": conflicts,
+            "conflict_count": counts.get("total", len(conflicts)),
+            "ok_count": sum(1 for r in rows if not r.get("has_conflict")),
+            "conflict_row_count": sum(1 for r in rows if r.get("has_conflict")),
+        },
+    )
+
+
+@login_required
+def production_conflicts(request):
+    """Conflict review hub — دو دسته قالب تکراری و تقدم/تاخر."""
+    profile = _profile(request)
+    if not profile or not profile.can_view_conflicts:
+        raise PermissionDenied("اجازه مشاهده تداخل‌ها را ندارید.")
+    from .conflicts import KIND_DUPLICATE, KIND_PRECEDENCE, collect_all_conflicts, kind_label
+
+    groups = collect_all_conflicts()
+    return render(
+        request,
+        "production/conflicts.html",
+        {
+            "profile": profile,
+            "can_resolve": profile.can_resolve_conflicts,
+            "duplicate_groups": groups[KIND_DUPLICATE],
+            "precedence_groups": groups[KIND_PRECEDENCE],
+            "duplicate_count": len(groups[KIND_DUPLICATE]),
+            "precedence_count": len(groups[KIND_PRECEDENCE]),
+            "kind_duplicate": KIND_DUPLICATE,
+            "kind_precedence": KIND_PRECEDENCE,
+            "kind_label": kind_label,
+        },
+    )
+
+
+@login_required
+def production_conflicts_kind(request, kind: str):
+    """Detail list for one conflict category with in-page fix dialogs."""
+    profile = _profile(request)
+    if not profile or not profile.can_view_conflicts:
+        raise PermissionDenied("اجازه مشاهده تداخل‌ها را ندارید.")
+    from catalog.models import MoldOption
+    from .conflicts import (
+        KIND_DUPLICATE,
+        KIND_PRECEDENCE,
+        collect_all_conflicts,
+        kind_label,
+    )
+
+    if kind not in (KIND_DUPLICATE, KIND_PRECEDENCE):
+        return redirect("production_conflicts")
+    groups = [g.as_dict() for g in collect_all_conflicts()[kind]]
+    return render(
+        request,
+        "production/conflicts_kind.html",
+        {
+            "profile": profile,
+            "can_resolve": profile.can_resolve_conflicts,
+            "kind": kind,
+            "kind_label": kind_label(kind),
+            "groups": groups,
+            "group_count": len(groups),
+            "mold_options": MoldOption.objects.filter(is_active=True).order_by("order", "label"),
+        },
+    )
+
+
+@login_required
+def production_conflict_resolve(request):
+    """Apply manager-only conflict fixes to live + archive + planning."""
+    profile = _profile(request)
+    if not profile or not profile.can_resolve_conflicts:
+        raise PermissionDenied("فقط مدیر برنامه‌ریزی می‌تواند تداخل را رفع کند.")
+    if request.method != "POST":
+        return redirect("production_conflicts")
+
+    from .conflict_resolve import apply_conflict_fix
+
+    result = apply_conflict_fix(request.POST, user=request.user)
+    if result.get("ok"):
+        messages.success(request, result.get("message") or "تغییرات اعمال شد.")
+    else:
+        messages.error(request, result.get("message") or "اعمال تغییرات ممکن نشد.")
+    next_url = request.POST.get("next") or ""
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    kind = request.POST.get("conflict_kind") or ""
+    if kind:
+        return redirect("production_conflicts_kind", kind=kind)
+    return redirect("production_conflicts")
+
+
+@login_required
+def production_history_detail(request, pk):
+    """Detail of one live production program with per-entry documents."""
+    from .history import entry_detail_rows, history_row_from_program, program_summary_text
+
+    profile = _profile(request)
+    program = get_object_or_404(
+        ProductionProgram.objects.select_related(
+            "item__product", "item__machine__unit", "item__plan", "mold"
+        ).prefetch_related("item__lines", "entries__deviation_reason"),
+        pk=pk,
+    )
+    row = history_row_from_program(program)
+    return render(
+        request,
+        "production/history_detail.html",
+        {
+            "profile": profile,
+            "row": row,
+            "program": program,
+            "summary": program_summary_text(program),
+            "entries": entry_detail_rows(program),
+            "totals": program_totals(program),
+        },
+    )
+
+
+@login_required
+def production_history_archive_detail(request, pk):
+    """Detail for an Excel-imported history archive row."""
+    from .history import (
+        archive_summary_text,
+        entry_detail_rows_from_archive,
+        history_row_from_archive,
+    )
+
+    profile = _profile(request)
+    rec = get_object_or_404(ProductionHistoryRecord, pk=pk)
+    row = history_row_from_archive(rec)
+    entries = entry_detail_rows_from_archive(rec)
+    return render(
+        request,
+        "production/history_detail.html",
+        {
+            "profile": profile,
+            "row": row,
+            "program": None,
+            "summary": archive_summary_text(rec),
+            "entries": entries,
+            "totals": {
+                "produced": row["actual_qty"],
+                "planned": row["planned_qty"],
+                "deviation": (row["planned_qty"] or 0) - (row["actual_qty"] or 0),
+                "hours": 0,
+            },
+        },
+    )
 
 
 ACTIVE_STATUSES = [ProductionProgram.Status.RUNNING, ProductionProgram.Status.TEMP_STOP]
-
-
-def machine_running_conflict(program):
-    """Another program currently RUNNING on the same machine (only one mold at a time)."""
-    return (
-        ProductionProgram.objects.filter(
-            item__machine=program.item.machine, status=ProductionProgram.Status.RUNNING
-        )
-        .exclude(pk=program.pk)
-        .select_related("item__product")
-        .first()
-    )
-
-
-def product_mold_conflict(program, mold):
-    """Another active program for the same product with the same mold.
-
-    A product may run on two machines at once only with *different* molds.
-    """
-    qs = (
-        ProductionProgram.objects.filter(
-            item__product=program.item.product, status__in=ACTIVE_STATUSES
-        )
-        .exclude(pk=program.pk)
-        .select_related("item__machine__unit")
-    )
-    for other in qs:
-        if other.mold_id == (mold.id if mold else None):
-            return other
-    return None
 
 
 @login_required
@@ -184,6 +407,8 @@ def program_status(request, pk):
     if not profile or not profile.can_enter_data:
         raise PermissionDenied("اجازه تعیین وضعیت ندارید.")
 
+    from .conflicts import evaluate_status_change_block
+
     action = request.POST.get("action") or request.GET.get("action") or "auto"
     status = program.status
     partial = request.GET.get("partial") == "1"
@@ -194,6 +419,10 @@ def program_status(request, pk):
         if not profile.is_manager:
             raise PermissionDenied("فقط مدیر می‌تواند برنامهٔ خاتمه‌یافته را باز کند.")
         if request.method == "POST":
+            block = evaluate_status_change_block(program, ProductionProgram.Status.RUNNING)
+            if block:
+                messages.error(request, block)
+                return redirect("production_conflicts")
             program.status = ProductionProgram.Status.RUNNING
             program.stop_date = None
             program.stop_time = None
@@ -206,26 +435,18 @@ def program_status(request, pk):
             form = ProgramStartForm(request.POST, program=program)
             if form.is_valid():
                 cd = form.cleaned_data
-                mold = cd.get("mold")
-                machine_conflict = machine_running_conflict(program)
-                if machine_conflict:
-                    messages.error(
-                        request,
-                        f"روی «{program.machine_label}» قالب «{machine_conflict.item.product.name}» "
-                        f"در حال تولید است؛ تا زمان تعیین وضعیت (اتمام آمار) آن، راه‌اندازی قالب جدید ممکن نیست.",
-                    )
-                    return redirect("program_status", pk=pk)
-                prod_conflict = product_mold_conflict(program, mold)
-                if prod_conflict:
-                    messages.error(
-                        request,
-                        f"محصول «{program.item.product.name}» هم‌اکنون روی «{prod_conflict.machine_label}» "
-                        f"با همین قالب فعال است؛ برای تولید هم‌زمان، باید قالب متفاوتی انتخاب کنید.",
-                    )
-                    return redirect("program_status", pk=pk)
+                production_type = int(cd["production_type"])
+                lines = list(program.item.lines.all())
+                line_idx = production_type - 1
+                line = lines[line_idx] if 0 <= line_idx < len(lines) else None
+                mold = line.mold if line else None
+                block = evaluate_status_change_block(program, ProductionProgram.Status.RUNNING)
+                if block:
+                    messages.error(request, block)
+                    return redirect("production_conflicts")
                 program.change_type = cd["change_type"]
                 program.change_reason = cd.get("change_reason")
-                program.production_type = int(cd["production_type"])
+                program.production_type = production_type
                 program.mold = mold
                 program.start_date = cd["start_date"]
                 program.start_time = cd["start_time"]
@@ -251,14 +472,15 @@ def program_status(request, pk):
             form = ProgramStatusForm(request.POST, current=status)
             if form.is_valid():
                 new_status = form.cleaned_data["new_status"]
+                if new_status in (
+                    ProductionProgram.Status.RUNNING,
+                    ProductionProgram.Status.TEMP_STOP,
+                ):
+                    block = evaluate_status_change_block(program, new_status)
+                    if block:
+                        messages.error(request, block)
+                        return redirect("production_conflicts")
                 if new_status == ProductionProgram.Status.RUNNING:
-                    conflict = machine_running_conflict(program)
-                    if conflict and status == ProductionProgram.Status.TEMP_STOP:
-                        messages.error(
-                            request,
-                            f"روی «{program.machine_label}» قالب دیگری در حال تولید است؛ ازسرگیری ممکن نیست.",
-                        )
-                        return redirect("program_status", pk=pk)
                     program.status = ProductionProgram.Status.RUNNING
                     program.stop_date = None
                     program.stop_time = None

@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}محاسبات زمان تولید{% endblock %}
+{% block heading %}محاسبات زمان تولید{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_pipe_calc %}active{% endblock %}
+
+{% block topbar_actions %}
+{% if profile.is_manager %}
+<form method="post" action="{% url 'pipe_calc_reseed' %}" class="inline-form">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-sm btn-ghost">همگام‌سازی خطوط پیش‌فرض</button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+
+<nav class="tabs product-data-tabs pipe-calc-tabs" aria-label="خطوط لوله">
+  {% for ln in lines %}
+  <a class="tab {% if active_line == ln.code %}active{% endif %}"
+     href="{% url 'pipe_calc' %}?line={{ ln.code }}">{{ ln.name }}</a>
+  {% empty %}
+  <span class="muted">خطی تعریف نشده است.</span>
+  {% endfor %}
+</nav>
+
+{% if overview %}
+{% with line=overview.line %}
+
+{% if line.is_matrix_line and matrix %}
+<section class="pcx"
+         id="pcx-root"
+         data-line="{{ line.code }}"
+         data-run-url="{% url 'pipe_calc_run' %}"
+         data-stock-url="{% url 'pipe_calc_save_stock' %}"
+         data-can-edit="{% if can_edit %}1{% else %}0{% endif %}">
+  <script type="application/json" id="pcx-matrix-json">{{ matrix_json|safe }}</script>
+
+  <div class="pcx-toolbar">
+    <label class="pcx-field">
+      <span>سایز لوله</span>
+      <select id="pcx-size">
+        {% for s in overview.sizes %}
+        <option value="{{ s.size_mm }}" {% if selected_size_mm == s.size_mm %}selected{% endif %}>Ø{{ s.size_mm }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="pcx-hint">موجودی و حواله از داده محصولات می‌آید؛ سقف دپو برای همه طول‌ها قابل تعریف است.</p>
+  </div>
+
+  <article class="pcx-card">
+    <header class="pcx-card-head"><h3>برنامه دپو و نیاز تولید</h3></header>
+    <div class="pcx-scroll">
+      <table class="pcx-table" id="pcx-depot-table">
+        <thead>
+          <tr>
+            <th>طول اسمی</th>
+            <th>سقف دپو</th>
+            <th>موجودی</th>
+            <th>حواله</th>
+            <th>مانده بعد از حواله</th>
+            <th>میانگین فروش</th>
+            <th>مانده به ماه</th>
+            <th>درصد دپوی مانده</th>
+            <th>کسر از دپو (موجودی)</th>
+            <th>کسر از دپو (مانده)</th>
+            <th>مقدار مورد نیاز</th>
+          </tr>
+        </thead>
+        <tbody id="pcx-depot-body"></tbody>
+      </table>
+    </div>
+    <footer class="pcx-card-foot">
+      <button type="button" class="btn pcx-primary" id="pcx-calc">محاسبه</button>
+    </footer>
+  </article>
+
+  <div id="pcx-results" class="pcx-results" hidden>
+    <div class="pcx-toolbar">
+      <label class="pcx-field">
+        <span>مبنای مقدار</span>
+        <select id="pcx-qty-source"></select>
+      </label>
+      <p class="pcx-hint">با تغییر گزینه، ستون‌های جدول محاسباتی بر همان مبنا بازمحاسبه می‌شوند.</p>
+    </div>
+    <article class="pcx-card pcx-card-calc">
+      <header class="pcx-card-head"><h3>جدول محاسباتی تولید و مواد</h3></header>
+      <div class="pcx-scroll">
+        <table class="pcx-table pcx-table-calc">
+          <thead id="pcx-prod-head"></thead>
+          <tbody id="pcx-prod-body"></tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+</section>
+
+{% else %}
+<section class="panel panel-compact pcx-placeholder">
+  <h3 class="panel-title">{{ line.name }}</h3>
+  <p class="panel-hint">جزئیات محاسبه این خط به‌زودی تکمیل می‌شود.</p>
+  {% if overview.sizes %}
+  <div class="pcx-chips">
+    {% for s in overview.sizes %}
+    <span class="pcx-chip">Ø{{ s.size_mm }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endwith %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var root = document.getElementById("pcx-root");
+  if (!root) return;
+
+  var canEdit = root.getAttribute("data-can-edit") === "1";
+  var runUrl = root.getAttribute("data-run-url");
+  var stockUrl = root.getAttribute("data-stock-url");
+  var lineCode = root.getAttribute("data-line");
+  var matrix = {};
+  try {
+    matrix = JSON.parse(document.getElementById("pcx-matrix-json").textContent || "{}") || {};
+  } catch (err) {
+    matrix = {depot_rows: [], qty_source_choices: [], default_qty_source: "deduct_stock"};
+  }
+
+  var depotBody = document.getElementById("pcx-depot-body");
+  var sizeSel = document.getElementById("pcx-size");
+  var calcBtn = document.getElementById("pcx-calc");
+  var results = document.getElementById("pcx-results");
+  var qtySel = document.getElementById("pcx-qty-source");
+  var prodHead = document.getElementById("pcx-prod-head");
+  var prodBody = document.getElementById("pcx-prod-body");
+
+  function csrfToken() {
+    var el = document.querySelector("[name=csrfmiddlewaretoken]");
+    return el ? el.value : "";
+  }
+
+  function fmtNum(value, digits) {
+    if (value === null || value === undefined || value === "") return "—";
+    var n = Number(value);
+    if (!isFinite(n)) return "—";
+    if (digits === 0) return String(Math.round(n));
+    var f = Math.pow(10, digits);
+    return String(Math.round(n * f) / f);
+  }
+
+  function fmtPct(value) {
+    if (value === null || value === undefined) return "—";
+    return fmtNum(value, 1) + "٪";
+  }
+
+  function recompute(row) {
+    var ceiling = Math.max(0, parseInt(row.depot_ceiling, 10) || 0);
+    var stock = parseInt(row.stock, 10) || 0;
+    var voucher = Math.max(0, parseInt(row.voucher, 10) || 0);
+    var avg = Math.max(0, parseFloat(row.avg_monthly_sales) || 0);
+    var remaining = stock - voucher;
+    row.remaining_after_voucher = remaining;
+    row.months_remaining = avg > 0 ? Math.round((remaining / avg) * 100) / 100 : null;
+    row.depot_remaining_pct = ceiling > 0 ? Math.round((remaining / ceiling) * 1000) / 10 : null;
+    row.deduct_from_depot_stock = Math.max(0, ceiling - stock);
+    row.deduct_from_depot_remaining = Math.max(0, ceiling - remaining);
+    if (row._requiredTouched !== true) {
+      row.required_qty = row.deduct_from_depot_stock;
+    }
+    return row;
+  }
+
+  function renderDepot() {
+    var rows = (matrix.depot_rows || []).map(function (row) {
+      return recompute(Object.assign({}, row));
+    });
+    matrix.depot_rows = rows;
+    depotBody.innerHTML = rows.map(function (row, idx) {
+      return (
+        '<tr data-idx="' + idx + '">' +
+          '<td class="pcx-sticky">' + (row.label || row.length_code || "") + "</td>" +
+          '<td><input class="pcx-input" data-field="depot_ceiling" type="number" min="0" step="1" value="' + (row.depot_ceiling || 0) + '"></td>' +
+          "<td>" + (canEdit
+            ? '<input class="pcx-input" data-field="stock" type="number" step="1" value="' + (row.stock || 0) + '">'
+            : '<span class="pcx-num">' + fmtNum(row.stock, 0) + "</span>") + "</td>" +
+          "<td>" + (canEdit
+            ? '<input class="pcx-input" data-field="voucher" type="number" min="0" step="1" value="' + (row.voucher || 0) + '">'
+            : '<span class="pcx-num">' + fmtNum(row.voucher, 0) + "</span>") + "</td>" +
+          '<td class="pcx-num" data-col="remaining">' + fmtNum(row.remaining_after_voucher, 0) + "</td>" +
+          '<td><input class="pcx-input" data-field="avg_monthly_sales" type="number" min="0" step="0.01" value="' + (row.avg_monthly_sales || 0) + '"></td>' +
+          '<td class="pcx-num" data-col="months">' + (row.months_remaining === null ? "—" : fmtNum(row.months_remaining, 2)) + "</td>" +
+          '<td class="pcx-num" data-col="pct">' + fmtPct(row.depot_remaining_pct) + "</td>" +
+          '<td class="pcx-num" data-col="deduct_stock">' + fmtNum(row.deduct_from_depot_stock, 0) + "</td>" +
+          '<td class="pcx-num" data-col="deduct_remaining">' + fmtNum(row.deduct_from_depot_remaining, 0) + "</td>" +
+          '<td><input class="pcx-input" data-field="required_qty" type="number" min="0" step="1" value="' + (row.required_qty || 0) + '"></td>' +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function depotPatches() {
+    return (matrix.depot_rows || []).map(function (row) {
+      return {
+        id: row.id,
+        depot_ceiling: row.depot_ceiling,
+        avg_monthly_sales: row.avg_monthly_sales,
+        stock_on_hand: row.stock,
+        voucher_qty: row.voucher,
+        required_qty: row.required_qty
+      };
+    });
+  }
+
+  function fillQtyChoices(choices, selected) {
+    var list = choices || matrix.qty_source_choices || [];
+    var current = selected || matrix.default_qty_source || "deduct_stock";
+    qtySel.innerHTML = list.map(function (item) {
+      return '<option value="' + item.value + '"' + (item.value === current ? " selected" : "") + ">" + item.label + "</option>";
+    }).join("");
+  }
+
+  function renderProduction(prod) {
+    if (!prod) return;
+    var headers = prod.material_headers || [];
+    prodHead.innerHTML =
+      "<tr>" +
+      "<th>طول اسمی</th>" +
+      "<th>زمان تولید خط لوله</th>" +
+      "<th>زمان تولید بلینگ</th>" +
+      "<th>درپوش سوکت</th>" +
+      "<th>درپوش لوله</th>" +
+      "<th>اسپیسر</th>" +
+      "<th>کاور</th>" +
+      headers.map(function (h) { return "<th>" + (h.label || h.key) + "</th>"; }).join("") +
+      "</tr>";
+    prodBody.innerHTML = (prod.rows || []).map(function (row) {
+      var mats = row.material_values || {};
+      return (
+        "<tr>" +
+          '<td class="pcx-sticky">' + (row.label || row.length_code || "") + "</td>" +
+          '<td class="pcx-num">' + (row.line_fmt || "—") + "</td>" +
+          '<td class="pcx-num">' + (row.billing_fmt || "—") + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.socket_caps, 2) + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.pipe_caps, 2) + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.spacers, 2) + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.covers, 2) + "</td>" +
+          headers.map(function (h) {
+            return '<td class="pcx-num">' + fmtNum(mats[h.key], 4) + "</td>";
+          }).join("") +
+        "</tr>"
+      );
+    }).join("");
+    fillQtyChoices(prod.qty_source_choices || matrix.qty_source_choices, prod.qty_source || matrix.default_qty_source);
+    results.hidden = false;
+  }
+
+  function runCalc(qtySource) {
+    calcBtn.disabled = true;
+    var previous = calcBtn.textContent;
+    calcBtn.textContent = "در حال محاسبه…";
+    fetch(runUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken(),
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({
+        line: lineCode,
+        size_mm: parseInt(sizeSel.value, 10),
+        mode: "matrix",
+        qty_source: qtySource || qtySel.value || matrix.default_qty_source || "deduct_stock",
+        depot_rows: depotPatches()
+      })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        calcBtn.disabled = false;
+        calcBtn.textContent = previous;
+        if (!data.ok) {
+          alert(data.error || "خطا در محاسبه");
+          return;
+        }
+        matrix = data.matrix || matrix;
+        if (matrix.depot_rows) renderDepot();
+        renderProduction(matrix.production);
+      })
+      .catch(function () {
+        calcBtn.disabled = false;
+        calcBtn.textContent = previous;
+        alert("خطا در ارتباط با سرور");
+      });
+  }
+
+  depotBody.addEventListener("input", function (event) {
+    var input = event.target.closest("[data-field]");
+    if (!input) return;
+    var tr = input.closest("tr");
+    var idx = parseInt(tr.getAttribute("data-idx"), 10);
+    var row = matrix.depot_rows[idx];
+    if (!row) return;
+    var field = input.getAttribute("data-field");
+    if (field === "avg_monthly_sales") {
+      row.avg_monthly_sales = parseFloat(input.value) || 0;
+    } else if (field === "required_qty") {
+      row.required_qty = Math.max(0, parseInt(input.value, 10) || 0);
+      row._requiredTouched = true;
+    } else if (field === "depot_ceiling") {
+      row.depot_ceiling = Math.max(0, parseInt(input.value, 10) || 0);
+      row._requiredTouched = false;
+    } else if (field === "stock") {
+      row.stock = parseInt(input.value, 10) || 0;
+      row._requiredTouched = false;
+    } else if (field === "voucher") {
+      row.voucher = Math.max(0, parseInt(input.value, 10) || 0);
+      row._requiredTouched = false;
+    }
+    recompute(row);
+    tr.querySelector('[data-col="remaining"]').textContent = fmtNum(row.remaining_after_voucher, 0);
+    tr.querySelector('[data-col="months"]').textContent = row.months_remaining === null ? "—" : fmtNum(row.months_remaining, 2);
+    tr.querySelector('[data-col="pct"]').textContent = fmtPct(row.depot_remaining_pct);
+    tr.querySelector('[data-col="deduct_stock"]').textContent = fmtNum(row.deduct_from_depot_stock, 0);
+    tr.querySelector('[data-col="deduct_remaining"]').textContent = fmtNum(row.deduct_from_depot_remaining, 0);
+    if (field !== "required_qty") {
+      var req = tr.querySelector('[data-field="required_qty"]');
+      if (req && row._requiredTouched !== true) req.value = row.required_qty;
+    }
+  });
+
+  depotBody.addEventListener("change", function (event) {
+    if (!canEdit) return;
+    var input = event.target.closest("[data-field]");
+    if (!input) return;
+    var field = input.getAttribute("data-field");
+    if (["depot_ceiling", "avg_monthly_sales", "stock", "voucher"].indexOf(field) < 0) return;
+    var tr = input.closest("tr");
+    var idx = parseInt(tr.getAttribute("data-idx"), 10);
+    var row = matrix.depot_rows[idx];
+    if (!row || !row.id) return;
+    var body = new URLSearchParams();
+    body.set("length_id", String(row.id));
+    body.set("depot_ceiling", String(row.depot_ceiling || 0));
+    body.set("avg_monthly_sales", String(row.avg_monthly_sales || 0));
+    body.set("stock_on_hand", String(row.stock || 0));
+    body.set("voucher_qty", String(row.voucher || 0));
+    fetch(stockUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": csrfToken(),
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: body.toString()
+    }).catch(function () {});
+  });
+
+  sizeSel.addEventListener("change", function () {
+    var url = new URL(window.location.href);
+    url.searchParams.set("line", lineCode);
+    url.searchParams.set("size", sizeSel.value);
+    window.location.href = url.toString();
+  });
+
+  calcBtn.addEventListener("click", function () {
+    runCalc(qtySel.value || matrix.default_qty_source);
+  });
+
+  qtySel.addEventListener("change", function () {
+    if (!results.hidden) runCalc(qtySel.value);
+  });
+
+  fillQtyChoices(matrix.qty_source_choices, matrix.default_qty_source);
+  renderDepot();
+})();
+</script>
+{% endblock %}

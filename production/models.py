@@ -116,6 +116,7 @@ class PipeProduction(BaseProduction):
         L300_1S = "300cm_1s", "۳ متری یک‌سر سوکت"
         L50_2S = "50cm_2s", "نیم‌متری دوسر سوکت"
         L100_2S = "100cm_2s", "۱ متری دوسر سوکت"
+        L200_2S = "200cm_2s", "۲ متری دوسر سوکت"
         L300_2S = "300cm_2s", "۳ متری دوسر سوکت"
 
     line = models.ForeignKey(
@@ -235,9 +236,17 @@ class ProductionProgram(models.Model):
         verbose_name_plural = "برنامه‌های تولید"
 
     def __str__(self) -> str:
-        return f"{self.item.uid} — {self.item.product.name}"
+        return f"{self.resolved_uid} — {self.item.product.name}"
 
     # --- helpers -------------------------------------------------------
+    @property
+    def resolved_uid(self) -> str:
+        """UID for the currently selected production type (14-digit scheme)."""
+        line = self.line
+        if line is not None and getattr(line, "uid", ""):
+            return line.uid
+        return self.item.uid_for_type(self.production_type or 1)
+
     @property
     def line(self):
         """The WeeklyPlanLine for the selected production_type (1-based)."""
@@ -303,7 +312,7 @@ class ProductionDayEntry(models.Model):
         verbose_name_plural = "آمار تولید روزانه"
 
     def __str__(self) -> str:
-        return f"{self.program.item.uid} — {self.date}"
+        return f"{self.program.resolved_uid} — {self.date}"
 
     @property
     def deviation(self) -> int:
@@ -320,6 +329,65 @@ class ProductionDayEntry(models.Model):
     def save(self, *args, **kwargs):
         self.recompute()
         super().save(*args, **kwargs)
+
+
+class ProductionHistoryRecord(models.Model):
+    """Archived / Excel-imported production history row, sorted by program UID.
+
+    Live planning programs also appear in «سوابق تولید»; this model holds rows
+    transferred from Excel (or other imports) that are not yet linked to a
+    WeeklyPlanItem / ProductionProgram.
+    """
+
+    program_uid = models.CharField("شناسه تعویض", max_length=32, db_index=True)
+    plan_number = models.CharField("شماره برنامه", max_length=40, blank=True)
+    plan_date = models.DateField("تاریخ برنامه‌ریزی", null=True, blank=True)
+    mold_change_date = models.DateField("تاریخ تعویض قالب", null=True, blank=True)
+    unit_number = models.PositiveSmallIntegerField("شماره واحد", null=True, blank=True)
+    machine_number = models.CharField("شماره دستگاه", max_length=40, blank=True)
+    product_code = models.CharField("کد کالا", max_length=80, blank=True)
+    product_name = models.CharField("نام جنس", max_length=200, blank=True)
+    mold_name = models.CharField("نام قالب", max_length=200, blank=True)
+    mold_number = models.CharField("شماره قالب", max_length=80, blank=True)
+    unique_code = models.CharField("کد یکتا", max_length=80, blank=True)
+    material = models.CharField("مواد", max_length=120, blank=True)
+    color = models.CharField("رنگ", max_length=80, blank=True)
+    sequence = models.PositiveSmallIntegerField("ترتیب", null=True, blank=True)
+    plan_start_date = models.DateField("تاریخ شروع برنامه", null=True, blank=True)
+    actual_start_date = models.DateField("تاریخ شروع واقعی", null=True, blank=True)
+    actual_end_date = models.DateField("تاریخ پایان تولید", null=True, blank=True)
+    planned_qty = models.IntegerField("مقدار تولید برنامه", null=True, blank=True)
+    produced_qty = models.IntegerField("مقدار تولید واقعی", null=True, blank=True)
+    planned_cycle = models.IntegerField("سیکل تولید برنامه", null=True, blank=True)
+    last_cycle = models.IntegerField("آخرین سیکل تولید", null=True, blank=True)
+    planned_hours = models.DecimalField(
+        "ساعت تولید برنامه", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    active_cavities = models.PositiveSmallIntegerField("تعداد حفره فعال", null=True, blank=True)
+    last_cavities = models.PositiveSmallIntegerField("آخرین وضعیت حفره", null=True, blank=True)
+    scrap_qty = models.IntegerField("ضایعات تولید", null=True, blank=True)
+    status = models.CharField("وضعیت", max_length=80, blank=True)
+    notes = models.TextField("توضیحات", blank=True)
+    source_table_name = models.CharField("نام جدول مبدأ", max_length=200, blank=True)
+    transferred_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="انتقال‌دهنده",
+    )
+    extra = models.JSONField("اطلاعات تکمیلی", default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["program_uid", "id"]
+        verbose_name = "سابقه تولید"
+        verbose_name_plural = "سوابق تولید (آرشیو)"
+
+    def __str__(self) -> str:
+        return f"{self.program_uid} — {self.product_name or self.product_code or '—'}"
 
 
 class ProductionStoppage(models.Model):
