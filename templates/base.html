@@ -4,28 +4,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}سامانه برنامه‌ریزی تولید{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}">
-  <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <title>{% block title %}سامانه برنامه ریزی و کنترل تولید{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=9">
+  <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=9">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=57">
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-mark">◈</span>
-      <span class="brand-name">برنامه‌ریزی تولید</span>
+      <span class="brand-name">سامانه برنامه ریزی<br>و کنترل تولید</span>
     </div>
     {% if user.is_authenticated %}
+    <div class="sidebar-user">({{ user.username }})</div>
     <nav class="nav">
-      <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">داشبورد</a>
-      <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">برنامه‌ها و ثبت تولید</a>
-      <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
-      <a href="{% url 'reports' %}" class="{% block nav_reports %}{% endblock %}">گزارش‌گیری</a>
-      {% if profile.can_manage_users or user.is_superuser %}
-      <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
-      {% endif %}
-      <a href="/admin/">مدیریت داده‌ها</a>
+      <div class="nav-section nav-section-solo">
+        <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">داشبورد</a>
+      </div>
+
+      <div class="nav-section {% block nav_production %}{% endblock %}">
+        <div class="nav-section-title">برنامه‌های تولید</div>
+        <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
+        <a href="{% url 'systemic_intelligence' %}" class="{% block nav_systemic %}{% endblock %}">هوش برنامه‌ریزی سیستمی</a>
+        <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">ثبت و کنترل تولید</a>
+        <a href="{% url 'production_history' %}" class="{% block nav_history %}{% endblock %}">سوابق تولید</a>
+      </div>
+
+      <div class="nav-section {% block nav_reports %}{% endblock %}">
+        <div class="nav-section-title">گزارشات</div>
+        <a href="{% url 'report_list' %}" class="{% block nav_report_list %}{% endblock %}">گزارش‌ها</a>
+        <a href="{% url 'print_form_list' %}" class="{% block nav_form_list %}{% endblock %}">فرم‌ها</a>
+      </div>
+
+      <div class="nav-section {% block nav_data %}{% endblock %}">
+        <div class="nav-section-title">مدیریت داده‌ها</div>
+        <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">بارگذاری</a>
+        <a href="{% url 'product_data' %}" class="{% block nav_product_data %}{% endblock %}">دیتای محصولات</a>
+        <a href="{% url 'system_data' %}" class="{% block nav_system_data %}{% endblock %}">داده‌های سیستم</a>
+      </div>
+
+      <div class="nav-section {% block nav_account %}{% endblock %}">
+        <div class="nav-section-title">کاربری سامانه</div>
+        {% if profile.can_manage_users or user.is_superuser %}
+        <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
+        {% endif %}
+        <form method="post" action="{% url 'logout' %}" class="nav-logout" id="logout-form">{% csrf_token %}
+          <button class="nav-logout-btn" type="submit">خروج از سامانه</button>
+        </form>
+      </div>
     </nav>
     {% endif %}
   </aside>
@@ -34,41 +61,52 @@
     <header class="topbar">
       <div class="topbar-title">{% block heading %}{% endblock %}</div>
       <div class="topbar-user">
-        {% block topbar_actions %}
-        {% if user.is_authenticated %}
-          <span class="user-name">{{ user.get_full_name|default:user.username }}</span>
-          {% if profile %}<span class="badge role">{{ profile.get_role_display }}</span>{% endif %}
-          <form method="post" action="{% url 'logout' %}" class="inline-form">{% csrf_token %}
-            <button class="btn btn-sm btn-ghost" type="submit">خروج</button>
-          </form>
-        {% else %}
-          <a class="btn btn-sm" href="{% url 'login' %}">ورود</a>
-        {% endif %}
-        {% endblock %}
+        {% block topbar_actions %}{% endblock %}
       </div>
     </header>
 
     <main class="content">
-      {% if messages %}
-      <div class="messages">
-        {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-      {% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>
 </div>
+{% if messages %}
+<div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true">
+  {% for message in messages %}
+  <div class="toast toast-{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
 <script>
   window.API = {
     machines: "{% url 'machines_json' %}",
     products: "{% url 'products_json' %}"
   };
 </script>
-<script src="{% static 'vendor/tom-select/tom-select.complete.min.js' %}"></script>
-<script src="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.js' %}"></script>
-<script src="{% static 'js/app.js' %}"></script>
+<script src="{% static 'vendor/tom-select/tom-select.complete.min.js' %}?v=10"></script>
+<script src="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.js' %}?v=10"></script>
+<script src="{% static 'js/app.js' %}?v=16"></script>
+<script src="{% static 'js/table_nav.js' %}?v=3"></script>
+<script>
+(function () {
+  function openDesigner(url) {
+    var w = screen.availWidth || 1200;
+    var h = screen.availHeight || 800;
+    var feat = "popup=yes,width=" + w + ",height=" + h + ",left=0,top=0,resizable=yes,scrollbars=yes";
+    var win = window.open(url, "erp-form-designer", feat);
+    if (!win) window.location.href = url;
+    else try { win.focus(); } catch (e) {}
+    return false;
+  }
+  window.ERPOpenFormDesigner = openDesigner;
+  document.querySelectorAll("[data-designer-open]").forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      openDesigner(a.getAttribute("data-designer-open") || a.href);
+    });
+  });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

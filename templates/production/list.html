@@ -15,7 +15,7 @@
     <tbody>
       {% for row in programs %}
       <tr>
-        <td>{{ row.program.item.uid }}</td>
+        <td>{{ row.program.resolved_uid }}</td>
         <td>{{ row.program.machine_label }}</td>
         <td>{{ row.program.item.product.code }}</td>
         <td>{{ row.program.item.product.name }}</td>
