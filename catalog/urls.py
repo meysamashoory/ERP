@@ -1,9 +1,23 @@
 from django.urls import path
 
 from . import views
+from .pipe_calc import views as pipe_calc_views
 
 urlpatterns = [
+    path("data/pipe-calc/", pipe_calc_views.pipe_calc_hub, name="pipe_calc"),
+    path("data/pipe-calc/run/", pipe_calc_views.pipe_calc_run, name="pipe_calc_run"),
+    path(
+        "data/pipe-calc/stock/",
+        pipe_calc_views.pipe_calc_save_stock,
+        name="pipe_calc_save_stock",
+    ),
+    path(
+        "data/pipe-calc/reseed/",
+        pipe_calc_views.pipe_calc_reseed,
+        name="pipe_calc_reseed",
+    ),
     path("data/system/", views.system_data_hub, name="system_data"),
+
     path("data/system/naming/", views.system_naming_keys, name="system_naming_keys"),
     path("data/system/naming/save/", views.system_naming_key_save, name="system_naming_key_save"),
     path("data/system/naming/delete/", views.system_naming_key_delete, name="system_naming_key_delete"),

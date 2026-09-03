@@ -116,6 +116,7 @@ class PipeProduction(BaseProduction):
         L300_1S = "300cm_1s", "۳ متری یک‌سر سوکت"
         L50_2S = "50cm_2s", "نیم‌متری دوسر سوکت"
         L100_2S = "100cm_2s", "۱ متری دوسر سوکت"
+        L200_2S = "200cm_2s", "۲ متری دوسر سوکت"
         L300_2S = "300cm_2s", "۳ متری دوسر سوکت"
 
     line = models.ForeignKey(

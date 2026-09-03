@@ -797,3 +797,12 @@ class FlexibleRow(models.Model):
     def __str__(self) -> str:
         return f"row#{self.pk} {self.identity_key or '—'}"
 
+
+# Pipe production-time calculation master data (see catalog.pipe_calc).
+from .pipe_calc.models import (  # noqa: E402
+    PipeLayerSpec,
+    PipeLengthCut,
+    PipeProductLine,
+    PipeSizeProfile,
+)
+

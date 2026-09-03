@@ -429,3 +429,68 @@ class SystemNamingKeyAdmin(admin.ModelAdmin):
     search_fields = ("key", "label", "address", "table_key", "column_key", "default_label")
     readonly_fields = ("created_at", "updated_at", "default_label")
     ordering = ("category", "table_key", "order", "key")
+
+
+# ---- Pipe production calculation ----
+from .pipe_calc.models import (  # noqa: E402
+    PipeLayerSpec,
+    PipeLengthCut,
+    PipeProductLine,
+    PipeSizeProfile,
+)
+
+
+class PipeLengthCutInline(admin.TabularInline):
+    model = PipeLengthCut
+    extra = 0
+
+
+class PipeLayerSpecInline(admin.TabularInline):
+    model = PipeLayerSpec
+    extra = 0
+
+
+class PipeSizeProfileInline(admin.TabularInline):
+    model = PipeSizeProfile
+    extra = 0
+    fields = (
+        "size_mm",
+        "line_speed_m_per_min",
+        "billing_pieces_per_hour",
+        "pack_qty",
+        "depot_ceiling",
+        "stock_on_hand",
+        "is_active",
+    )
+
+
+@admin.register(PipeProductLine)
+class PipeProductLineAdmin(admin.ModelAdmin):
+    list_display = (
+        "code",
+        "name",
+        "layer_mode",
+        "needs_billing",
+        "is_scaffold",
+        "is_active",
+        "order",
+    )
+    list_filter = ("layer_mode", "needs_billing", "is_scaffold", "is_active")
+    search_fields = ("code", "name")
+    inlines = [PipeSizeProfileInline]
+
+
+@admin.register(PipeSizeProfile)
+class PipeSizeProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "line",
+        "size_mm",
+        "line_speed_m_per_min",
+        "billing_pieces_per_hour",
+        "pack_qty",
+        "depot_ceiling",
+        "stock_on_hand",
+        "is_active",
+    )
+    list_filter = ("line", "is_active")
+    inlines = [PipeLengthCutInline, PipeLayerSpecInline]

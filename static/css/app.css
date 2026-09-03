@@ -2448,5 +2448,104 @@ input[type=number].spin {
   .intel-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* Pipe production calculation */
+.pipe-calc-lead { margin: 0 0 12px; }
+.pipe-calc-tabs .pipe-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #57534e;
+  background: #f5f5f4;
+  border-radius: 4px;
+}
+.pipe-calc-meta { margin-bottom: 14px; }
+.pipe-calc-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.pipe-calc-meta-grid .muted { display: block; font-size: 12px; margin-bottom: 2px; }
+.pipe-calc-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+.pipe-calc-form {
+  display: grid;
+  gap: 10px;
+}
+.pipe-calc-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: #44403c;
+}
+.pipe-calc-form select,
+.pipe-calc-form input[type="number"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+}
+.pipe-calc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pipe-cut-hint { margin: 10px 0 0; font-size: 12px; }
+.pipe-subhead {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pipe-result-kpis { border-bottom: none; padding-bottom: 4px; }
+.pipe-len-cell { max-width: 320px; }
+.pipe-len-chip {
+  display: inline-block;
+  margin: 2px 0 2px 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.is-alert-cell { color: #9a3412; font-weight: 600; }
+.is-alert-row td { background: #fff7ed; }
+.pipe-agg-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.pipe-settings-pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  font-size: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  overflow: auto;
+  direction: ltr;
+  text-align: left;
+}
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 650;
+}
+@media (max-width: 900px) {
+  .pipe-calc-layout { grid-template-columns: 1fr; }
+  .pipe-calc-meta-grid { grid-template-columns: 1fr; }
+}
+
 
 

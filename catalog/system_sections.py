@@ -57,6 +57,7 @@ def build_system_groups() -> list[SystemGroup]:
         FlexibleDataset,
         Machine,
         MoldOption,
+        PipeProductLine,
         PlanningDisplaySettings,
         PlanningInsightField,
         Product,
@@ -360,6 +361,18 @@ def build_system_groups() -> list[SystemGroup]:
                     admin_changelist="admin:catalog_productbomline_changelist",
                     admin_add="admin:catalog_productbomline_add",
                     count_fn=_count(ProductBomLine),
+                ),
+                SystemItem(
+                    key="pipe_calc",
+                    title="محاسبات زمان تولید لوله",
+                    admin_changelist="admin:catalog_pipeproductline_changelist",
+                    admin_add="admin:catalog_pipeproductline_add",
+                    url_name="pipe_calc",
+                    description=(
+                        "خطوط پروتکت/جنرال/سایلنت/PE/تیپ/خرطومی/PC/راند — "
+                        "زمان خط و بلینگ، سقف دپو، کسری BOM؛ جزئیات نرخ‌ها قابل ویرایش."
+                    ),
+                    count_fn=_count(PipeProductLine),
                 ),
                 SystemItem(
                     key="insight_fields",
