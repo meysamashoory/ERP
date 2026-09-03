@@ -105,6 +105,40 @@ class ReportFlowTests(TestCase):
         self.assertEqual(headers, ["شماره برنامه"])
         self.assertIsInstance(rows, list)
 
+    def test_builder_filters_sources_by_access_mode_in_script(self):
+        """Readonly hides data_entry; editable keeps only data_entry (client filter)."""
+        self.client.login(username="expert", password="erp12345")
+        readonly = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="فقط خواندنی",
+            number=801,
+            access_mode="readonly",
+            data_source="fitting",
+            columns=[{"key": "date", "source": "fitting", "level": 1, "label": "تاریخ"}],
+        )
+        editable = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="قابل اصلاح",
+            number=802,
+            access_mode="editable",
+            data_source="data_entry",
+            columns=[{"key": "data_titles", "source": "data_entry", "level": 1, "label": "عناوین"}],
+        )
+        ro = self.client.get(reverse("report_edit", args=[readonly.pk]))
+        ed = self.client.get(reverse("report_edit", args=[editable.pk]))
+        self.assertEqual(ro.status_code, 200)
+        self.assertEqual(ed.status_code, 200)
+        self.assertContains(ro, "sourceAllowedForAccess")
+        self.assertContains(ro, 'mode === "editable"')
+        self.assertContains(ro, 'sourceId === "data_entry"')
+        self.assertContains(ro, 'sourceId !== "data_entry"')
+        self.assertContains(ed, 'id="id_access_mode"')
+        # access mode values present in both forms
+        self.assertContains(ro, 'value="readonly"')
+        self.assertContains(ed, 'value="editable"')
+
     def test_flex_product_data_source_from_transferred_rows(self):
         from catalog.models import FlexibleDataset, FlexibleRow
         from reports.columns import flex_source_id, get_column_groups, run_report

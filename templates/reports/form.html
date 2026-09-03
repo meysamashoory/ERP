@@ -206,6 +206,11 @@
   });
   document.getElementById("edit-meta-btn").addEventListener("click", showMetaEditor);
   cancelBtn.addEventListener("click", showBuilder);
+  if (accessInput) {
+    accessInput.addEventListener("change", function () {
+      fillSourceMenu();
+    });
+  }
 
   var trees = document.getElementById("source-trees");
   var list = document.getElementById("selected-cols");
@@ -231,11 +236,26 @@
     return hit ? hit[1] : key;
   }
 
+  function reportAccessMode() {
+    return (accessInput && accessInput.value) || "readonly";
+  }
+
+  function sourceAllowedForAccess(sourceId) {
+    var mode = reportAccessMode();
+    // Editable reports: only data-entry. Read-only: everything except data-entry.
+    if (mode === "editable") return sourceId === "data_entry";
+    return sourceId !== "data_entry";
+  }
+
   function fillSourceMenu() {
     menuList.innerHTML = "";
-    var available = groups.filter(function (g) { return addedSources.indexOf(g.id) < 0; });
+    var available = groups.filter(function (g) {
+      return addedSources.indexOf(g.id) < 0 && sourceAllowedForAccess(g.id);
+    });
     if (!available.length) {
-      menuList.innerHTML = '<p class="muted">همه منابع اضافه شده‌اند.</p>';
+      menuList.innerHTML = reportAccessMode() === "editable"
+        ? '<p class="muted">منبع «ثبت داده» اضافه شده است.</p>'
+        : '<p class="muted">همه منابع اضافه شده‌اند.</p>';
       return;
     }
     available.forEach(function (g) {
@@ -253,6 +273,7 @@
 
   function addSource(sid) {
     if (!sid || addedSources.indexOf(sid) >= 0) return;
+    if (!sourceAllowedForAccess(sid)) return;
     addedSources.push(sid);
     renderAll();
     if (addedSources.filter(function (s) { return s !== "file"; }).length >= 2) {
