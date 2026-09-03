@@ -702,6 +702,11 @@ class SystemNamingKey(models.Model):
         default=False,
         help_text="ستون/کلید دستی که در بذر اولیه نبوده است",
     )
+    is_key = models.BooleanField(
+        "ستون کلیدی",
+        default=False,
+        help_text="برای بروزرسانی اکسل: ستون‌های هویت ردیف (مثلاً شماره حواله + کد کالا)",
+    )
     notes = models.TextField("یادداشت", blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -722,4 +727,73 @@ class SystemNamingKey(models.Model):
     def is_renamed(self) -> bool:
         default = (self.default_label or "").strip()
         return bool(default) and self.label.strip() != default
+
+
+class FlexibleDataset(models.Model):
+    """Dynamic destination table (product-data tabs, vouchers, …) with JSON rows."""
+
+    destination_id = models.CharField("مقصد", max_length=64, db_index=True)
+    level_id = models.CharField("سطح / تب", max_length=64, db_index=True)
+    title = models.CharField("عنوان", max_length=200, blank=True)
+    columns = models.JSONField(
+        "ستون‌ها",
+        default=list,
+        blank=True,
+        help_text="[{key,label,type,is_key,order}]",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["destination_id", "level_id"]
+        verbose_name = "جدول پویا مقصد"
+        verbose_name_plural = "جداول پویا مقصد"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["destination_id", "level_id"],
+                name="uniq_flexible_dataset_dest_level",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.destination_id}/{self.level_id}"
+
+    @property
+    def has_schema(self) -> bool:
+        return bool(self.columns)
+
+    @property
+    def row_count(self) -> int:
+        return self.rows.count()
+
+
+class FlexibleRow(models.Model):
+    dataset = models.ForeignKey(
+        FlexibleDataset,
+        on_delete=models.CASCADE,
+        related_name="rows",
+        verbose_name="جدول",
+    )
+    values = models.JSONField("مقادیر", default=dict, blank=True)
+    identity_key = models.CharField(
+        "کلید هویت",
+        max_length=500,
+        blank=True,
+        db_index=True,
+        help_text="ترکیب نرمال‌شده ستون‌های کلیدی برای بروزرسانی",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "ردیف جدول پویا"
+        verbose_name_plural = "ردیف‌های جدول پویا"
+        indexes = [
+            models.Index(fields=["dataset", "identity_key"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"row#{self.pk} {self.identity_key or '—'}"
 

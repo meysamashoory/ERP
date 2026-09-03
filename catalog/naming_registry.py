@@ -32,7 +32,7 @@ def lookup_naming_rows(keys: Iterable[str]) -> dict[str, SystemNamingKey]:
     return {
         r.key: r
         for r in SystemNamingKey.objects.filter(key__in=key_list).only(
-            "key", "label", "is_active", "default_label"
+            "key", "label", "is_active", "default_label", "is_key"
         )
     }
 
@@ -116,6 +116,7 @@ def _spec(
     table_key: str = "",
     column_key: str = "",
     order: int = 0,
+    is_key: bool = False,
 ) -> dict[str, Any]:
     return {
         "key": key[:220],
@@ -127,6 +128,7 @@ def _spec(
         "table_key": table_key[:120],
         "column_key": column_key[:120],
         "order": order,
+        "is_key": bool(is_key),
     }
 
 
@@ -325,6 +327,7 @@ def _harvest_transfer() -> list[dict[str, Any]]:
                         table_key=table_key,
                         column_key=fkey,
                         order=fi,
+                        is_key=bool(field.get("is_key")),
                     )
                 )
 
@@ -589,6 +592,7 @@ def sync_naming_registry(*, refresh_defaults: bool = False) -> dict[str, int]:
                 order=spec["order"],
                 is_custom=False,
                 is_active=True,
+                is_key=bool(spec.get("is_key")),
             )
             created += 1
             continue

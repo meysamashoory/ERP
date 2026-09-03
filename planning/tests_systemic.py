@@ -52,31 +52,26 @@ class InventoryOrdersSystemicTests(TestCase):
         self.assertEqual(self.product.depot_ceiling, 200)
 
     def test_excel_transfer_orders_destination(self):
+        """Orders destination removed — vouchers bootstrap transfer still works."""
         upload = ExcelUpload.objects.create(title="orders", uploaded_by=self.admin)
         table = ExcelTable.objects.create(
             upload=upload,
-            name="سفارشات",
-            headers=["سفارش", "کد", "نام", "مقدار", "اولویت"],
-            rows=[[ "SO-X", self.product.code, self.product.name, "55", "5"]],
+            name="حواله",
+            headers=["شماره حواله", "کد کالا", "مقدار"],
+            rows=[["HV-1", self.product.code, "55"]],
         )
         result = transfer_excel_table(
             table=table,
-            destination_id="inventory_orders",
-            level_id="orders",
-            mapping={
-                "order_ref": 0,
-                "product_code": 1,
-                "product_name": 2,
-                "quantity": 3,
-                "priority": 4,
-            },
+            destination_id="vouchers",
+            level_id="voucher_list",
+            mapping={},
             user=self.admin,
+            mode="transfer",
+            bootstrap_columns=[0, 1, 2],
+            confirm_replace=True,
         )
         self.assertEqual(result.transferred, 1)
-        self.assertTrue(
-            CustomerOrder.objects.filter(order_ref="SO-X", product_code=self.product.code).exists()
-        )
-        self.assertIn("/planning/inventory-orders/", result.redirect_url)
+        self.assertIn("/data/vouchers/", result.redirect_url)
 
     def test_systemic_plan_respects_stock_and_depot(self):
         CustomerOrder.objects.all().delete()
@@ -120,11 +115,13 @@ class InventoryOrdersSystemicTests(TestCase):
 
     def test_hub_and_create_choose_pages(self):
         self.client.login(username="admin", password="erp12345")
+        # Inventory hub removed from nav; page may still resolve for legacy bookmarks
         hub = self.client.get(reverse("inventory_orders"))
         self.assertEqual(hub.status_code, 200)
-        self.assertContains(hub, "بررسی موجودی و سفارشات")
-        self.assertContains(hub, "plan-create-dialog")
-        self.assertContains(hub, "data-plan-mode=\"systemic\"")
+        intel = self.client.get(reverse("systemic_intelligence"))
+        self.assertEqual(intel.status_code, 200)
+        self.assertContains(intel, "plan-create-dialog")
+        self.assertNotContains(intel, "بررسی موجودی و سفارشات")
 
         # Legacy choose/form URLs now open the list dialog
         choose = self.client.get(reverse("plan_create"))

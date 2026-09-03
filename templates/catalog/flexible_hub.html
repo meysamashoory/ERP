@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{% if hub_kind == "vouchers" %}حواله‌ها{% else %}دیتای محصولات{% endif %}{% endblock %}
+{% block heading %}{% if hub_kind == "vouchers" %}حواله‌ها{% else %}دیتای محصولات{% endif %}{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_product_data %}{% if hub_kind != "vouchers" %}active{% endif %}{% endblock %}
+{% block nav_vouchers %}{% if hub_kind == "vouchers" %}active{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">انتقال از اکسل</a>
+  {% if can_edit_permission and has_schema %}
+  <button type="button" class="btn btn-sm" id="flexible-edit-toggle">ویرایش</button>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div
+  id="flexible-hub-root"
+  data-tab="{{ active_tab }}"
+  data-hub="{{ hub_kind }}"
+  data-can-edit-permission="{% if can_edit_permission %}1{% else %}0{% endif %}"
+  data-can-edit="0"
+  data-save-url="{{ save_url }}"
+  data-delete-url="{{ delete_url }}"
+>
+  {% csrf_token %}
+  {{ columns|json_script:"flexible-columns" }}
+  {{ rows|json_script:"flexible-rows" }}
+  <div class="tabs product-data-tabs">
+    {% for t in tabs %}
+    <a
+      class="tab {% if active_tab == t.id %}active{% endif %}"
+      href="?tab={{ t.id }}"
+    >{{ t.label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="panel panel-compact panel-list">
+    {% if not has_schema %}
+    <p class="panel-hint">
+      این بخش هنوز خام است و جدولی ندارد. از
+      <a href="{% url 'excel_list' %}">بارگذاری اکسل</a>
+      فایل را وارد کنید و با «انتقال داده» جدول این تب را بسازید.
+      عناوین تب‌ها و سرستون‌ها (و ستون‌های کلیدی) از «داده‌های سیستم» قابل مدیریت‌اند.
+    </p>
+    {% else %}
+    <p class="panel-hint" id="flexible-view-hint">
+      حالت مشاهده — برای تغییر داده‌ها از «ویرایش» در بالای صفحه استفاده کنید.
+    </p>
+    <div class="table-scroll">
+      <table class="table table-compact product-data-table view-mode" id="flexible-data-table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="product-data-actions" hidden>
+      <button type="button" class="btn btn-primary-soft" id="flexible-save-btn">ذخیره تغییرات</button>
+      <button type="button" class="btn btn-ghost" id="flexible-add-row">ردیف جدید</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/flexible_hub.js' %}?v=1"></script>
+{% endblock %}

@@ -30,6 +30,12 @@
   const submitBtn = document.getElementById("transfer-submit");
   const dialogTitle = document.getElementById("transfer-dialog-title");
   const dialogHint = document.getElementById("transfer-dialog-hint");
+  const bootstrapBox = document.getElementById("transfer-bootstrap-box");
+  const bootstrapList = document.getElementById("transfer-bootstrap-list");
+  const extraBox = document.getElementById("transfer-extra-box");
+  const extraList = document.getElementById("transfer-extra-list");
+  const modeBanner = document.getElementById("transfer-mode-banner");
+  const mapScroll = document.querySelector(".transfer-map-scroll");
   let activeTableId = null;
   let activeMode = "transfer";
 
@@ -184,32 +190,150 @@
     });
   }
 
+  function renderChecklist(container, headers, checkedAll) {
+    if (!container) return;
+    container.innerHTML = "";
+    (headers || []).forEach(function (h, i) {
+      const label = document.createElement("label");
+      label.className = "transfer-check-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = String(i);
+      cb.checked = !!checkedAll;
+      cb.className = "transfer-header-check";
+      label.appendChild(cb);
+      const span = document.createElement("span");
+      span.textContent = (h || "ستون " + (i + 1)) + " (" + colLetter(i) + ")";
+      label.appendChild(span);
+      container.appendChild(label);
+    });
+  }
+
+  function mappedExcelIndexes() {
+    const used = {};
+    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+      const v = parseInt(sel.value, 10);
+      if (!isNaN(v) && v >= 0) used[v] = true;
+    });
+    return used;
+  }
+
   function renderMap() {
     const level = currentLevel();
     const table = byId[String(activeTableId)];
     mapBody.innerHTML = "";
+    if (bootstrapBox) bootstrapBox.hidden = true;
+    if (extraBox) extraBox.hidden = true;
+    if (modeBanner) {
+      modeBanner.hidden = true;
+      modeBanner.textContent = "";
+    }
+    if (submitBtn) submitBtn.disabled = false;
     if (!level || !table) return;
     const headers = Array.isArray(table.headers) ? table.headers : [];
     const fields = level.fields || [];
-    fields.forEach(function (f) {
+    const isDynamic = level.schema_mode === "dynamic";
+    const isRaw = !!level.is_raw;
+    const hasRows = !!level.has_rows;
+    const isUpdate = activeMode === "update";
+
+    if (isUpdate && !hasRows) {
+      if (modeBanner) {
+        modeBanner.hidden = false;
+        modeBanner.textContent =
+          uiLabels.update_blocked ||
+          "بروزرسانی ممکن نیست؛ مقصد هنوز داده‌ای ندارد.";
+      }
+      if (submitBtn) submitBtn.disabled = true;
+      if (mapScroll) mapScroll.hidden = true;
+      return;
+    }
+    if (mapScroll) mapScroll.hidden = false;
+
+    // Raw dynamic + transfer → bootstrap checklist (empty dest columns)
+    if (isDynamic && isRaw && !isUpdate) {
+      if (mapScroll) mapScroll.hidden = true;
+      if (bootstrapBox) {
+        bootstrapBox.hidden = false;
+        renderChecklist(bootstrapList, headers, true);
+      }
+      return;
+    }
+
+    // Normal mapping rows
+    const showFields = isUpdate
+      ? fields
+      : fields;
+    showFields.forEach(function (f) {
+      const must =
+        isUpdate ? !!f.is_key : isDynamic ? true : !!f.required;
+      if (isUpdate && !f.is_key && fields.some(function (x) { return x.is_key; })) {
+        // still show non-keys as optional in update
+      }
       const tr = document.createElement("tr");
       const guessed = guessIndex(headers, f);
       tr.innerHTML =
         "<td>" +
         escapeHtml(f.label) +
-        (f.required ? ' <span style="color:#b91c1c">*</span>' : "") +
+        (f.is_key ? ' <span class="muted">(کلیدی)</span>' : "") +
+        (must ? ' <span style="color:#b91c1c">*</span>' : "") +
         '</td><td class="muted">' +
-        escapeHtml(f.type) +
+        escapeHtml(f.type || "string") +
         '</td><td><select class="input transfer-col-select" data-field="' +
         escapeHtml(f.key) +
+        '" data-required="' +
+        (must ? "1" : "0") +
         '"></select></td>';
       mapBody.appendChild(tr);
       const sel = tr.querySelector("select");
       sel.innerHTML = buildOptions(headers, guessed >= 0 ? guessed : -1, f.key);
       if (guessed >= 0) sel.value = String(guessed);
-      sel.addEventListener("change", refreshExclusiveOptions);
+      sel.addEventListener("change", function () {
+        refreshExclusiveOptions();
+        refreshExtraChecks();
+      });
     });
     refreshExclusiveOptions();
+
+    // Extra excel columns with checkboxes (transfer + existing schema)
+    if (!isUpdate && isDynamic && !isRaw) {
+      refreshExtraChecks();
+    }
+  }
+
+  function refreshExtraChecks() {
+    const level = currentLevel();
+    const table = byId[String(activeTableId)];
+    if (!extraBox || !extraList || !level || !table) return;
+    if (activeMode === "update" || level.schema_mode !== "dynamic" || level.is_raw) {
+      extraBox.hidden = true;
+      return;
+    }
+    const headers = Array.isArray(table.headers) ? table.headers : [];
+    const used = mappedExcelIndexes();
+    const extras = [];
+    headers.forEach(function (h, i) {
+      if (!used[i]) extras.push({ i: i, h: h });
+    });
+    if (!extras.length) {
+      extraBox.hidden = true;
+      return;
+    }
+    extraBox.hidden = false;
+    extraList.innerHTML = "";
+    extras.forEach(function (ex) {
+      const label = document.createElement("label");
+      label.className = "transfer-check-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = String(ex.i);
+      cb.className = "transfer-extra-check";
+      label.appendChild(cb);
+      const span = document.createElement("span");
+      span.textContent = (ex.h || "ستون " + (ex.i + 1)) + " (" + colLetter(ex.i) + ")";
+      label.appendChild(span);
+      extraList.appendChild(label);
+    });
   }
 
   function setTableTransferStatus(tableId, text, isDone, errorDetail) {
@@ -338,18 +462,83 @@
     const level = currentLevel();
     const table = byId[String(activeTableId)];
     if (!dest || !level || !table) return;
-    const mapping = {};
-    mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
-      mapping[sel.dataset.field] = parseInt(sel.value, 10);
-    });
-    const anyMapped = Object.keys(mapping).some(function (k) {
-      return mapping[k] >= 0;
-    });
-    if (!anyMapped) {
-      alert("حداقل یک ستون اکسل را به یک فیلد مقصد نگاشت کنید.");
+    const isUpdate = activeMode === "update";
+    const isDynamic = level.schema_mode === "dynamic";
+    const isRaw = !!level.is_raw;
+    const hasRows = !!level.has_rows;
+
+    if (isUpdate && !hasRows) {
+      alert(uiLabels.update_blocked || "بروزرسانی ممکن نیست؛ مقصد هنوز داده‌ای ندارد.");
       return;
     }
-    const isUpdate = activeMode === "update";
+
+    let mapping = {};
+    let bootstrapColumns = null;
+    let addColumns = [];
+    let confirmReplace = false;
+
+    if (isDynamic && isRaw && !isUpdate) {
+      bootstrapColumns = [];
+      (bootstrapList
+        ? bootstrapList.querySelectorAll(".transfer-header-check:checked")
+        : []
+      ).forEach(function (cb) {
+        bootstrapColumns.push(parseInt(cb.value, 10));
+      });
+      if (!bootstrapColumns.length) {
+        alert("حداقل یک ستون از فایل را برای ساخت جدول انتخاب کنید.");
+        return;
+      }
+    } else {
+      mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+        mapping[sel.dataset.field] = parseInt(sel.value, 10);
+      });
+      if (isDynamic && !isUpdate) {
+        const missing = [];
+        mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+          if (sel.dataset.required === "1" && !(parseInt(sel.value, 10) >= 0)) {
+            missing.push(sel.dataset.field);
+          }
+        });
+        if (missing.length) {
+          alert("در حالت انتقال باید همه ستون‌های مقصد نگاشت شوند.");
+          return;
+        }
+      } else if (isUpdate) {
+        const missingKeys = [];
+        mapBody.querySelectorAll(".transfer-col-select").forEach(function (sel) {
+          if (sel.dataset.required === "1" && !(parseInt(sel.value, 10) >= 0)) {
+            missingKeys.push(sel.dataset.field);
+          }
+        });
+        if (missingKeys.length) {
+          alert("ستون‌های کلیدی باید نگاشت شوند.");
+          return;
+        }
+      } else {
+        const anyMapped = Object.keys(mapping).some(function (k) {
+          return mapping[k] >= 0;
+        });
+        if (!anyMapped) {
+          alert("حداقل یک ستون اکسل را به یک فیلد مقصد نگاشت کنید.");
+          return;
+        }
+      }
+      if (!isUpdate && isDynamic && extraList) {
+        extraList.querySelectorAll(".transfer-extra-check:checked").forEach(function (cb) {
+          addColumns.push(parseInt(cb.value, 10));
+        });
+      }
+    }
+
+    if (!isUpdate && hasRows) {
+      const msg =
+        uiLabels.confirm_replace ||
+        "با انتقال، تمام داده‌های قبلی این مقصد پاک و با داده جدید جایگزین می‌شود. ادامه می‌دهید؟";
+      if (!confirm(msg)) return;
+      confirmReplace = true;
+    }
+
     const baseBusy = isUpdate ? "در حال بروزرسانی" : "در حال انتقال دیتا";
     submitBtn.disabled = true;
     if (typeof dialog.close === "function") dialog.close();
@@ -381,6 +570,9 @@
           level: level.id,
           mapping: mapping,
           mode: activeMode,
+          confirm_replace: confirmReplace,
+          bootstrap_columns: bootstrapColumns,
+          add_columns: addColumns,
           offset: offset,
         };
         if (chunkSize != null) body.limit = chunkSize;

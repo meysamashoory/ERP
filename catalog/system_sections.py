@@ -54,6 +54,7 @@ def build_system_groups() -> list[SystemGroup]:
         DeviationReason,
         ExcelTable,
         ExcelUpload,
+        FlexibleDataset,
         Machine,
         MoldOption,
         PlanningDisplaySettings,
@@ -290,8 +291,24 @@ def build_system_groups() -> list[SystemGroup]:
                     title="دیتای محصولات (هاب)",
                     admin_changelist="",
                     url_name="product_data",
-                    description="ویرایش جدولی محصولات، BOM و مواد مصرفی",
-                    count_fn=_count(Product),
+                    description=(
+                        "تب‌های خام محصولات/BOM/مواد مصرفی/مشخصات فنی؛ "
+                        "جدول پس از انتقال اکسل ساخته می‌شود. تب‌ها و سرستون‌ها و ستون‌های کلیدی از نام‌گذاری سیستم."
+                    ),
+                    count_fn=lambda: FlexibleDataset.objects.filter(
+                        destination_id="product_data"
+                    ).count(),
+                    can_add=False,
+                ),
+                SystemItem(
+                    key="vouchers_hub",
+                    title="حواله‌ها",
+                    admin_changelist="",
+                    url_name="vouchers_hub",
+                    description="جدول حواله‌های انبار — خام تا انتقال اکسل؛ ستون کلیدی مثلاً شماره حواله + کد کالا",
+                    count_fn=lambda: FlexibleDataset.objects.filter(
+                        destination_id="vouchers"
+                    ).count(),
                     can_add=False,
                 ),
                 SystemItem(

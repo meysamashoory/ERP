@@ -123,16 +123,12 @@ class MenuAndHistoryTests(TestCase):
 
         products = self.client.get(reverse("product_data"))
         self.assertEqual(products.status_code, 200)
-        self.assertContains(products, "اطلاعات محصول")
-        self.assertContains(products, "ساختار BOM")
+        self.assertContains(products, "محصولات")
+        self.assertContains(products, "BOM")
         self.assertContains(products, "مواد مصرفی")
-        self.assertContains(products, "بسته‌بندی")
         self.assertContains(products, "مشخصات فنی")
-        self.assertContains(products, "product-edit-toggle")
-        self.assertContains(products, 'data-can-edit="0"')
-        self.assertContains(products, "view-mode")
-        self.assertContains(products, "cell-view")
-        self.assertContains(products, "حالت مشاهده")
+        self.assertContains(products, "هنوز خام است")
+        self.assertContains(products, reverse("excel_list"))
 
         plan = self.client.get(reverse("plan_list"))
         self.assertEqual(plan.status_code, 200)
@@ -652,7 +648,7 @@ class ProductDataTests(TestCase):
         cls.admin = User.objects.get(username="admin")
 
     def test_product_info_transfer_and_bom(self):
-        from catalog.models import Product, ProductBomLine, ProductConsumable
+        from catalog.models import FlexibleRow
         from catalog.transfer import transfer_excel_table
 
         upload = ExcelUpload.objects.create(title="محصولات", uploaded_by=self.expert)
@@ -665,21 +661,18 @@ class ProductDataTests(TestCase):
         result = transfer_excel_table(
             table=info_table,
             destination_id="product_data",
-            level_id="product_info",
-            mapping={
-                "code": 0,
-                "name": 1,
-                "group_name": 2,
-                "subgroup_name": 3,
-                "unit_weight_grams": 4,
-            },
+            level_id="products",
+            mapping={},
             user=self.expert,
+            mode="transfer",
+            bootstrap_columns=[0, 1, 2, 3, 4],
+            confirm_replace=True,
         )
         self.assertEqual(result.transferred, 1)
         self.assertEqual(result.failed, 0)
-        product = Product.objects.get(code="PD-100")
-        self.assertEqual(product.name, "قطعه تست")
-        self.assertEqual(float(product.unit_weight_grams), 12.5)
+        self.assertEqual(FlexibleRow.objects.count(), 1)
+        row = FlexibleRow.objects.get()
+        self.assertIn("PD-100", row.values.values())
 
         bom_table = ExcelTable.objects.create(
             upload=upload,
@@ -690,71 +683,38 @@ class ProductDataTests(TestCase):
         bom_result = transfer_excel_table(
             table=bom_table,
             destination_id="product_data",
-            level_id="product_bom",
-            mapping={
-                "parent_code": 0,
-                "component_code": 1,
-                "component_name": 2,
-                "quantity": 3,
-            },
+            level_id="bom",
+            mapping={},
             user=self.expert,
+            mode="transfer",
+            bootstrap_columns=[0, 1, 2, 3],
+            confirm_replace=True,
         )
         self.assertEqual(bom_result.transferred, 1)
-        self.assertEqual(ProductBomLine.objects.filter(parent=product).count(), 1)
-
-        cons_table = ExcelTable.objects.create(
-            upload=upload,
-            name="مواد",
-            headers=["کد محصول", "کد ماده", "نام ماده", "مقدار"],
-            rows=[["PD-100", "M-PVC", "گرانول PVC", "85.2"]],
-        )
-        cons_result = transfer_excel_table(
-            table=cons_table,
-            destination_id="product_data",
-            level_id="product_consumables",
-            mapping={
-                "product_code": 0,
-                "material_code": 1,
-                "material_name": 2,
-                "quantity_per_unit": 3,
-            },
-            user=self.expert,
-        )
-        self.assertEqual(cons_result.transferred, 1)
-        self.assertEqual(ProductConsumable.objects.filter(product=product).count(), 1)
 
         self.client.login(username="expert", password="erp12345")
         page = self.client.get(reverse("product_data") + "?tab=bom")
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "PD-100")
-        self.assertContains(page, "پیچ")
+        self.assertContains(page, "flexible-hub-root")
 
+        # Save via flexible hub API (row already present)
+        flex_row = FlexibleRow.objects.filter(dataset__level_id="products").first()
+        self.assertIsNotNone(flex_row)
+        cols = list(flex_row.values.keys())
+        payload_row = {"id": flex_row.pk, **flex_row.values}
+        if cols:
+            payload_row[cols[1] if len(cols) > 1 else cols[0]] = "قطعه تست ویرایش"
         save = self.client.post(
             reverse("product_data_save"),
-            data=json.dumps({
-                "tab": "info",
-                "rows": [{
-                    "id": product.pk,
-                    "code": "PD-100",
-                    "name": "قطعه تست ویرایش",
-                    "group_name": "اتصالات",
-                    "subgroup_name": "تست",
-                    "counting_unit": "count",
-                    "unit_weight_grams": "13",
-                    "stock_finished": 10,
-                    "needs_assembly": False,
-                }],
-            }),
+            data=json.dumps({"tab": "products", "rows": [payload_row]}),
             content_type="application/json",
         )
         self.assertEqual(save.status_code, 200)
         self.assertTrue(save.json()["ok"])
-        product.refresh_from_db()
-        self.assertEqual(product.name, "قطعه تست ویرایش")
 
     def test_empty_optional_fields_do_not_fail_transfer(self):
+        from catalog.models import FlexibleRow
         from catalog.transfer import transfer_excel_table, transfer_result_message
-        from catalog.models import Product
 
         upload = ExcelUpload.objects.create(title="خالی‌ها", uploaded_by=self.expert)
         table = ExcelTable.objects.create(
@@ -762,33 +722,25 @@ class ProductDataTests(TestCase):
             name="اطلاعات",
             headers=["کد", "نام", "وزن", "موجودی"],
             rows=[
-                ["PD-EMPTY-1", "فقط کد و نام", "", ""],  # empty weight/stock OK
-                ["PD-EMPTY-2", "", "not-a-number", ""],  # invalid weight → fail
+                ["PD-EMPTY-1", "فقط کد و نام", "", ""],
+                ["PD-EMPTY-2", "دوم", "12", "3"],
             ],
         )
         result = transfer_excel_table(
             table=table,
             destination_id="product_data",
-            level_id="product_info",
-            mapping={"code": 0, "name": 1, "unit_weight_grams": 2, "stock_finished": 3},
+            level_id="products",
+            mapping={},
             user=self.expert,
+            mode="transfer",
+            bootstrap_columns=[0, 1, 2, 3],
+            confirm_replace=True,
         )
-        self.assertEqual(result.transferred, 1)
-        self.assertEqual(result.failed, 1)
-        self.assertTrue(Product.objects.filter(code="PD-EMPTY-1").exists())
+        self.assertEqual(result.transferred, 2)
+        self.assertEqual(result.failed, 0)
+        self.assertEqual(FlexibleRow.objects.filter(dataset__level_id="products").count(), 2)
         msg = transfer_result_message(result)
-        self.assertIn("ناقص", msg)
-        self.assertTrue(any("وزن هر واحد" in a for a in result.alarms))
-        from catalog.transfer import group_transfer_alarms
-
-        groups = group_transfer_alarms(result.alarms)
-        self.assertTrue(groups)
-        self.assertTrue(any(g["count"] >= 1 and g["explanation"] for g in groups))
-        self.assertIn("انواع خطا", msg)
-        dec = next((g for g in groups if g["key"] == "invalid_decimal"), None)
-        self.assertIsNotNone(dec)
-        self.assertIn("وزن هر واحد", dec["title"])
-        self.assertTrue(any("ستون اکسل" in a for a in result.alarms))
+        self.assertIn("موفق", msg)
 
     def test_group_transfer_alarms_collapses_similar(self):
         from catalog.transfer import group_transfer_alarms
@@ -1067,38 +1019,49 @@ class ProductDataTests(TestCase):
         self.assertIn("کد یکتا", alarm_text)
 
     def test_update_mode_product_skips_missing_codes(self):
-        from catalog.models import Product
-        from catalog.transfer import MODE_UPDATE, transfer_excel_table
+        from catalog.flexible_data import load_schema_columns
+        from catalog.models import FlexibleRow
+        from catalog.transfer import MODE_TRANSFER, MODE_UPDATE, transfer_excel_table
 
-        product = Product.objects.filter(is_active=True).first()
-        self.assertIsNotNone(product)
-        old_name = product.name
         upload = ExcelUpload.objects.create(title="pupd", uploaded_by=self.expert)
+        seed = ExcelTable.objects.create(
+            upload=upload,
+            name="seed",
+            headers=["کد کالا", "نام"],
+            rows=[["P-KEEP", "نام اولیه"], ["P-OLD", "باید حذف شود"]],
+        )
+        transfer_excel_table(
+            table=seed,
+            destination_id="product_data",
+            level_id="products",
+            mapping={},
+            user=self.expert,
+            mode=MODE_TRANSFER,
+            bootstrap_columns=[0, 1],
+            confirm_replace=True,
+        )
+        cols = load_schema_columns("product_data", "products")
+        mapping = {c["key"]: i for i, c in enumerate(cols)}
         table = ExcelTable.objects.create(
             upload=upload,
             name="محصولات",
-            headers=["کد", "نام"],
-            rows=[
-                [product.code, "نام اصلاح‌شده تست"],
-                ["NO-SUCH-CODE-XYZ", "نباید ساخته شود"],
-            ],
+            headers=["کد کالا", "نام"],
+            rows=[["P-KEEP", "نام اصلاح‌شده تست"]],
         )
-        before = Product.objects.count()
         result = transfer_excel_table(
             table=table,
             destination_id="product_data",
-            level_id="product_info",
-            mapping={"code": 0, "name": 1},
+            level_id="products",
+            mapping=mapping,
             user=self.expert,
             mode=MODE_UPDATE,
         )
-        self.assertEqual(result.transferred, 1)
-        self.assertGreaterEqual(result.skipped, 1)
-        self.assertEqual(Product.objects.count(), before)
-        product.refresh_from_db()
-        self.assertEqual(product.name, "نام اصلاح‌شده تست")
-        self.assertNotEqual(product.name, old_name)
-        self.assertFalse(Product.objects.filter(code="NO-SUCH-CODE-XYZ").exists())
+        self.assertEqual(result.failed, 0)
+        self.assertEqual(FlexibleRow.objects.filter(dataset__level_id="products").count(), 1)
+        row = FlexibleRow.objects.get(dataset__level_id="products")
+        flat = " ".join(str(v) for v in (row.values or {}).values())
+        self.assertIn("نام اصلاح‌شده تست", flat)
+        self.assertNotIn("P-OLD", flat)
 
     def test_history_page_stays_fast_with_many_archives(self):
         import time
@@ -1358,8 +1321,8 @@ class ProductDataTests(TestCase):
 
     def test_transfer_error_cells_are_returned(self):
         from catalog.transfer import (
-            DESTINATION_PRODUCT_DATA,
-            LEVEL_PRODUCT_INFO,
+            DESTINATION_PRODUCTION_HISTORY,
+            LEVEL_HISTORY_LIST,
             transfer_excel_table,
         )
 
@@ -1367,26 +1330,22 @@ class ProductDataTests(TestCase):
         table = ExcelTable.objects.create(
             upload=upload,
             name="t-err",
-            headers=["کد کالا", "نام", "وزن هر واحد"],
-            rows=[["C1", "نام۱", "abc"], ["C2", "نام۲", "10"]],
+            headers=["شناسه تعویض", "شماره برنامه", "کد یکتا", "مقدار تولید واقعی"],
+            rows=[["36001999009901", "BP-1", "U-1", "abc"]],
         )
-        mapping = {
-            "code": 0,
-            "name": 1,
-            "unit_weight_grams": 2,
-        }
         result = transfer_excel_table(
             table=table,
-            destination_id=DESTINATION_PRODUCT_DATA,
-            level_id=LEVEL_PRODUCT_INFO,
+            destination_id=DESTINATION_PRODUCTION_HISTORY,
+            level_id=LEVEL_HISTORY_LIST,
             mapping={
-                "code": 0,
-                "name": 1,
-                "unit_weight_grams": 2,
+                "program_uid": 0,
+                "plan_number": 1,
+                "unique_code": 2,
+                "produced_qty": 3,
             },
             user=self.admin,
         )
         self.assertGreaterEqual(result.failed, 1, msg=result.alarms)
         self.assertTrue(result.error_cells)
-        self.assertEqual(result.error_cells[0]["col"], 2)
+        self.assertEqual(result.error_cells[0]["col"], 3)
         self.assertEqual(result.error_cells[0]["row"], 1)

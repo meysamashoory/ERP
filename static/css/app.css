@@ -209,6 +209,24 @@ a { color: var(--brand); }
   border-radius: 10px;
   margin: 10px 0 4px;
 }
+.transfer-bootstrap-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 12px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.transfer-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.transfer-check-item input { margin-top: 2px; }
 .transfer-alarms {
   max-height: 160px;
   overflow: auto;

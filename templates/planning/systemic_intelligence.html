@@ -7,7 +7,6 @@
 
 {% block topbar_actions %}
 <div class="topbar-actions topbar-actions-pair">
-  <a class="btn btn-sm btn-ghost" href="{% url 'inventory_orders' %}">موجودی و سفارشات</a>
   {% if profile.can_create_plans %}
   <button type="button" class="btn btn-sm" data-plan-create-open data-plan-mode="systemic">ساخت برنامه سیستمی</button>
   {% endif %}

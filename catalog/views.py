@@ -453,9 +453,16 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
         mode = "transfer"
     mapping = payload.get("mapping")
     if not isinstance(mapping, dict):
-        return JsonResponse({"ok": False, "error": "نگاشت ستون‌ها الزامی است."}, status=400)
+        mapping = {}
     if not destination_id:
         return JsonResponse({"ok": False, "error": "مقصد انتقال را انتخاب کنید."}, status=400)
+    confirm_replace = bool(payload.get("confirm_replace"))
+    bootstrap_columns = payload.get("bootstrap_columns")
+    if bootstrap_columns is not None and not isinstance(bootstrap_columns, list):
+        bootstrap_columns = None
+    add_columns = payload.get("add_columns")
+    if add_columns is not None and not isinstance(add_columns, list):
+        add_columns = None
     try:
         offset = int(payload.get("offset") or 0)
     except (TypeError, ValueError):
@@ -484,6 +491,9 @@ def excel_table_transfer(request: HttpRequest, pk: int) -> JsonResponse:
             mode=mode,
             offset=offset,
             limit=limit,
+            confirm_replace=confirm_replace,
+            bootstrap_columns=bootstrap_columns,
+            add_columns=add_columns,
         )
     except ValueError as exc:
         register_alarm(
@@ -568,125 +578,145 @@ def excel_file_delete(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def product_data_hub(request: HttpRequest) -> HttpResponse:
-    """Tabbed product master data — view-first; edit after topbar toggle."""
-    from .models import ProductGroup, ProductSubGroup
-    from .product_data import (
-        PRODUCT_DATA_TABS,
-        TAB_BOM,
-        TAB_CONSUMABLES,
-        TAB_INFO,
-        bom_rows,
-        consumable_rows,
-        product_info_rows,
-        resolve_tab,
-    )
+    """Raw product-data hub: tabs from system naming; tables appear after Excel transfer."""
+    from catalog.flexible_data import DEFAULT_PRODUCT_TABS, hub_table_payload, list_tab_levels
+    from catalog.transfer import DESTINATION_PRODUCT_DATA
 
     profile = get_profile(request.user)
     can_edit_permission = bool(profile and profile.can_enter_data)
-    tab = resolve_tab(request.GET.get("tab"))
-    groups = list(
-        ProductGroup.objects.order_by("order", "name").values("id", "name")
-    )
-    subgroups = list(
-        ProductSubGroup.objects.select_related("group")
-        .order_by("group__order", "order", "name")
-        .values("id", "name", "group_id", "group__name")
-    )
+    tabs = list_tab_levels(DESTINATION_PRODUCT_DATA, DEFAULT_PRODUCT_TABS)
+    tab_ids = {t["id"] for t in tabs}
+    tab = (request.GET.get("tab") or "").strip()
+    if tab not in tab_ids:
+        tab = tabs[0]["id"] if tabs else "products"
+    payload = hub_table_payload(DESTINATION_PRODUCT_DATA, tab)
     context = {
-        "tabs": PRODUCT_DATA_TABS,
+        "tabs": tabs,
         "active_tab": tab,
         "can_edit_permission": can_edit_permission,
-        # Page opens in view mode; JS enables edit when user clicks «ویرایش».
         "can_edit": False,
-        "counting_units": [
-            {"value": "count", "label": "عدد"},
-            {"value": "branch", "label": "شاخه"},
-            {"value": "coil", "label": "کلاف"},
-            {"value": "meter", "label": "متر"},
-        ],
-        "product_groups": groups,
-        "product_subgroups": subgroups,
-        "product_groups_json": json.dumps(groups, ensure_ascii=False),
-        "product_subgroups_json": json.dumps(
-            [
-                {
-                    "id": s["id"],
-                    "name": s["name"],
-                    "group_id": s["group_id"],
-                    "group_name": s["group__name"],
-                }
-                for s in subgroups
-            ],
-            ensure_ascii=False,
-        ),
-        "info_rows": product_info_rows() if tab == TAB_INFO else [],
-        "bom_rows": bom_rows() if tab == TAB_BOM else [],
-        "consumable_rows": consumable_rows() if tab == TAB_CONSUMABLES else [],
+        "columns": payload["columns"],
+        "rows": payload["rows"],
+        "has_schema": payload["has_schema"],
+        "hub_kind": "product_data",
         "save_url": reverse("product_data_save"),
         "delete_url": reverse("product_data_delete"),
     }
-    return render(request, "catalog/product_data.html", context)
+    return render(request, "catalog/flexible_hub.html", context)
+
+
+@login_required
+def vouchers_hub(request: HttpRequest) -> HttpResponse:
+    """Material vouchers hub — raw until Excel transfer."""
+    from catalog.flexible_data import DEFAULT_VOUCHER_TABS, hub_table_payload, list_tab_levels
+    from catalog.transfer import DESTINATION_VOUCHERS
+
+    profile = get_profile(request.user)
+    can_edit_permission = bool(profile and profile.can_enter_data)
+    tabs = list_tab_levels(DESTINATION_VOUCHERS, DEFAULT_VOUCHER_TABS)
+    tab_ids = {t["id"] for t in tabs}
+    tab = (request.GET.get("tab") or "").strip()
+    if tab not in tab_ids:
+        tab = tabs[0]["id"] if tabs else "voucher_list"
+    payload = hub_table_payload(DESTINATION_VOUCHERS, tab)
+    context = {
+        "tabs": tabs,
+        "active_tab": tab,
+        "can_edit_permission": can_edit_permission,
+        "can_edit": False,
+        "columns": payload["columns"],
+        "rows": payload["rows"],
+        "has_schema": payload["has_schema"],
+        "hub_kind": "vouchers",
+        "save_url": reverse("vouchers_save"),
+        "delete_url": reverse("vouchers_delete"),
+    }
+    return render(request, "catalog/flexible_hub.html", context)
 
 
 @login_required
 @require_POST
 def product_data_save(request: HttpRequest) -> JsonResponse:
-    profile = get_profile(request.user)
-    if not (profile and profile.can_enter_data):
-        return JsonResponse({"ok": False, "error": "مجاز به ویرایش نیستید."}, status=403)
-    from .product_data import save_tab_rows
-
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "JSON نامعتبر است."}, status=400)
-    tab = str(payload.get("tab") or "info")
-    rows = payload.get("rows") or []
-    if not isinstance(rows, list):
-        return JsonResponse({"ok": False, "error": "ردیف‌ها نامعتبر است."}, status=400)
-    stats = save_tab_rows(tab, rows)
-    if stats["failed"] and not stats["saved"]:
-        return JsonResponse(
-            {
-                "ok": False,
-                "error": "ذخیره ناموفق بود. کدها و فیلدهای الزامی را بررسی کنید.",
-                **stats,
-            },
-            status=400,
-        )
-    return JsonResponse(
-        {
-            "ok": True,
-            "message": f"{stats['saved']} ردیف ذخیره شد"
-            + (f"؛ {stats['failed']} ناموفق" if stats["failed"] else "")
-            + ".",
-            **stats,
-        }
-    )
+    return _flexible_hub_save(request, destination_id="product_data")
 
 
 @login_required
 @require_POST
 def product_data_delete(request: HttpRequest) -> JsonResponse:
+    return _flexible_hub_delete(request, destination_id="product_data")
+
+
+@login_required
+@require_POST
+def vouchers_save(request: HttpRequest) -> JsonResponse:
+    return _flexible_hub_save(request, destination_id="vouchers")
+
+
+@login_required
+@require_POST
+def vouchers_delete(request: HttpRequest) -> JsonResponse:
+    return _flexible_hub_delete(request, destination_id="vouchers")
+
+
+def _flexible_hub_save(request: HttpRequest, *, destination_id: str) -> JsonResponse:
     profile = get_profile(request.user)
     if not (profile and profile.can_enter_data):
-        return JsonResponse({"ok": False, "error": "مجاز به حذف نیستید."}, status=403)
-    from .product_data import delete_tab_row
+        return JsonResponse({"ok": False, "error": "مجاز به ویرایش نیستید."}, status=403)
+    from catalog.flexible_data import get_or_create_dataset, load_schema_columns, make_identity_key
+    from catalog.models import FlexibleRow
 
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "JSON نامعتبر است."}, status=400)
-    tab = str(payload.get("tab") or "")
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+    level_id = str(payload.get("tab") or payload.get("level") or "").strip()
+    if not level_id:
+        return JsonResponse({"ok": False, "error": "تب نامعتبر است."}, status=400)
+    columns = load_schema_columns(destination_id, level_id)
+    if not columns:
+        return JsonResponse({"ok": False, "error": "هنوز جدولی برای این تب ساخته نشده است."}, status=400)
+    col_keys = {c["key"] for c in columns}
+    key_fields = [c["key"] for c in columns if c.get("is_key")]
+    rows_in = payload.get("rows")
+    if not isinstance(rows_in, list):
+        return JsonResponse({"ok": False, "error": "ردیف‌ها نامعتبر است."}, status=400)
+    ds = get_or_create_dataset(destination_id, level_id)
+    saved = 0
+    for item in rows_in:
+        if not isinstance(item, dict):
+            continue
+        values = {k: item.get(k, "") for k in col_keys}
+        ident = make_identity_key(values, key_fields)
+        pk = item.get("id")
+        if pk:
+            row = FlexibleRow.objects.filter(pk=pk, dataset=ds).first()
+            if row:
+                row.values = values
+                row.identity_key = ident
+                row.save(update_fields=["values", "identity_key", "updated_at"])
+                saved += 1
+                continue
+        FlexibleRow.objects.create(dataset=ds, values=values, identity_key=ident, order=saved)
+        saved += 1
+    return JsonResponse({"ok": True, "saved": saved})
+
+
+def _flexible_hub_delete(request: HttpRequest, *, destination_id: str) -> JsonResponse:
+    profile = get_profile(request.user)
+    if not (profile and profile.can_enter_data):
+        return JsonResponse({"ok": False, "error": "مجاز نیستید."}, status=403)
+    from catalog.flexible_data import get_or_create_dataset
+    from catalog.models import FlexibleRow
+
     try:
-        row_id = int(payload.get("id"))
-    except (TypeError, ValueError):
-        return JsonResponse({"ok": False, "error": "شناسه ردیف نامعتبر است."}, status=400)
-    try:
-        delete_tab_row(tab, row_id)
-    except Exception as exc:  # noqa: BLE001
-        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-    return JsonResponse({"ok": True})
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+    level_id = str(payload.get("tab") or payload.get("level") or "").strip()
+    pk = payload.get("id")
+    ds = get_or_create_dataset(destination_id, level_id)
+    deleted, _ = FlexibleRow.objects.filter(pk=pk, dataset=ds).delete()
+    return JsonResponse({"ok": True, "deleted": deleted})
 
 
 def _can_edit_naming(user) -> bool:
@@ -855,6 +885,8 @@ def system_naming_key_save(request: HttpRequest) -> JsonResponse:
             pass
     if "is_active" in payload:
         row.is_active = bool(payload.get("is_active"))
+    if "is_key" in payload:
+        row.is_key = bool(payload.get("is_key"))
     if "notes" in payload:
         row.notes = str(payload.get("notes") or "")[:2000]
     if create and not row.category:
@@ -866,6 +898,7 @@ def system_naming_key_save(request: HttpRequest) -> JsonResponse:
         "key": row.key,
         "label": row.label,
         "is_active": row.is_active,
+        "is_key": row.is_key,
         "linked_section_key": row.linked_section_key,
         "is_renamed": row.is_renamed,
     })

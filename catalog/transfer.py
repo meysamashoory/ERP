@@ -14,17 +14,26 @@ from django.urls import reverse
 
 DESTINATION_PRODUCTION_HISTORY = "production_history"
 DESTINATION_PRODUCT_DATA = "product_data"
+DESTINATION_VOUCHERS = "vouchers"
+# Legacy id kept for inactive naming keys / old tests; removed from live destinations.
 DESTINATION_INVENTORY_ORDERS = "inventory_orders"
 
 LEVEL_HISTORY_LIST = "history_list"
 LEVEL_HISTORY_DAILY = "history_daily"
-LEVEL_PRODUCT_INFO = "product_info"
-LEVEL_PRODUCT_BOM = "product_bom"
-LEVEL_PRODUCT_CONSUMABLES = "product_consumables"
+# Dynamic product-data tabs (raw schema until Excel bootstrap)
+LEVEL_PRODUCT_INFO = "products"  # alias kept for older callers
+LEVEL_PRODUCTS = "products"
+LEVEL_PRODUCT_BOM = "bom"
+LEVEL_PRODUCT_CONSUMABLES = "consumables"
+LEVEL_PRODUCT_SPECS = "specs"
+LEVEL_VOUCHERS_LIST = "voucher_list"
 LEVEL_IO_ORDERS = "orders"
 LEVEL_IO_STOCK = "stock"
 LEVEL_IO_BOM = "bom"
 LEVEL_IO_FORECAST = "forecast"
+
+SCHEMA_FIXED = "fixed"
+SCHEMA_DYNAMIC = "dynamic"
 
 
 @dataclass
@@ -33,6 +42,7 @@ class DestField:
     label: str
     type: str  # string | integer | date | decimal | quantity
     required: bool = False
+    is_key: bool = False
 
 
 MODE_TRANSFER = "transfer"
@@ -64,7 +74,7 @@ class TransferResult:
 # Exact columns of «سوابق تولید» list (+ end date for status inference)
 HISTORY_LIST_FIELDS: list[DestField] = [
     # شناسه برای کلید لیست لازم است؛ کد کالا اختیاری (در سطح روزانه هم هست).
-    DestField("program_uid", "شناسه تعویض", "string", required=True),
+    DestField("program_uid", "شناسه تعویض", "string", required=True, is_key=True),
     DestField("plan_number", "شماره برنامه", "string", required=True),
     DestField("plan_date", "تاریخ برنامه‌ریزی", "date"),
     DestField("unit_number", "شماره واحد", "integer"),
@@ -72,7 +82,7 @@ HISTORY_LIST_FIELDS: list[DestField] = [
     DestField("product_code", "کد کالا", "string"),
     DestField("product_name", "نام جنس", "string"),
     DestField("mold_number", "شماره قالب", "string"),
-    DestField("unique_code", "کد یکتا", "string", required=True),
+    DestField("unique_code", "کد یکتا", "string", required=True, is_key=True),
     DestField("status", "وضعیت", "string"),
     DestField("plan_start_date", "تاریخ شروع برنامه", "date"),
     DestField("actual_start_date", "تاریخ شروع واقعی", "date"),
@@ -88,10 +98,10 @@ HISTORY_LIST_FIELDS: list[DestField] = [
 ]
 
 HISTORY_DAILY_FIELDS: list[DestField] = [
-    DestField("program_uid", "شناسه تعویض", "string", required=True),
+    DestField("program_uid", "شناسه تعویض", "string", required=True, is_key=True),
     DestField("product_code", "کد کالا", "string"),
     DestField("status", "وضعیت", "string"),
-    DestField("work_date", "تاریخ سند", "date", required=True),
+    DestField("work_date", "تاریخ سند", "date", required=True, is_key=True),
     DestField("produced_qty", "مقدار تولید شده", "quantity"),
     DestField("scrap_qty", "ضایعات", "integer"),
     DestField("qty_deviation", "انحراف آمار تولید", "integer"),
@@ -172,76 +182,70 @@ IO_FORECAST_FIELDS: list[DestField] = [
 
 def _fields_payload(fields: list[DestField]) -> list[dict[str, Any]]:
     return [
-        {"key": f.key, "label": f.label, "type": f.type, "required": f.required}
+        {
+            "key": f.key,
+            "label": f.label,
+            "type": f.type,
+            "required": f.required,
+            "is_key": f.is_key,
+        }
         for f in fields
     ]
 
 
 def list_destinations() -> list[dict[str, Any]]:
-    """Static destination tree (labels from DestField literals). Used by harvest."""
+    """Destination tree for harvest + UI. Dynamic levels start with empty fields."""
+    from catalog.flexible_data import DEFAULT_PRODUCT_TABS, DEFAULT_VOUCHER_TABS
+
+    product_levels = [
+        {
+            "id": t["id"],
+            "label": t["label"],
+            "fields": [],  # raw until Excel bootstrap / system-data columns
+            "schema_mode": SCHEMA_DYNAMIC,
+        }
+        for t in DEFAULT_PRODUCT_TABS
+    ]
+    voucher_levels = [
+        {
+            "id": t["id"],
+            "label": t["label"],
+            "fields": [],
+            "schema_mode": SCHEMA_DYNAMIC,
+        }
+        for t in DEFAULT_VOUCHER_TABS
+    ]
     return [
         {
             "id": DESTINATION_PRODUCTION_HISTORY,
             "label": "سوابق تولید",
+            "schema_mode": SCHEMA_FIXED,
             "levels": [
                 {
                     "id": LEVEL_HISTORY_LIST,
                     "label": "لیست سوابق تولید",
                     "fields": _fields_payload(HISTORY_LIST_FIELDS),
+                    "schema_mode": SCHEMA_FIXED,
                 },
                 {
                     "id": LEVEL_HISTORY_DAILY,
                     "label": "اسناد روزانه",
                     "fields": _fields_payload(HISTORY_DAILY_FIELDS),
+                    "schema_mode": SCHEMA_FIXED,
                 },
             ],
         },
         {
             "id": DESTINATION_PRODUCT_DATA,
             "label": "دیتای محصولات",
-            "levels": [
-                {
-                    "id": LEVEL_PRODUCT_INFO,
-                    "label": "اطلاعات محصول",
-                    "fields": _fields_payload(PRODUCT_INFO_FIELDS),
-                },
-                {
-                    "id": LEVEL_PRODUCT_BOM,
-                    "label": "ساختار BOM",
-                    "fields": _fields_payload(PRODUCT_BOM_FIELDS),
-                },
-                {
-                    "id": LEVEL_PRODUCT_CONSUMABLES,
-                    "label": "مواد مصرفی",
-                    "fields": _fields_payload(PRODUCT_CONSUMABLE_FIELDS),
-                },
-            ],
+            "schema_mode": SCHEMA_DYNAMIC,
+            "levels": product_levels,
         },
         {
-            "id": DESTINATION_INVENTORY_ORDERS,
-            "label": "بررسی موجودی و سفارشات",
-            "levels": [
-                {
-                    "id": LEVEL_IO_ORDERS,
-                    "label": "سفارشات هفتگی و معوق",
-                    "fields": _fields_payload(IO_ORDER_FIELDS),
-                },
-                {
-                    "id": LEVEL_IO_STOCK,
-                    "label": "موجودی و سقف دپو",
-                    "fields": _fields_payload(IO_STOCK_FIELDS),
-                },
-                {
-                    "id": LEVEL_IO_BOM,
-                    "label": "ساختار BOM",
-                    "fields": _fields_payload(PRODUCT_BOM_FIELDS),
-                },
-                {
-                    "id": LEVEL_IO_FORECAST,
-                    "label": "پیش‌بینی فروش (ذخیره — فعلاً بدون اجرا)",
-                    "fields": _fields_payload(IO_FORECAST_FIELDS),
-                },
-            ],
+            "id": DESTINATION_VOUCHERS,
+            "label": "حواله‌ها",
+            "schema_mode": SCHEMA_DYNAMIC,
+            "levels": voucher_levels,
         },
     ]
 
@@ -251,19 +255,30 @@ TRANSFER_UI_LABELS: dict[str, str] = {
     "transfer.ui.dialog.title_transfer": "انتقال داده جدول",
     "transfer.ui.dialog.title_update": "بروزرسانی داده جدول",
     "transfer.ui.dialog.hint_transfer": (
-        "بخش مقصد و سطح را انتخاب کنید؛ سرستون‌های همان سطح نمایش داده می‌شوند. "
-        "هر ستون اکسل فقط به یک فیلد نگاشت می‌شود. جدول پس از انتقال حذف نمی‌شود."
+        "اگر مقصد خام باشد، کل فایل (یا ستون‌های تیک‌خورده) به‌عنوان جدول مقصد ساخته می‌شود. "
+        "اگر مقصد از قبل جدول داشته باشد، همه ستون‌های موجود باید نگاشت شوند؛ "
+        "ستون‌های اضافه اکسل اختیاری‌اند. انتقال داده قبلی را پاک و جایگزین می‌کند."
     ),
     "transfer.ui.dialog.hint_update": (
-        "فقط ردیف‌های از قبل موجود در سامانه اصلاح می‌شوند؛ ردیف جدید اضافه نمی‌شود. "
-        "نگاشت ستون‌ها مانند انتقال است و جدول اکسل حذف نمی‌شود."
+        "بروزرسانی فقط وقتی داده قبلی در مقصد وجود دارد مجاز است. "
+        "فقط ستون‌های کلیدی الزامی‌اند؛ ردیف‌ها بر اساس کلید جایگزین می‌شوند و "
+        "کلیدهای غایب در فایل جدید از مقصد حذف می‌گردند. ستون جدید اضافه نمی‌شود."
     ),
     "transfer.ui.dialog.errors_title": "جزئیات خطای انتقال",
+    "transfer.ui.dialog.confirm_replace": (
+        "با انتقال، تمام داده‌های قبلی این مقصد پاک و با داده جدید جایگزین می‌شود. ادامه می‌دهید؟"
+    ),
+    "transfer.ui.dialog.bootstrap_hint": (
+        "مقصد هنوز خام است — ستون مقصد خالی است. ستون‌های فایل را برای ساخت جدول انتخاب کنید."
+    ),
+    "transfer.ui.dialog.extra_cols_hint": "ستون‌های اضافه فایل (اختیاری — با تیک به جدول مقصد اضافه می‌شوند)",
+    "transfer.ui.dialog.update_blocked": "بروزرسانی ممکن نیست؛ مقصد هنوز داده‌ای ندارد.",
     "transfer.ui.label.destination": "بخش مقصد",
     "transfer.ui.label.level": "انتخاب سطح",
     "transfer.ui.col.dest_field": "ستون مقصد سامانه",
     "transfer.ui.col.type": "نوع",
     "transfer.ui.col.excel_col": "ستون متناظر اکسل",
+    "transfer.ui.col.include": "انتقال",
     "transfer.ui.btn.transfer": "انتقال",
     "transfer.ui.btn.update": "بروزرسانی",
     "transfer.ui.btn.cancel": "انصراف",
@@ -278,10 +293,44 @@ TRANSFER_UI_LABELS: dict[str, str] = {
 
 
 def list_destinations_for_ui() -> list[dict[str, Any]]:
-    """Destinations with naming-registry labels; inactive dest/level/field omitted."""
+    """Destinations with naming-registry labels; inactive dest/level/field omitted.
+
+    Dynamic destinations load columns from naming keys / FlexibleDataset when present.
+    Custom levels (user-added tabs) under a dynamic destination are included.
+    """
+    from catalog.flexible_data import (
+        DEFAULT_PRODUCT_TABS,
+        DEFAULT_VOUCHER_TABS,
+        dataset_has_rows,
+        list_tab_levels,
+        load_schema_columns,
+    )
     from catalog.naming_registry import lookup_naming_rows, resolve_from_row
 
     base = list_destinations()
+    # Merge custom / renamed levels for dynamic destinations
+    for dest in base:
+        if dest.get("schema_mode") != SCHEMA_DYNAMIC:
+            continue
+        defaults = (
+            DEFAULT_PRODUCT_TABS
+            if dest["id"] == DESTINATION_PRODUCT_DATA
+            else DEFAULT_VOUCHER_TABS
+            if dest["id"] == DESTINATION_VOUCHERS
+            else []
+        )
+        live_levels = list_tab_levels(dest["id"], defaults)
+        # Preserve schema_mode; fields filled below
+        dest["levels"] = [
+            {
+                "id": lv["id"],
+                "label": lv["label"],
+                "fields": [],
+                "schema_mode": SCHEMA_DYNAMIC,
+            }
+            for lv in live_levels
+        ]
+
     keys: list[str] = []
     for dest in base:
         dest_id = dest["id"]
@@ -302,6 +351,7 @@ def list_destinations_for_ui() -> list[dict[str, Any]]:
         )
         if not dest_ok:
             continue
+        schema_mode = dest.get("schema_mode") or SCHEMA_FIXED
         levels_out: list[dict[str, Any]] = []
         for level in dest.get("levels") or []:
             level_id = level["id"]
@@ -310,21 +360,80 @@ def list_destinations_for_ui() -> list[dict[str, Any]]:
             )
             if not level_ok:
                 continue
-            fields_out: list[dict[str, Any]] = []
-            for field in level.get("fields") or []:
-                fkey = field["key"]
-                field_ok, field_label = resolve_from_row(
-                    rows,
-                    f"transfer.field.{dest_id}.{level_id}.{fkey}",
-                    field["label"],
-                )
-                if not field_ok:
-                    continue
-                fields_out.append({**field, "label": field_label})
-            levels_out.append({**level, "label": level_label, "fields": fields_out})
+            level_mode = level.get("schema_mode") or schema_mode
+            if level_mode == SCHEMA_DYNAMIC:
+                dyn_fields = load_schema_columns(dest_id, level_id)
+                fields_out = [
+                    {
+                        "key": f["key"],
+                        "label": f["label"],
+                        "type": f.get("type") or "string",
+                        "required": bool(f.get("is_key")),
+                        "is_key": bool(f.get("is_key")),
+                    }
+                    for f in dyn_fields
+                ]
+            else:
+                fields_out = []
+                for field in level.get("fields") or []:
+                    fkey = field["key"]
+                    field_ok, field_label = resolve_from_row(
+                        rows,
+                        f"transfer.field.{dest_id}.{level_id}.{fkey}",
+                        field["label"],
+                    )
+                    if not field_ok:
+                        continue
+                    nk = rows.get(f"transfer.field.{dest_id}.{level_id}.{fkey}")
+                    if nk is not None:
+                        is_key = bool(nk.is_key)
+                    else:
+                        is_key = bool(field.get("is_key"))
+                    fields_out.append(
+                        {
+                            **field,
+                            "label": field_label,
+                            "is_key": is_key,
+                            "required": bool(field.get("required")) or is_key,
+                        }
+                    )
+
+            has_schema = bool(fields_out)
+            has_rows = False
+            if level_mode == SCHEMA_DYNAMIC:
+                has_rows = dataset_has_rows(dest_id, level_id)
+            else:
+                has_rows = _fixed_dest_has_rows(dest_id, level_id)
+
+            levels_out.append(
+                {
+                    **level,
+                    "label": level_label,
+                    "fields": fields_out,
+                    "schema_mode": level_mode,
+                    "is_raw": level_mode == SCHEMA_DYNAMIC and not has_schema,
+                    "has_schema": has_schema,
+                    "has_rows": has_rows,
+                }
+            )
         if levels_out:
-            out.append({**dest, "label": dest_label, "levels": levels_out})
+            out.append(
+                {
+                    **dest,
+                    "label": dest_label,
+                    "levels": levels_out,
+                    "schema_mode": schema_mode,
+                }
+            )
     return out
+
+
+def _fixed_dest_has_rows(destination_id: str, level_id: str) -> bool:
+    if destination_id == DESTINATION_PRODUCTION_HISTORY:
+        from production.models import ProductionHistoryRecord
+
+        return ProductionHistoryRecord.objects.exists()
+    return False
 
 
 def transfer_ui_labels_resolved() -> dict[str, str]:
@@ -343,11 +452,16 @@ def transfer_ui_labels_resolved() -> dict[str, str]:
         "hint_transfer": out["transfer.ui.dialog.hint_transfer"],
         "hint_update": out["transfer.ui.dialog.hint_update"],
         "errors_title": out["transfer.ui.dialog.errors_title"],
+        "confirm_replace": out["transfer.ui.dialog.confirm_replace"],
+        "bootstrap_hint": out["transfer.ui.dialog.bootstrap_hint"],
+        "extra_cols_hint": out["transfer.ui.dialog.extra_cols_hint"],
+        "update_blocked": out["transfer.ui.dialog.update_blocked"],
         "label_destination": out["transfer.ui.label.destination"],
         "label_level": out["transfer.ui.label.level"],
         "col_dest_field": out["transfer.ui.col.dest_field"],
         "col_type": out["transfer.ui.col.type"],
         "col_excel_col": out["transfer.ui.col.excel_col"],
+        "col_include": out["transfer.ui.col.include"],
         "btn_transfer": out["transfer.ui.btn.transfer"],
         "btn_update": out["transfer.ui.btn.update"],
         "btn_cancel": out["transfer.ui.btn.cancel"],
@@ -366,20 +480,20 @@ def _fields_for(destination_id: str, level_id: str) -> list[DestField]:
         if level_id == LEVEL_HISTORY_DAILY:
             return HISTORY_DAILY_FIELDS
         return HISTORY_LIST_FIELDS
-    if destination_id == DESTINATION_PRODUCT_DATA:
-        if level_id == LEVEL_PRODUCT_BOM:
-            return PRODUCT_BOM_FIELDS
-        if level_id == LEVEL_PRODUCT_CONSUMABLES:
-            return PRODUCT_CONSUMABLE_FIELDS
-        return PRODUCT_INFO_FIELDS
-    if destination_id == DESTINATION_INVENTORY_ORDERS:
-        if level_id == LEVEL_IO_STOCK:
-            return IO_STOCK_FIELDS
-        if level_id == LEVEL_IO_BOM:
-            return PRODUCT_BOM_FIELDS
-        if level_id == LEVEL_IO_FORECAST:
-            return IO_FORECAST_FIELDS
-        return IO_ORDER_FIELDS
+    if destination_id in (DESTINATION_PRODUCT_DATA, DESTINATION_VOUCHERS):
+        from catalog.flexible_data import load_schema_columns
+
+        cols = load_schema_columns(destination_id, level_id)
+        return [
+            DestField(
+                key=c["key"],
+                label=c["label"],
+                type=c.get("type") or "string",
+                required=bool(c.get("is_key")),
+                is_key=bool(c.get("is_key")),
+            )
+            for c in cols
+        ]
     return []
 
 
@@ -1566,16 +1680,100 @@ def _transfer_io_forecast(
     return result
 
 
+
+def _transfer_flexible(
+    *,
+    table: ExcelTable,
+    col_map: dict[str, int | None],
+    fields: list[DestField],
+    user,
+    mode: str,
+    destination_id: str,
+    level_id: str,
+) -> TransferResult:
+    """Replace-all transfer or keyed update into FlexibleDataset."""
+    from catalog.flexible_data import (
+        keyed_update_rows,
+        make_identity_key,
+        redirect_for_destination,
+        replace_all_rows,
+    )
+
+    result = TransferResult(
+        destination_id=destination_id,
+        level_id=level_id,
+        mode=mode,
+    )
+    headers = table.headers if isinstance(table.headers, list) else []
+    rows = table.rows if isinstance(table.rows, list) else []
+    key_fields = [f.key for f in fields if f.is_key]
+    parsed_rows: list[dict] = []
+
+    for row_i, row in enumerate(rows, start=1):
+        if not isinstance(row, list):
+            _row_alarm(result, table=table, row_i=row_i, msg=f"ردیف {row_i}: ساختار ردیف نامعتبر است.")
+            continue
+        if not any(str(c).strip() for c in row if c is not None):
+            result.skipped += 1
+            continue
+        values, row_errors, error_cols = _parse_row(row, col_map, fields, headers)
+        if row_errors:
+            _row_alarm(
+                result,
+                table=table,
+                row_i=row_i,
+                msg=_format_row_errors(row_i, table.name, row_errors),
+                field_label=_first_field_label(row_errors),
+                error_cols=error_cols,
+            )
+            continue
+        # Drop internal keys
+        clean = {k: v for k, v in values.items() if not str(k).startswith("_")}
+        # stringify non-null for JSON store
+        store = {}
+        for k, v in clean.items():
+            if v is None:
+                store[k] = ""
+            elif hasattr(v, "isoformat"):
+                store[k] = v.isoformat()
+            else:
+                store[k] = v
+        parsed_rows.append(store)
+
+    if mode == MODE_UPDATE:
+        if not key_fields:
+            raise ValueError(
+                "برای بروزرسانی باید حداقل یک ستون کلیدی در داده‌های سیستم مشخص شود."
+            )
+        transferred, deleted, skipped_extra = keyed_update_rows(
+            destination_id,
+            level_id,
+            parsed_rows,
+            key_fields=key_fields,
+        )
+        result.transferred = transferred
+        result.skipped += skipped_extra
+        if deleted:
+            result.alarms.append(f"{deleted} ردیف قدیمی بدون کلید متناظر در فایل جدید حذف شد.")
+    else:
+        count = replace_all_rows(
+            destination_id,
+            level_id,
+            parsed_rows,
+            key_fields=key_fields,
+        )
+        result.transferred = count
+
+    result.redirect_url = redirect_for_destination(destination_id, level_id)
+    result.done = True
+    result.percent = 100
+    result.total_rows = len(rows)
+    return result
+
+
 _HANDLERS = {
     (DESTINATION_PRODUCTION_HISTORY, LEVEL_HISTORY_LIST): _transfer_history_list,
     (DESTINATION_PRODUCTION_HISTORY, LEVEL_HISTORY_DAILY): _transfer_history_daily,
-    (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_INFO): _transfer_product_info,
-    (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_BOM): _transfer_product_bom,
-    (DESTINATION_PRODUCT_DATA, LEVEL_PRODUCT_CONSUMABLES): _transfer_product_consumables,
-    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_ORDERS): _transfer_io_orders,
-    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_STOCK): _transfer_io_stock,
-    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_BOM): _transfer_product_bom,
-    (DESTINATION_INVENTORY_ORDERS, LEVEL_IO_FORECAST): _transfer_io_forecast,
 }
 
 
@@ -1589,13 +1787,23 @@ def transfer_excel_table(
     mode: str = MODE_TRANSFER,
     offset: int = 0,
     limit: int | None = None,
+    confirm_replace: bool = False,
+    bootstrap_columns: list[int] | None = None,
+    add_columns: list[int] | None = None,
 ) -> TransferResult:
-    """Transfer or update table rows into destination. Does NOT delete the Excel table.
+    """Transfer (full replace) or keyed update into a destination.
 
-    mode=transfer: create missing records and update existing ones.
-    mode=update: only patch existing records; never insert new ones.
-    Optional offset/limit enable chunked transfer with progress percent.
+    Dynamic destinations may bootstrap schema from Excel headers when raw.
+    Does NOT delete the Excel table.
     """
+    from catalog.flexible_data import (
+        add_columns_from_headers,
+        bootstrap_schema_from_headers,
+        dataset_has_rows,
+        load_schema_columns,
+        redirect_for_destination,
+    )
+
     if mode not in (MODE_TRANSFER, MODE_UPDATE):
         raise ValueError("حالت عملیات نامعتبر است (انتقال یا بروزرسانی).")
 
@@ -1610,42 +1818,178 @@ def transfer_excel_table(
     if level_id not in levels:
         raise ValueError("سطح انتقال نامعتبر است یا پنهان شده است.")
 
-    # Only map onto fields that remain active in the naming registry
-    ui_fields = levels[level_id].get("fields") or []
-    allowed_keys = {f["key"] for f in ui_fields}
-    fields = [f for f in _fields_for(destination_id, level_id) if f.key in allowed_keys]
-    # Apply resolved labels onto DestField copies for error messages
-    label_by_key = {f["key"]: f["label"] for f in ui_fields}
-    fields = [
-        DestField(key=f.key, label=label_by_key.get(f.key, f.label), type=f.type, required=f.required)
-        for f in fields
-    ]
+    level_meta = levels[level_id]
+    schema_mode = level_meta.get("schema_mode") or dest.get("schema_mode") or SCHEMA_FIXED
     headers = table.headers if isinstance(table.headers, list) else []
-    col_map, map_errors = _normalize_mapping(mapping, fields, len(headers))
+    is_raw = bool(level_meta.get("is_raw"))
+    has_rows = bool(level_meta.get("has_rows"))
+
+    # --- UPDATE: blocked when no data ---
+    if mode == MODE_UPDATE:
+        empty = not has_rows
+        if schema_mode == SCHEMA_DYNAMIC:
+            empty = not dataset_has_rows(destination_id, level_id)
+        elif destination_id == DESTINATION_PRODUCTION_HISTORY:
+            empty = not _fixed_dest_has_rows(destination_id, level_id)
+        if empty:
+            raise ValueError(
+                "بروزرسانی ممکن نیست؛ در مقصد هنوز داده‌ای وجود ندارد. از «انتقال» استفاده کنید."
+            )
+
+    # --- TRANSFER bootstrap for raw dynamic destinations ---
+    if mode == MODE_TRANSFER and schema_mode == SCHEMA_DYNAMIC and is_raw:
+        selected = bootstrap_columns
+        if selected is None:
+            # mapping values that are indexes, or all headers
+            selected = []
+            if isinstance(mapping, dict) and mapping:
+                for v in mapping.values():
+                    try:
+                        idx = int(v)
+                    except (TypeError, ValueError):
+                        continue
+                    if idx >= 0:
+                        selected.append(idx)
+            if not selected:
+                selected = list(range(len(headers)))
+        bootstrap_schema_from_headers(
+            destination_id,
+            level_id,
+            headers,
+            selected_indexes=selected,
+            dest_label=dest.get("label") or "",
+            level_label=level_meta.get("label") or "",
+        )
+        # After bootstrap, build identity mapping col_key -> same excel index by order
+        cols = load_schema_columns(destination_id, level_id)
+        # Map each new column to the selected excel index in order
+        mapping = {}
+        for col, idx in zip(cols, selected):
+            mapping[col["key"]] = idx
+        is_raw = False
+        has_rows = False
+
+    # --- Validate existing schema mapping BEFORE adding new columns ---
+    existing_fields_meta = (
+        load_schema_columns(destination_id, level_id)
+        if schema_mode == SCHEMA_DYNAMIC
+        else (level_meta.get("fields") or [])
+    )
+    if mode == MODE_TRANSFER and schema_mode == SCHEMA_DYNAMIC and not is_raw:
+        missing = []
+        for f in existing_fields_meta:
+            raw = mapping.get(f["key"]) if isinstance(mapping, dict) else None
+            if raw is None or raw == "" or raw == -1 or raw == "-1":
+                missing.append(f["label"])
+        if missing:
+            raise ValueError(
+                "در حالت انتقال باید همه ستون‌های مقصد نگاشت شوند. ستون‌های بدون نگاشت: "
+                + "، ".join(missing)
+            )
+        if has_rows and not confirm_replace:
+            raise ValueError(
+                "برای جایگزینی داده‌های قبلی باید تأیید جایگزینی ارسال شود."
+            )
+
+    # --- TRANSFER: add optional extra columns when schema exists ---
+    if (
+        mode == MODE_TRANSFER
+        and schema_mode == SCHEMA_DYNAMIC
+        and not is_raw
+        and add_columns
+    ):
+        new_cols = add_columns_from_headers(
+            destination_id,
+            level_id,
+            headers,
+            [int(i) for i in add_columns],
+            dest_label=dest.get("label") or "",
+            level_label=level_meta.get("label") or "",
+        )
+        # Auto-map newly added columns to their Excel indexes
+        if not isinstance(mapping, dict):
+            mapping = {}
+        for col, idx in zip(new_cols, add_columns):
+            mapping[col["key"]] = int(idx)
+
+    # Refresh fields after possible schema changes
+    ui_fields = (
+        load_schema_columns(destination_id, level_id)
+        if schema_mode == SCHEMA_DYNAMIC
+        else (level_meta.get("fields") or [])
+    )
+    if schema_mode == SCHEMA_FIXED:
+        ui_fields = level_meta.get("fields") or []
+
+    fields = [
+        DestField(
+            key=f["key"],
+            label=f["label"],
+            type=f.get("type") or "string",
+            required=bool(f.get("required") or f.get("is_key")),
+            is_key=bool(f.get("is_key")),
+        )
+        for f in ui_fields
+    ]
+
+    if mode == MODE_UPDATE:
+        key_fields = [f for f in fields if f.is_key]
+        if not key_fields:
+            raise ValueError(
+                "هیچ ستون کلیدی برای این مقصد تعریف نشده است. در داده‌های سیستم ستون‌های کلیدی را مشخص کنید."
+            )
+        missing = []
+        for f in key_fields:
+            raw = mapping.get(f.key) if isinstance(mapping, dict) else None
+            if raw is None or raw == "" or raw == -1 or raw == "-1":
+                missing.append(f.label)
+        if missing:
+            raise ValueError(
+                "ستون‌های کلیدی باید نگاشت شوند: " + "، ".join(missing)
+            )
+        # Only keep mapped fields (keys + optionally others)
+        fields = [
+            f
+            for f in fields
+            if mapping.get(f.key) not in (None, "", -1, "-1")
+        ]
+
+    col_map, map_errors = _normalize_mapping(mapping or {}, fields, len(headers))
     if map_errors:
         raise ValueError(" ".join(map_errors))
 
-    handler = _HANDLERS.get((destination_id, level_id))
-    if not handler:
-        raise ValueError("هندلر انتقال یافت نشد.")
-
-    kwargs = {"table": table, "col_map": col_map, "user": user, "mode": mode}
-    if handler is _transfer_history_list:
-        kwargs["offset"] = offset
-        kwargs["limit"] = limit
-    result = handler(**kwargs)
-    result.mode = mode
-    if destination_id == DESTINATION_INVENTORY_ORDERS:
-        result.redirect_url = reverse("inventory_orders")
-        result.destination_id = DESTINATION_INVENTORY_ORDERS
-        result.level_id = level_id
+    # Route
+    if schema_mode == SCHEMA_DYNAMIC:
+        result = _transfer_flexible(
+            table=table,
+            col_map=col_map,
+            fields=fields,
+            user=user,
+            mode=mode,
+            destination_id=destination_id,
+            level_id=level_id,
+        )
     else:
+        handler = _HANDLERS.get((destination_id, level_id))
+        if not handler:
+            raise ValueError("هندلر انتقال یافت نشد.")
+        kwargs = {"table": table, "col_map": col_map, "user": user, "mode": mode}
+        if handler is _transfer_history_list:
+            kwargs["offset"] = offset
+            kwargs["limit"] = limit
+        result = handler(**kwargs)
         result.redirect_url = (
             reverse("excel_detail", args=[table.upload_id])
             if table.upload_id
             else reverse("excel_list")
         )
+
+    result.mode = mode
+    result.destination_id = destination_id
+    result.level_id = level_id
     result.table_deleted = False
+    if schema_mode == SCHEMA_DYNAMIC and not result.redirect_url:
+        result.redirect_url = redirect_for_destination(destination_id, level_id)
 
     action_label = "بروزرسانی" if mode == MODE_UPDATE else "انتقال"
     if result.failed:

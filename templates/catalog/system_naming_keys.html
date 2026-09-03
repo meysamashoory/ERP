@@ -100,6 +100,7 @@
           <th style="width:110px">دسته</th>
           <th style="width:120px">ربط بخش</th>
           <th style="width:90px">وضعیت</th>
+          <th style="width:90px">کلیدی</th>
           {% if can_edit %}<th style="width:100px">عملیات</th>{% endif %}
         </tr>
       </thead>
@@ -115,6 +116,7 @@
             {% if row.source_bucket == "report" %}<span class="naming-badge">گزارش</span>{% endif %}
             {% if row.is_custom %}<span class="naming-badge">سفارشی</span>{% endif %}
             {% if row.is_renamed %}<span class="naming-badge naming-badge-renamed">تغییرنام</span>{% endif %}
+            {% if row.is_key %}<span class="naming-badge">کلیدی</span>{% endif %}
           </td>
           <td>
             {% if can_edit %}
@@ -146,6 +148,16 @@
             </label>
             {% else %}
             {% if row.is_active %}فعال{% else %}پنهان{% endif %}
+            {% endif %}
+          </td>
+          <td>
+            {% if can_edit %}
+            <label class="naming-active-toggle">
+              <input type="checkbox" data-field="is_key" {% if row.is_key %}checked{% endif %}>
+              <span>{% if row.is_key %}کلیدی{% else %}—{% endif %}</span>
+            </label>
+            {% else %}
+            {% if row.is_key %}کلیدی{% else %}—{% endif %}
             {% endif %}
           </td>
           {% if can_edit %}
@@ -190,7 +202,8 @@
       id: Number(tr.getAttribute("data-id")),
       label: (tr.querySelector('[data-field="label"]') || {}).value,
       linked_section_key: (tr.querySelector('[data-field="linked_section_key"]') || {}).value,
-      is_active: !!(tr.querySelector('[data-field="is_active"]') || {}).checked
+      is_active: !!(tr.querySelector('[data-field="is_active"]') || {}).checked,
+      is_key: !!(tr.querySelector('[data-field="is_key"]') || {}).checked
     };
   }
   document.querySelectorAll(".naming-save-btn").forEach(function (btn) {

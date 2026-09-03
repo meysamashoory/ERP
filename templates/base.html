@@ -7,7 +7,7 @@
   <title>{% block title %}سامانه برنامه ریزی و کنترل تولید{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=9">
   <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=9">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=55">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=56">
 </head>
 <body>
 <div class="layout">
@@ -27,7 +27,6 @@
         <div class="nav-section-title">برنامه‌های تولید</div>
         <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
         <a href="{% url 'systemic_intelligence' %}" class="{% block nav_systemic %}{% endblock %}">هوش برنامه‌ریزی سیستمی</a>
-        <a href="{% url 'inventory_orders' %}" class="{% block nav_inventory_orders %}{% endblock %}">بررسی موجودی و سفارشات</a>
         <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">ثبت و کنترل تولید</a>
         <a href="{% url 'production_history' %}" class="{% block nav_history %}{% endblock %}">سوابق تولید</a>
       </div>
@@ -42,6 +41,7 @@
         <div class="nav-section-title">مدیریت داده‌ها</div>
         <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">بارگذاری</a>
         <a href="{% url 'product_data' %}" class="{% block nav_product_data %}{% endblock %}">دیتای محصولات</a>
+        <a href="{% url 'vouchers_hub' %}" class="{% block nav_vouchers %}{% endblock %}">حواله‌ها</a>
         <a href="{% url 'system_data' %}" class="{% block nav_system_data %}{% endblock %}">داده‌های سیستم</a>
       </div>
 
