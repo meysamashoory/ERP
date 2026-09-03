@@ -433,6 +433,9 @@ def build_depot_matrix(profile: PipeSizeProfile) -> list[dict[str, Any]]:
         data["nominal_cm"] = lc.nominal_cm
         data["cut_length_mm"] = lc.cut_length_mm
         data["socket_ends"] = lc.socket_ends
+        cut_speed = float(lc.line_speed_m_per_min or 0)
+        profile_speed = float(profile.line_speed_m_per_min or 0)
+        data["line_speed_m_per_min"] = cut_speed if cut_speed > 0 else profile_speed
         rows.append(data)
     return rows
 
@@ -495,12 +498,20 @@ def build_production_matrix(
         if lc is None:
             continue
         qty = resolve_qty_from_depot_row(depot, qty_source)
+        cut_speed = float(lc.line_speed_m_per_min or 0)
+        profile_speed = float(profile.line_speed_m_per_min or 0)
+        # Prefer explicit depot-row override from definitions dialog when present.
+        try:
+            row_speed = float(depot.get("line_speed_m_per_min") or 0)
+        except (TypeError, ValueError):
+            row_speed = 0.0
+        speed = row_speed if row_speed > 0 else (cut_speed if cut_speed > 0 else profile_speed)
         prod = calc_production_matrix_row(
             length_code=code,
             label=str(depot.get("label") or lc.label),
             qty=qty,
             cut_length_mm=float(lc.cut_length_mm or 0),
-            line_speed_m_per_min=float(profile.line_speed_m_per_min or 0),
+            line_speed_m_per_min=speed,
             billing_pieces_per_hour=float(profile.billing_pieces_per_hour or 0),
             socket_ends=int(lc.socket_ends or 0),
             needs_billing=bool(line.needs_billing),

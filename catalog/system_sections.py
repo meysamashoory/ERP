@@ -108,13 +108,13 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="table_layout",
-                    title="ارتفاع ردیف و قفل عرض ستون جداول",
+                    title="ارتفاع ردیف و عرض ستون گزارش‌ها",
                     admin_changelist="",
                     url_name="system_table_layout",
                     can_add=False,
                     description=(
-                        "ارتفاع یکنواخت ردیف‌ها برای همه جداول، و قفل عرض ستون "
-                        "به‌صورت جداگانه برای هر بخش (گزارش، دیتای محصولات، سوابق، …)."
+                        "ارتفاع ردیف برای گزارش‌ها و داده‌های سیستم، و قفل عرض ستون فقط برای گزارش‌ها. "
+                        "سایر بخش‌ها ارتفاع و عرض پیش‌فرض دارند."
                     ),
                     count_fn=_count(TableLayoutSettings),
                 ),

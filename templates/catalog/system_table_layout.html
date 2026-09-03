@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}ارتفاع ردیف و قفل عرض ستون{% endblock %}
-{% block heading %}ارتفاع ردیف و قفل عرض ستون جداول{% endblock %}
+{% block title %}ارتفاع ردیف و عرض ستون گزارش‌ها{% endblock %}
+{% block heading %}ارتفاع ردیف و عرض ستون گزارش‌ها{% endblock %}
 {% block nav_data %}{% endblock %}
 {% block nav_system_data %}active{% endblock %}
 
@@ -15,19 +15,19 @@
   {% csrf_token %}
   <div class="panel-body">
     <p class="panel-hint">
-      ارتفاع ردیف روی همه جداول سامانه یکسان اعمال می‌شود.
-      قفل عرض ستون برای هر بخش جداگانه است؛ وقتی قفل باشد دستگیره تغییر عرض (مرز قابل کشیدن) پنهان می‌شود.
+      ارتفاع ردیف فقط روی جداول <strong>گزارش‌ها</strong> و جداول <strong>داده‌های سیستم</strong> اعمال می‌شود؛ سایر بخش‌ها ارتفاع پیش‌فرض دارند.
+      تغییر عرض ستون با کشیدن موس فقط در <strong>گزارش‌ها</strong> فعال است (از جمله لبه چپ جدول).
     </p>
 
     <div class="field" style="max-width:280px">
-      <label for="id_row_height_px">ارتفاع یکنواخت ردیف (پیکسل)</label>
+      <label for="id_row_height_px">ارتفاع ردیف گزارش‌ها / سیستم (پیکسل)</label>
       <input class="input" type="number" name="row_height_px" id="id_row_height_px"
              min="18" max="120" step="1" value="{{ row_height_px }}">
       <span class="muted" style="font-size:12px">بین ۱۸ تا ۱۲۰</span>
     </div>
 
     <div class="field" style="margin-top:18px">
-      <label>قفل عرض ستون به تفکیک بخش</label>
+      <label>قفل عرض ستون گزارش‌ها</label>
       <div class="lock-grid">
         {% for item in lock_items %}
         <label class="lock-item chk">
@@ -36,6 +36,7 @@
         </label>
         {% endfor %}
       </div>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">اگر قفل باشد، دستگیره تغییر عرض در گزارش‌ها پنهان می‌شود.</span>
     </div>
 
     <div class="line-actions" style="margin-top:18px">

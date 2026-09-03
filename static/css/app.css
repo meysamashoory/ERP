@@ -685,13 +685,26 @@ tr.is-conflict-row > td {
 .table th, .table td {
   text-align: center;
   padding: 0 12px;
-  height: var(--table-row-height, 36px);
-  min-height: var(--table-row-height, 36px);
+  height: 36px;
+  min-height: 36px;
   line-height: 1.25;
   border-bottom: 1px solid var(--line);
   border-left: 1px solid var(--line);
   vertical-align: middle;
   box-sizing: border-box;
+}
+/* Configurable row height: reports + system data only */
+table.table[data-table-section="reports"] th,
+table.table[data-table-section="reports"] td,
+[data-table-section="reports"] table.table th,
+[data-table-section="reports"] table.table td,
+table.table[data-table-section="system"] th,
+table.table[data-table-section="system"] td,
+[data-table-section="system"] table.table th,
+[data-table-section="system"] table.table td {
+  height: var(--table-row-height, 36px);
+  min-height: var(--table-row-height, 36px);
+  max-height: var(--table-row-height, 36px);
 }
 .table th:last-child,
 .table td:last-child { border-left: none; }
@@ -757,6 +770,10 @@ tr.is-conflict-row > td {
   width: 6px;
   cursor: col-resize;
   z-index: 2;
+}
+.table.col-resize-enabled th .col-resizer-edge {
+  left: 0;
+  width: 8px;
 }
 .table.col-resize-enabled th .col-resizer:hover,
 .table.col-resize-enabled th .col-resizer:active {
@@ -2591,12 +2608,58 @@ input[type=number].spin {
   align-items: end;
   gap: 14px 20px;
 }
+.pcx-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
 .pcx-field {
   display: grid;
   gap: 6px;
   min-width: 180px;
   font-size: 13px;
   color: #3f3f46;
+}
+.pcx-defs-btn {
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+  white-space: nowrap;
+}
+.pcx-defs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pcx-defs-table th,
+.pcx-defs-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #f0eeec;
+  text-align: center;
+  height: 30px;
+  line-height: 1.2;
+}
+.pcx-defs-table th {
+  background: #fafaf9;
+  color: #57534e;
+  font-size: 12px;
+  font-weight: 650;
+}
+.pcx-defs-table td:first-child,
+.pcx-defs-table th:first-child {
+  text-align: right;
+}
+.pcx-defs-table .pcx-input {
+  width: 100%;
+  max-width: 120px;
+}
+.pcx-defs-foot {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f0eeec;
 }
 .pcx-field select {
   appearance: none;
@@ -2655,16 +2718,20 @@ input[type=number].spin {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12.5px;
+  font-size: 12px;
   color: #292524;
 }
 .pcx-table th,
 .pcx-table td {
-  padding: 10px 12px;
+  padding: 2px 6px;
   border-bottom: 1px solid #f0eeec;
   white-space: nowrap;
   text-align: center;
   vertical-align: middle;
+  height: 26px;
+  max-height: 26px;
+  line-height: 1.15;
+  box-sizing: border-box;
 }
 .pcx-table th {
   position: sticky;
@@ -2674,7 +2741,9 @@ input[type=number].spin {
   backdrop-filter: blur(6px);
   color: #57534e;
   font-weight: 650;
-  font-size: 11.5px;
+  font-size: 11px;
+  height: 28px;
+  max-height: 28px;
 }
 .pcx-table tbody tr:hover td {
   background: rgba(14, 116, 144, 0.04);
@@ -2701,15 +2770,22 @@ input[type=number].spin {
   direction: ltr;
   unicode-bidi: isolate;
 }
-.pcx-input {
-  width: 88px;
-  padding: 7px 8px;
+.pcx-input,
+.pcx-table input.pcx-input,
+.pcx-defs-table input.pcx-input {
+  width: 72px;
+  height: 22px !important;
+  min-height: 22px !important;
+  padding: 0 4px !important;
   border: 1px solid #e7e5e4;
-  border-radius: 8px;
+  border-radius: 5px;
   background: #fff;
   font: inherit;
+  font-size: 12px !important;
+  line-height: 20px !important;
   text-align: center;
   color: #1c1917;
+  box-sizing: border-box;
 }
 .pcx-input:focus {
   outline: none;

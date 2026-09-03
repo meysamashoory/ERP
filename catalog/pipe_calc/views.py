@@ -173,6 +173,12 @@ def pipe_calc_run(request: HttpRequest) -> HttpResponse:
                         fields.append("avg_monthly_sales")
                     except (TypeError, ValueError):
                         return JsonResponse({"ok": False, "error": "میانگین فروش نامعتبر"}, status=400)
+                if "line_speed_m_per_min" in patch:
+                    try:
+                        lc.line_speed_m_per_min = max(0, float(patch.get("line_speed_m_per_min") or 0))
+                        fields.append("line_speed_m_per_min")
+                    except (TypeError, ValueError):
+                        return JsonResponse({"ok": False, "error": "سرعت خط نامعتبر"}, status=400)
                 if "required_qty" in patch:
                     # required_qty is computed client-side; persist via stock extras not needed
                     pass
@@ -276,6 +282,11 @@ def pipe_calc_save_stock(request: HttpRequest) -> HttpResponse:
             if "avg_monthly_sales" in request.POST:
                 length.avg_monthly_sales = max(0, float(request.POST.get("avg_monthly_sales") or 0))
                 fields.append("avg_monthly_sales")
+            if "line_speed_m_per_min" in request.POST:
+                length.line_speed_m_per_min = max(
+                    0, float(request.POST.get("line_speed_m_per_min") or 0)
+                )
+                fields.append("line_speed_m_per_min")
             if "stock_on_hand" in request.POST:
                 length.stock_on_hand = int(request.POST.get("stock_on_hand") or 0)
                 fields.append("stock_on_hand")
@@ -290,6 +301,7 @@ def pipe_calc_save_stock(request: HttpRequest) -> HttpResponse:
                     "length_id": length.id,
                     "depot_ceiling": length.depot_ceiling,
                     "avg_monthly_sales": float(length.avg_monthly_sales or 0),
+                    "line_speed_m_per_min": float(length.line_speed_m_per_min or 0),
                     "stock_on_hand": length.stock_on_hand,
                     "voucher_qty": length.voucher_qty,
                 }
@@ -319,6 +331,69 @@ def pipe_calc_save_stock(request: HttpRequest) -> HttpResponse:
             "depot_ceiling": size.depot_ceiling,
         }
     )
+
+
+@login_required
+@require_POST
+def pipe_calc_save_defs(request: HttpRequest) -> HttpResponse:
+    """Batch-save initial definitions (ceiling / avg sales / line speed) per length row."""
+    if not profile_can_edit(request):
+        return JsonResponse({"ok": False, "error": "مجوز ویرایش ندارید"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({"ok": False, "error": "داده نامعتبر است."}, status=400)
+
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return JsonResponse({"ok": False, "error": "ردیفی برای ذخیره نیست."}, status=400)
+
+    saved: list[dict] = []
+    for item in rows:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        try:
+            length = PipeLengthCut.objects.select_related("size_profile").get(
+                pk=int(item["id"])
+            )
+        except (TypeError, ValueError, PipeLengthCut.DoesNotExist):
+            return JsonResponse({"ok": False, "error": "طول نامعتبر"}, status=400)
+
+        fields: list[str] = []
+        if "depot_ceiling" in item:
+            try:
+                length.depot_ceiling = max(0, int(item.get("depot_ceiling") or 0))
+                fields.append("depot_ceiling")
+            except (TypeError, ValueError):
+                return JsonResponse({"ok": False, "error": "سقف دپو نامعتبر"}, status=400)
+        if "avg_monthly_sales" in item:
+            try:
+                length.avg_monthly_sales = max(0, float(item.get("avg_monthly_sales") or 0))
+                fields.append("avg_monthly_sales")
+            except (TypeError, ValueError):
+                return JsonResponse({"ok": False, "error": "میانگین فروش نامعتبر"}, status=400)
+        if "line_speed_m_per_min" in item:
+            try:
+                length.line_speed_m_per_min = max(
+                    0, float(item.get("line_speed_m_per_min") or 0)
+                )
+                fields.append("line_speed_m_per_min")
+            except (TypeError, ValueError):
+                return JsonResponse({"ok": False, "error": "سرعت خط نامعتبر"}, status=400)
+        if fields:
+            length.save(update_fields=fields)
+        saved.append(
+            {
+                "id": length.id,
+                "depot_ceiling": length.depot_ceiling,
+                "avg_monthly_sales": float(length.avg_monthly_sales or 0),
+                "line_speed_m_per_min": float(length.line_speed_m_per_min or 0)
+                or float(length.size_profile.line_speed_m_per_min or 0),
+            }
+        )
+
+    return JsonResponse({"ok": True, "rows": saved})
 
 
 @login_required

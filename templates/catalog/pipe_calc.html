@@ -34,20 +34,23 @@
          id="pcx-root"
          data-line="{{ line.code }}"
          data-run-url="{% url 'pipe_calc_run' %}"
-         data-stock-url="{% url 'pipe_calc_save_stock' %}"
+         data-defs-url="{% url 'pipe_calc_save_defs' %}"
          data-can-edit="{% if can_edit %}1{% else %}0{% endif %}">
   <script type="application/json" id="pcx-matrix-json">{{ matrix_json|safe }}</script>
 
   <div class="pcx-toolbar">
-    <label class="pcx-field">
-      <span>سایز لوله</span>
-      <select id="pcx-size">
-        {% for s in overview.sizes %}
-        <option value="{{ s.size_mm }}" {% if selected_size_mm == s.size_mm %}selected{% endif %}>Ø{{ s.size_mm }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <p class="pcx-hint">موجودی و حواله از داده محصولات می‌آید؛ سقف دپو برای همه طول‌ها قابل تعریف است.</p>
+    <div class="pcx-toolbar-actions">
+      <label class="pcx-field">
+        <span>سایز لوله</span>
+        <select id="pcx-size">
+          {% for s in overview.sizes %}
+          <option value="{{ s.size_mm }}" {% if selected_size_mm == s.size_mm %}selected{% endif %}>Ø{{ s.size_mm }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="button" class="btn btn-ghost pcx-defs-btn" id="pcx-open-defs">تعاریف اولیه</button>
+    </div>
+    <p class="pcx-hint">موجودی و حواله از داده محصولات خوانده می‌شود؛ سقف دپو، میانگین فروش و سرعت خط از «تعاریف اولیه» تنظیم می‌شود.</p>
   </div>
 
   <article class="pcx-card">
@@ -97,6 +100,33 @@
   </div>
 </section>
 
+<dialog class="dialog dialog-wide" id="pcx-defs-dialog">
+  <div data-dialog-body>
+    <div class="dialog-head">
+      <h3>تعاریف اولیه — سایز <span id="pcx-defs-size-label"></span></h3>
+      <button type="button" class="btn btn-sm btn-ghost" data-dialog-close aria-label="بستن">✕</button>
+    </div>
+    <p class="panel-hint" style="margin-top:0">سقف دپو، میانگین فروش ماهانه و سرعت تولید خط را برای هر طول اسمی تعریف کنید.</p>
+    <div class="pcx-scroll">
+      <table class="pcx-defs-table">
+        <thead>
+          <tr>
+            <th>طول اسمی</th>
+            <th>سقف دپو</th>
+            <th>میانگین فروش</th>
+            <th>سرعت تولید خط (m/min)</th>
+          </tr>
+        </thead>
+        <tbody id="pcx-defs-body"></tbody>
+      </table>
+    </div>
+    <div class="pcx-defs-foot">
+      <button type="button" class="btn pcx-primary" id="pcx-defs-save"{% if not can_edit %} disabled{% endif %}>ذخیره تعاریف</button>
+      <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+    </div>
+  </div>
+</dialog>
+
 {% else %}
 <section class="panel panel-compact pcx-placeholder">
   <h3 class="panel-title">{{ line.name }}</h3>
@@ -123,7 +153,7 @@
 
   var canEdit = root.getAttribute("data-can-edit") === "1";
   var runUrl = root.getAttribute("data-run-url");
-  var stockUrl = root.getAttribute("data-stock-url");
+  var defsUrl = root.getAttribute("data-defs-url");
   var lineCode = root.getAttribute("data-line");
   var matrix = {};
   try {
@@ -139,6 +169,11 @@
   var qtySel = document.getElementById("pcx-qty-source");
   var prodHead = document.getElementById("pcx-prod-head");
   var prodBody = document.getElementById("pcx-prod-body");
+  var defsDialog = document.getElementById("pcx-defs-dialog");
+  var defsBody = document.getElementById("pcx-defs-body");
+  var defsSizeLabel = document.getElementById("pcx-defs-size-label");
+  var openDefsBtn = document.getElementById("pcx-open-defs");
+  var saveDefsBtn = document.getElementById("pcx-defs-save");
 
   function csrfToken() {
     var el = document.querySelector("[name=csrfmiddlewaretoken]");
@@ -185,15 +220,11 @@
       return (
         '<tr data-idx="' + idx + '">' +
           '<td class="pcx-sticky">' + (row.label || row.length_code || "") + "</td>" +
-          '<td><input class="pcx-input" data-field="depot_ceiling" type="number" min="0" step="1" value="' + (row.depot_ceiling || 0) + '"></td>' +
-          "<td>" + (canEdit
-            ? '<input class="pcx-input" data-field="stock" type="number" step="1" value="' + (row.stock || 0) + '">'
-            : '<span class="pcx-num">' + fmtNum(row.stock, 0) + "</span>") + "</td>" +
-          "<td>" + (canEdit
-            ? '<input class="pcx-input" data-field="voucher" type="number" min="0" step="1" value="' + (row.voucher || 0) + '">'
-            : '<span class="pcx-num">' + fmtNum(row.voucher, 0) + "</span>") + "</td>" +
+          '<td class="pcx-num" data-col="ceiling">' + fmtNum(row.depot_ceiling, 0) + "</td>" +
+          '<td class="pcx-num" data-col="stock">' + fmtNum(row.stock, 0) + "</td>" +
+          '<td class="pcx-num" data-col="voucher">' + fmtNum(row.voucher, 0) + "</td>" +
           '<td class="pcx-num" data-col="remaining">' + fmtNum(row.remaining_after_voucher, 0) + "</td>" +
-          '<td><input class="pcx-input" data-field="avg_monthly_sales" type="number" min="0" step="0.01" value="' + (row.avg_monthly_sales || 0) + '"></td>' +
+          '<td class="pcx-num" data-col="avg">' + fmtNum(row.avg_monthly_sales, 2) + "</td>" +
           '<td class="pcx-num" data-col="months">' + (row.months_remaining === null ? "—" : fmtNum(row.months_remaining, 2)) + "</td>" +
           '<td class="pcx-num" data-col="pct">' + fmtPct(row.depot_remaining_pct) + "</td>" +
           '<td class="pcx-num" data-col="deduct_stock">' + fmtNum(row.deduct_from_depot_stock, 0) + "</td>" +
@@ -210,6 +241,7 @@
         id: row.id,
         depot_ceiling: row.depot_ceiling,
         avg_monthly_sales: row.avg_monthly_sales,
+        line_speed_m_per_min: row.line_speed_m_per_min,
         stock_on_hand: row.stock,
         voucher_qty: row.voucher,
         required_qty: row.required_qty
@@ -298,6 +330,93 @@
       });
   }
 
+  function openDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "open");
+  }
+
+  function closeDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+
+  function renderDefsForm() {
+    defsSizeLabel.textContent = "Ø" + sizeSel.value;
+    defsBody.innerHTML = (matrix.depot_rows || []).map(function (row, idx) {
+      return (
+        '<tr data-idx="' + idx + '" data-id="' + (row.id || "") + '">' +
+          "<td>" + (row.label || row.length_code || "") + "</td>" +
+          '<td><input class="pcx-input" data-def="depot_ceiling" type="number" min="0" step="1" value="' + (row.depot_ceiling || 0) + '"' + (canEdit ? "" : " disabled") + "></td>" +
+          '<td><input class="pcx-input" data-def="avg_monthly_sales" type="number" min="0" step="0.01" value="' + (row.avg_monthly_sales || 0) + '"' + (canEdit ? "" : " disabled") + "></td>" +
+          '<td><input class="pcx-input" data-def="line_speed_m_per_min" type="number" min="0" step="0.001" value="' + (row.line_speed_m_per_min || 0) + '"' + (canEdit ? "" : " disabled") + "></td>" +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function collectDefsRows() {
+    return Array.prototype.map.call(defsBody.querySelectorAll("tr"), function (tr) {
+      var idx = parseInt(tr.getAttribute("data-idx"), 10);
+      var row = matrix.depot_rows[idx] || {};
+      return {
+        id: parseInt(tr.getAttribute("data-id"), 10) || row.id,
+        depot_ceiling: Math.max(0, parseInt(tr.querySelector('[data-def="depot_ceiling"]').value, 10) || 0),
+        avg_monthly_sales: Math.max(0, parseFloat(tr.querySelector('[data-def="avg_monthly_sales"]').value) || 0),
+        line_speed_m_per_min: Math.max(0, parseFloat(tr.querySelector('[data-def="line_speed_m_per_min"]').value) || 0)
+      };
+    });
+  }
+
+  openDefsBtn.addEventListener("click", function () {
+    renderDefsForm();
+    openDialog(defsDialog);
+  });
+
+  defsDialog.querySelectorAll("[data-dialog-close]").forEach(function (btn) {
+    btn.addEventListener("click", function () { closeDialog(defsDialog); });
+  });
+
+  saveDefsBtn.addEventListener("click", function () {
+    if (!canEdit) return;
+    var rows = collectDefsRows();
+    saveDefsBtn.disabled = true;
+    fetch(defsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken(),
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({ rows: rows })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        saveDefsBtn.disabled = false;
+        if (!data.ok) {
+          alert(data.error || "ذخیره ناموفق بود");
+          return;
+        }
+        var byId = {};
+        (data.rows || []).forEach(function (r) { byId[r.id] = r; });
+        (matrix.depot_rows || []).forEach(function (row) {
+          var saved = byId[row.id];
+          if (!saved) return;
+          row.depot_ceiling = saved.depot_ceiling;
+          row.avg_monthly_sales = saved.avg_monthly_sales;
+          row.line_speed_m_per_min = saved.line_speed_m_per_min;
+          row._requiredTouched = false;
+        });
+        renderDepot();
+        closeDialog(defsDialog);
+      })
+      .catch(function () {
+        saveDefsBtn.disabled = false;
+        alert("خطا در ارتباط با سرور");
+      });
+  });
+
   depotBody.addEventListener("input", function (event) {
     var input = event.target.closest("[data-field]");
     if (!input) return;
@@ -305,59 +424,10 @@
     var idx = parseInt(tr.getAttribute("data-idx"), 10);
     var row = matrix.depot_rows[idx];
     if (!row) return;
-    var field = input.getAttribute("data-field");
-    if (field === "avg_monthly_sales") {
-      row.avg_monthly_sales = parseFloat(input.value) || 0;
-    } else if (field === "required_qty") {
+    if (input.getAttribute("data-field") === "required_qty") {
       row.required_qty = Math.max(0, parseInt(input.value, 10) || 0);
       row._requiredTouched = true;
-    } else if (field === "depot_ceiling") {
-      row.depot_ceiling = Math.max(0, parseInt(input.value, 10) || 0);
-      row._requiredTouched = false;
-    } else if (field === "stock") {
-      row.stock = parseInt(input.value, 10) || 0;
-      row._requiredTouched = false;
-    } else if (field === "voucher") {
-      row.voucher = Math.max(0, parseInt(input.value, 10) || 0);
-      row._requiredTouched = false;
     }
-    recompute(row);
-    tr.querySelector('[data-col="remaining"]').textContent = fmtNum(row.remaining_after_voucher, 0);
-    tr.querySelector('[data-col="months"]').textContent = row.months_remaining === null ? "—" : fmtNum(row.months_remaining, 2);
-    tr.querySelector('[data-col="pct"]').textContent = fmtPct(row.depot_remaining_pct);
-    tr.querySelector('[data-col="deduct_stock"]').textContent = fmtNum(row.deduct_from_depot_stock, 0);
-    tr.querySelector('[data-col="deduct_remaining"]').textContent = fmtNum(row.deduct_from_depot_remaining, 0);
-    if (field !== "required_qty") {
-      var req = tr.querySelector('[data-field="required_qty"]');
-      if (req && row._requiredTouched !== true) req.value = row.required_qty;
-    }
-  });
-
-  depotBody.addEventListener("change", function (event) {
-    if (!canEdit) return;
-    var input = event.target.closest("[data-field]");
-    if (!input) return;
-    var field = input.getAttribute("data-field");
-    if (["depot_ceiling", "avg_monthly_sales", "stock", "voucher"].indexOf(field) < 0) return;
-    var tr = input.closest("tr");
-    var idx = parseInt(tr.getAttribute("data-idx"), 10);
-    var row = matrix.depot_rows[idx];
-    if (!row || !row.id) return;
-    var body = new URLSearchParams();
-    body.set("length_id", String(row.id));
-    body.set("depot_ceiling", String(row.depot_ceiling || 0));
-    body.set("avg_monthly_sales", String(row.avg_monthly_sales || 0));
-    body.set("stock_on_hand", String(row.stock || 0));
-    body.set("voucher_qty", String(row.voucher || 0));
-    fetch(stockUrl, {
-      method: "POST",
-      headers: {
-        "X-CSRFToken": csrfToken(),
-        "X-Requested-With": "XMLHttpRequest",
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: body.toString()
-    }).catch(function () {});
   });
 
   sizeSel.addEventListener("change", function () {

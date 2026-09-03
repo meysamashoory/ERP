@@ -819,7 +819,7 @@ class TableLayoutSettings(models.Model):
     row_height_px = models.PositiveSmallIntegerField(
         "ارتفاع یکنواخت ردیف جداول (پیکسل)",
         default=36,
-        help_text="بین ۱۸ تا ۱۲۰. روی همه جداول سامانه اعمال می‌شود.",
+        help_text="بین ۱۸ تا ۱۲۰. فقط روی جداول گزارش‌ها و داده‌های سیستم اعمال می‌شود.",
     )
     section_width_locks = models.JSONField(
         "قفل عرض ستون به تفکیک بخش",

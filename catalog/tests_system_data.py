@@ -127,19 +127,17 @@ class TableLayoutSettingsTests(TestCase):
         url = reverse("system_table_layout")
         get = self.client.get(url)
         self.assertEqual(get.status_code, 200)
-        self.assertContains(get, "ارتفاع یکنواخت ردیف")
-        self.assertContains(get, "قفل عرض ستون")
+        self.assertContains(get, "ارتفاع ردیف گزارش")
+        self.assertContains(get, "قفل عرض ستون گزارش")
         resp = self.client.post(
             url,
             {
                 "row_height_px": "44",
                 "lock_reports": "1",
-                "lock_history": "1",
             },
         )
         self.assertEqual(resp.status_code, 302)
         settings = TableLayoutSettings.load()
         self.assertEqual(settings.clamped_row_height(), 44)
         self.assertTrue(settings.is_width_locked("reports"))
-        self.assertTrue(settings.is_width_locked("history"))
         self.assertFalse(settings.is_width_locked("product_data"))
