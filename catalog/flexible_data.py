@@ -17,22 +17,26 @@ LEVEL_BOM = "bom"
 LEVEL_CONSUMABLES = "consumables"
 LEVEL_SPECS = "specs"
 
+LEVEL_VOUCHERS = "vouchers"
+
 DEFAULT_PRODUCT_TABS: list[dict[str, str]] = [
     {"id": LEVEL_PRODUCTS, "label": "محصولات"},
     {"id": LEVEL_BOM, "label": "BOM"},
     {"id": LEVEL_CONSUMABLES, "label": "مواد مصرفی"},
     {"id": LEVEL_SPECS, "label": "مشخصات فنی"},
+    {"id": LEVEL_VOUCHERS, "label": "حواله‌ها"},
 ]
 
-# Legacy level ids from the previous hard-coded product-data hub.
 OBSOLETE_PRODUCT_LEVELS = {
     "product_info",
     "product_bom",
     "product_consumables",
     "info",
     "packaging",
+    "voucher_list",
 }
 
+# Legacy destination id — kept for backward compat with naming keys
 DESTINATION_VOUCHERS = "vouchers"
 LEVEL_VOUCHERS_LIST = "voucher_list"
 
@@ -465,14 +469,7 @@ def hub_table_payload(destination_id: str, level_id: str) -> dict[str, Any]:
 
 
 def redirect_for_destination(destination_id: str, level_id: str = "") -> str:
-    if destination_id == "product_data":
-        url = reverse("product_data")
-        if level_id:
-            return f"{url}?tab={level_id}"
-        return url
-    if destination_id == DESTINATION_VOUCHERS:
-        url = reverse("vouchers_hub")
-        if level_id:
-            return f"{url}?tab={level_id}"
-        return url
-    return reverse("excel_list")
+    url = reverse("product_data")
+    if level_id:
+        return f"{url}?tab={level_id}"
+    return url

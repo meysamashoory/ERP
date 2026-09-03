@@ -607,31 +607,8 @@ def product_data_hub(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def vouchers_hub(request: HttpRequest) -> HttpResponse:
-    """Material vouchers hub — raw until Excel transfer."""
-    from catalog.flexible_data import DEFAULT_VOUCHER_TABS, hub_table_payload, list_tab_levels
-    from catalog.transfer import DESTINATION_VOUCHERS
-
-    profile = get_profile(request.user)
-    can_edit_permission = bool(profile and profile.can_enter_data)
-    tabs = list_tab_levels(DESTINATION_VOUCHERS, DEFAULT_VOUCHER_TABS)
-    tab_ids = {t["id"] for t in tabs}
-    tab = (request.GET.get("tab") or "").strip()
-    if tab not in tab_ids:
-        tab = tabs[0]["id"] if tabs else "voucher_list"
-    payload = hub_table_payload(DESTINATION_VOUCHERS, tab)
-    context = {
-        "tabs": tabs,
-        "active_tab": tab,
-        "can_edit_permission": can_edit_permission,
-        "can_edit": False,
-        "columns": payload["columns"],
-        "rows": payload["rows"],
-        "has_schema": payload["has_schema"],
-        "hub_kind": "vouchers",
-        "save_url": reverse("vouchers_save"),
-        "delete_url": reverse("vouchers_delete"),
-    }
-    return render(request, "catalog/flexible_hub.html", context)
+    """Redirect legacy vouchers URL to product data hub with vouchers tab."""
+    return redirect(reverse("product_data") + "?tab=vouchers")
 
 
 @login_required
@@ -649,13 +626,13 @@ def product_data_delete(request: HttpRequest) -> JsonResponse:
 @login_required
 @require_POST
 def vouchers_save(request: HttpRequest) -> JsonResponse:
-    return _flexible_hub_save(request, destination_id="vouchers")
+    return _flexible_hub_save(request, destination_id="product_data")
 
 
 @login_required
 @require_POST
 def vouchers_delete(request: HttpRequest) -> JsonResponse:
-    return _flexible_hub_delete(request, destination_id="vouchers")
+    return _flexible_hub_delete(request, destination_id="product_data")
 
 
 def _flexible_hub_save(request: HttpRequest, *, destination_id: str) -> JsonResponse:

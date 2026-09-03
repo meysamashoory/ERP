@@ -201,19 +201,10 @@ def list_destinations() -> list[dict[str, Any]]:
         {
             "id": t["id"],
             "label": t["label"],
-            "fields": [],  # raw until Excel bootstrap / system-data columns
-            "schema_mode": SCHEMA_DYNAMIC,
-        }
-        for t in DEFAULT_PRODUCT_TABS
-    ]
-    voucher_levels = [
-        {
-            "id": t["id"],
-            "label": t["label"],
             "fields": [],
             "schema_mode": SCHEMA_DYNAMIC,
         }
-        for t in DEFAULT_VOUCHER_TABS
+        for t in DEFAULT_PRODUCT_TABS
     ]
     return [
         {
@@ -240,12 +231,6 @@ def list_destinations() -> list[dict[str, Any]]:
             "label": "دیتای محصولات",
             "schema_mode": SCHEMA_DYNAMIC,
             "levels": product_levels,
-        },
-        {
-            "id": DESTINATION_VOUCHERS,
-            "label": "حواله‌ها",
-            "schema_mode": SCHEMA_DYNAMIC,
-            "levels": voucher_levels,
         },
     ]
 

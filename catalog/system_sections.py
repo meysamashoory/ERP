@@ -302,12 +302,13 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="vouchers_hub",
-                    title="حواله‌ها",
+                    title="حواله‌ها (تب در دیتای محصولات)",
                     admin_changelist="",
-                    url_name="vouchers_hub",
-                    description="جدول حواله‌های انبار — خام تا انتقال اکسل؛ ستون کلیدی مثلاً شماره حواله + کد کالا",
+                    url_name="product_data",
+                    url_query="tab=vouchers",
+                    description="حواله‌ها به‌عنوان تب دیتای محصولات — خام تا انتقال اکسل",
                     count_fn=lambda: FlexibleDataset.objects.filter(
-                        destination_id="vouchers"
+                        destination_id="product_data", level_id="vouchers"
                     ).count(),
                     can_add=False,
                 ),

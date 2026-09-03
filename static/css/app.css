@@ -642,6 +642,36 @@ tr.is-conflict-row > td {
 .card-warn { background: var(--warn-bg); border-color: #fcd34d; }
 .card-warn .card-value { color: var(--warn); }
 
+/* Professional dashboard KPIs (SAP / Power BI style) */
+.dash-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.dash-kpi-row-sm { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 22px; }
+.dash-kpi { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(15,23,42,.06); transition: box-shadow .15s; }
+.dash-kpi:hover { box-shadow: 0 4px 16px rgba(15,23,42,.10); }
+.dash-kpi-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.dash-kpi-blue { background: #dbeafe; }
+.dash-kpi-teal { background: #ccfbf1; }
+.dash-kpi-green { background: #dcfce7; }
+.dash-kpi-amber { background: #fef3c7; }
+.dash-kpi-red { background: #fee2e2; }
+.dash-kpi-purple { background: #ede9fe; }
+.dash-kpi-body { min-width: 0; }
+.dash-kpi-value { margin: 0; font-size: 26px; font-weight: 800; line-height: 1.1; }
+.dash-kpi-unit { font-size: 14px; font-weight: 600; color: var(--muted); margin-right: 2px; }
+.dash-kpi-label { margin: 4px 0 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-mini-kpi { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; font-size: 13px; }
+.dash-mini-label { color: var(--muted); }
+.dash-mini-value { font-weight: 700; font-size: 16px; }
+.text-danger { color: var(--danger); }
+.text-ok { color: var(--ok); }
+.dash-chart-panel .panel-body { padding: 16px 20px; }
+.dash-chart-panel .panel-head h2 { font-size: 14px; }
+.bar-fill-warn { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.bar-fill-teal { background: linear-gradient(90deg, #0d9488, #14b8a6); }
+.dash-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.dash-badge-danger { background: #fee2e2; color: #b91c1c; }
+.dash-badge-ok { background: #dcfce7; color: #15803d; }
+.dash-full-panel { margin-bottom: 20px; }
+
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } .sidebar { width: 200px; } }

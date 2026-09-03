@@ -1,10 +1,9 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}{% if hub_kind == "vouchers" %}حواله‌ها{% else %}دیتای محصولات{% endif %}{% endblock %}
-{% block heading %}{% if hub_kind == "vouchers" %}حواله‌ها{% else %}دیتای محصولات{% endif %}{% endblock %}
+{% block title %}دیتای محصولات{% endblock %}
+{% block heading %}دیتای محصولات{% endblock %}
 {% block nav_data %}{% endblock %}
-{% block nav_product_data %}{% if hub_kind != "vouchers" %}active{% endif %}{% endblock %}
-{% block nav_vouchers %}{% if hub_kind == "vouchers" %}active{% endif %}{% endblock %}
+{% block nav_product_data %}active{% endblock %}
 
 {% block topbar_actions %}
 <div class="topbar-actions topbar-actions-pair">
@@ -19,7 +18,7 @@
 <div
   id="flexible-hub-root"
   data-tab="{{ active_tab }}"
-  data-hub="{{ hub_kind }}"
+  data-hub="product_data"
   data-can-edit-permission="{% if can_edit_permission %}1{% else %}0{% endif %}"
   data-can-edit="0"
   data-save-url="{{ save_url }}"
@@ -65,5 +64,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/flexible_hub.js' %}?v=1"></script>
+<script src="{% static 'js/flexible_hub.js' %}?v=2"></script>
 {% endblock %}

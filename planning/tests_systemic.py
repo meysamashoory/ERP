@@ -51,8 +51,8 @@ class InventoryOrdersSystemicTests(TestCase):
         self.assertEqual(self.product.stock_finished, 40)
         self.assertEqual(self.product.depot_ceiling, 200)
 
-    def test_excel_transfer_orders_destination(self):
-        """Orders destination removed — vouchers bootstrap transfer still works."""
+    def test_excel_transfer_vouchers_as_product_tab(self):
+        """Vouchers bootstrap transfer works under product_data/vouchers."""
         upload = ExcelUpload.objects.create(title="orders", uploaded_by=self.admin)
         table = ExcelTable.objects.create(
             upload=upload,
@@ -62,8 +62,8 @@ class InventoryOrdersSystemicTests(TestCase):
         )
         result = transfer_excel_table(
             table=table,
-            destination_id="vouchers",
-            level_id="voucher_list",
+            destination_id="product_data",
+            level_id="vouchers",
             mapping={},
             user=self.admin,
             mode="transfer",
@@ -71,7 +71,7 @@ class InventoryOrdersSystemicTests(TestCase):
             confirm_replace=True,
         )
         self.assertEqual(result.transferred, 1)
-        self.assertIn("/data/vouchers/", result.redirect_url)
+        self.assertIn("/data/products/", result.redirect_url)
 
     def test_systemic_plan_respects_stock_and_depot(self):
         CustomerOrder.objects.all().delete()
