@@ -1817,14 +1817,16 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
   min-height: 140px;
   max-height: calc(100vh - 220px);
 }
-#product-data-root {
+#product-data-root,
+#flexible-hub-root {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
 }
-#product-data-root > .tabs {
+#product-data-root > .tabs,
+#flexible-hub-root > .tabs {
   flex-shrink: 0;
 }
 .system-data-group {
