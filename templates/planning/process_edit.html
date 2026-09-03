@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}بازتعریف {{ process.title }}{% endblock %}
+{% block heading %}بازتعریف مراحل — {{ process.title }}{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-sm btn-ghost" href="{% url 'planning_process_detail' process.pk %}">انصراف / مشاهده</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="panel" style="margin-bottom:16px">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="save">
+  <div class="panel-body" style="display:grid;gap:12px">
+    <div class="field">
+      <label>عنوان فرآیند</label>
+      <input class="input" name="process_title" value="{{ process.title }}">
+    </div>
+    <div class="field">
+      <label>توضیحات</label>
+      <textarea class="input" name="process_description" rows="2">{{ process.description }}</textarea>
+    </div>
+    <div class="field" style="max-width:180px">
+      <label>شماره مرحله شروع</label>
+      <input class="input" name="entry_step_number" type="number" min="1" value="{{ process.entry_step_number }}">
+    </div>
+
+    <div class="table-scroll">
+      <table class="table table-compact">
+        <thead>
+          <tr>
+            <th>فعال</th>
+            <th>شماره</th>
+            <th>نوع</th>
+            <th>عنوان</th>
+            <th>سوال بله/خیر</th>
+            <th>بله→</th>
+            <th>خیر→</th>
+            <th>بعدی→</th>
+            <th>داده سیستم</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in steps %}
+          <tr>
+            <td>
+              <input type="checkbox" name="step_{{ s.pk }}_active" value="1" {% if s.is_active %}checked{% endif %}>
+            </td>
+            <td>
+              <input class="input input-sm" style="width:4.5rem" name="step_{{ s.pk }}_number" type="number" min="1" value="{{ s.step_number }}">
+            </td>
+            <td>
+              <select class="input input-sm" name="step_{{ s.pk }}_kind">
+                {% for val,lab in kinds %}
+                <option value="{{ val }}" {% if s.kind == val %}selected{% endif %}>{{ lab }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <input class="input input-sm" name="step_{{ s.pk }}_title" value="{{ s.title }}">
+              <input class="input input-sm" name="step_{{ s.pk }}_description" value="{{ s.description }}" placeholder="توضیح">
+            </td>
+            <td>
+              <input class="input input-sm" name="step_{{ s.pk }}_question" value="{{ s.question }}" placeholder="فقط برای تصمیم">
+            </td>
+            <td>
+              <input class="input input-sm" style="width:4rem" name="step_{{ s.pk }}_yes" type="number" min="1" value="{{ s.yes_next_number|default_if_none:'' }}" placeholder="—">
+            </td>
+            <td>
+              <input class="input input-sm" style="width:4rem" name="step_{{ s.pk }}_no" type="number" min="1" value="{{ s.no_next_number|default_if_none:'' }}" placeholder="—">
+            </td>
+            <td>
+              <input class="input input-sm" style="width:4rem" name="step_{{ s.pk }}_next" type="number" min="1" value="{{ s.next_number|default_if_none:'' }}" placeholder="—">
+            </td>
+            <td>
+              <select class="input input-sm" name="step_{{ s.pk }}_binding">
+                {% for key,lab in bindings %}
+                <option value="{{ key }}" {% if s.data_binding == key %}selected{% endif %}>{{ lab }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <button class="btn btn-sm btn-warn" type="submit"
+                form="delete-step-form" name="step_id" value="{{ s.pk }}"
+                onclick="return confirm('این مرحله حذف شود؟');">حذف</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <input type="hidden" name="step_id" value="">
+
+    <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" type="submit">ذخیره تغییرات</button>
+      <button class="btn btn-ghost" type="submit" name="action" value="reset_seed"
+        onclick="return confirm('همه مراحل این فرآیند با نسخه PDF جایگزین شود؟');">بازنشانی از PDF</button>
+    </div>
+  </div>
+</form>
+
+<form method="post" id="delete-step-form" style="display:none">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="delete">
+</form>
+
+<form method="post" class="panel">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="add">
+  <div class="panel-head"><h2>افزودن مرحله جدید</h2></div>
+  <div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+    <div class="field">
+      <label>شماره</label>
+      <input class="input" name="new_step_number" type="number" min="1" required>
+    </div>
+    <div class="field">
+      <label>عنوان</label>
+      <input class="input" name="new_title" required>
+    </div>
+    <div class="field">
+      <label>نوع</label>
+      <select class="input" name="new_kind">
+        {% for val,lab in kinds %}
+        <option value="{{ val }}">{{ lab }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>سوال</label>
+      <input class="input" name="new_question">
+    </div>
+    <div class="field">
+      <label>داده سیستم</label>
+      <select class="input" name="new_binding">
+        {% for key,lab in bindings %}
+        <option value="{{ key }}">{{ lab }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="panel-body" style="padding-top:0">
+    <button class="btn" type="submit">افزودن مرحله</button>
+  </div>
+</form>
+{% endblock %}

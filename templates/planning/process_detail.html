@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ process.title }}{% endblock %}
+{% block heading %}مراحل: {{ process.title }}{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'planning_process_list' %}">فهرست فرآیندها</a>
+  {% if can_edit %}
+  <a class="btn btn-sm" href="{% url 'planning_process_edit' process.pk %}">بازتعریف مراحل</a>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<p class="muted" style="margin-top:0">
+  کد فرآیند: <strong dir="ltr">{{ process.code }}</strong>
+  — شروع از مرحله <strong>{{ process.entry_step_number }}</strong>.
+  ستون‌های «بله →» و «خیر →» مقصد شاخه تصمیم را نشان می‌دهند.
+</p>
+
+<div class="panel panel-list">
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>شماره</th>
+          <th>نوع</th>
+          <th>عنوان / سوال</th>
+          <th>بله → مرحله</th>
+          <th>خیر → مرحله</th>
+          <th>بعدی →</th>
+          <th>اتصال به داده سیستم</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr {% if r.step.step_number == process.entry_step_number %}style="background:rgba(99,102,241,.08)"{% endif %}>
+          <td class="num"><strong>{{ r.step.step_number }}</strong></td>
+          <td>{{ r.step.get_kind_display }}</td>
+          <td>
+            <div class="list-title">{{ r.step.title }}</div>
+            {% if r.step.kind == "decision" and r.step.question %}
+            <div class="list-desc">سوال: {{ r.step.question }}</div>
+            {% endif %}
+            {% if r.step.description %}<div class="muted" style="font-size:.85em">{{ r.step.description }}</div>{% endif %}
+          </td>
+          <td>
+            {% if r.step.kind == "decision" and r.step.yes_next_number %}
+            <strong>{{ r.step.yes_next_number }}</strong>
+            <span class="muted">— {{ r.yes_title }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if r.step.kind == "decision" and r.step.no_next_number %}
+            <strong>{{ r.step.no_next_number }}</strong>
+            <span class="muted">— {{ r.no_title }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if r.step.kind == "action" and r.step.next_number %}
+            <strong>{{ r.step.next_number }}</strong>
+            <span class="muted">— {{ r.next_title }}</span>
+            {% elif r.step.kind == "terminal" %}
+            <span class="muted">پایان</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <code dir="ltr">{{ r.step.data_binding }}</code>
+            <div class="muted">{{ r.binding_label }}</div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="muted">مرحله‌ای ثبت نشده است.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

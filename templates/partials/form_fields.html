@@ -1,8 +1,17 @@
 {% for field in form %}
-<div class="field" data-field="{{ field.name }}">
+<div class="field{% if field.errors %} has-error{% endif %}" data-field="{{ field.name }}"{% if field.errors %} title="{{ field.errors.0 }}"{% endif %}>
   <label for="{{ field.id_for_label }}">{{ field.label }}</label>
   {{ field }}
   {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
-  {{ field.errors }}
+  {% if field.errors %}
+  <ul class="errorlist-visible">
+    {% for err in field.errors %}<li>{{ err }}</li>{% endfor %}
+  </ul>
+  {% endif %}
 </div>
 {% endfor %}
+{% if form.non_field_errors %}
+<ul class="errorlist-visible">
+  {% for err in form.non_field_errors %}<li>{{ err }}</li>{% endfor %}
+</ul>
+{% endif %}

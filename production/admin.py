@@ -5,6 +5,7 @@ from .models import (
     FittingProduction,
     PipeProduction,
     ProductionDayEntry,
+    ProductionHistoryRecord,
     ProductionProgram,
     ProductionStoppage,
 )
@@ -47,6 +48,32 @@ class PipeStoppageInline(admin.TabularInline):
     model = ProductionStoppage
     fk_name = "pipe"
     extra = 0
+
+
+@admin.register(ProductionHistoryRecord)
+class ProductionHistoryRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "program_uid",
+        "product_code",
+        "product_name",
+        "machine_number",
+        "planned_qty",
+        "produced_qty",
+        "status",
+        "created_at",
+    )
+    search_fields = ("program_uid", "product_code", "product_name", "mold_name")
+    list_filter = ("status",)
+
+    def delete_model(self, request, obj):
+        from production.sync import delete_history_archive_and_live
+
+        delete_history_archive_and_live(obj)
+
+    def delete_queryset(self, request, queryset):
+        from production.sync import delete_history_archives_queryset
+
+        delete_history_archives_queryset(queryset)
 
 
 @admin.register(FittingProduction)

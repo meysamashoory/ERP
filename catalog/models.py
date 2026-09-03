@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 
@@ -152,6 +153,58 @@ class Product(models.Model):
         return self.reorder_level > 0 and self.stock_finished <= self.reorder_level
 
 
+class ProductBomLine(models.Model):
+    """One BOM component line for a finished/parent product (ساختار BOM)."""
+
+    parent = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="bom_lines",
+        verbose_name="محصول والد",
+    )
+    component_code = models.CharField("کد جزء", max_length=40, blank=True)
+    component_name = models.CharField("نام جزء", max_length=200)
+    quantity = models.DecimalField("مقدار", max_digits=14, decimal_places=4, default=Decimal("1"))
+    unit = models.CharField("واحد", max_length=40, blank=True, default="عدد")
+    notes = models.CharField("توضیحات", max_length=255, blank=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+
+    class Meta:
+        ordering = ["parent__code", "order", "id"]
+        verbose_name = "سطر BOM"
+        verbose_name_plural = "ساختار BOM"
+
+    def __str__(self) -> str:
+        return f"{self.parent.code} ← {self.component_code or self.component_name}"
+
+
+class ProductConsumable(models.Model):
+    """Consumable / raw material usage per product unit (مواد مصرفی)."""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="consumables",
+        verbose_name="محصول",
+    )
+    material_code = models.CharField("کد ماده", max_length=40, blank=True)
+    material_name = models.CharField("نام ماده", max_length=200)
+    quantity_per_unit = models.DecimalField(
+        "مقدار به ازای واحد محصول", max_digits=14, decimal_places=4, default=Decimal("0")
+    )
+    unit = models.CharField("واحد", max_length=40, blank=True, default="گرم")
+    notes = models.CharField("توضیحات", max_length=255, blank=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+
+    class Meta:
+        ordering = ["product__code", "order", "id"]
+        verbose_name = "ماده مصرفی"
+        verbose_name_plural = "مواد مصرفی"
+
+    def __str__(self) -> str:
+        return f"{self.product.code} / {self.material_name}"
+
+
 class ProductionTypeOption(models.Model):
     """Editable list backing the «نوع تولید» dropdowns."""
 
@@ -233,3 +286,586 @@ class MoldOption(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+
+class PlanningInsightField(models.Model):
+    """Configurable metric shown in the glass insight strip on planning.
+
+    Values are resolved at runtime from either the product catalog, the latest
+    saved production record, or (later) a mapped file/Excel column.
+    """
+
+    class Source(models.TextChoices):
+        PRODUCT = "product", "اطلاعات کالا (کاتالوگ)"
+        LAST_PRODUCTION = "last_production", "آخرین تولید ذخیره‌شده"
+        FILE_COLUMN = "file_column", "ستون فایل / داده خارجی"
+
+    # Keys the insight resolver understands for each source.
+    PRODUCT_KEYS = (
+        ("last_cycle", "آخرین سیکل (کاتالوگ)"),
+        ("main_cavities", "حفره اصلی"),
+        ("per_carton", "تعداد در کارتن"),
+        ("per_bag", "تعداد در کیسه"),
+        ("depot_ceiling", "سقف دپو"),
+        ("stock_finished", "موجودی محصول"),
+        ("unit_weight_grams", "وزن واحد (گرم)"),
+    )
+    LAST_PRODUCTION_KEYS = (
+        ("shot_cycle", "آخرین سیکل تولیدشده"),
+        ("machine_unit", "آخرین دستگاه و واحد"),
+        ("active_cavities", "تعداد حفره فعال"),
+        ("produced_quantity", "آخرین مقدار تولید"),
+        ("date", "آخرین تاریخ تولید"),
+    )
+
+    label = models.CharField("عنوان نمایشی", max_length=120)
+    source = models.CharField("منبع داده", max_length=20, choices=Source.choices)
+    source_key = models.CharField(
+        "کلید / ستون",
+        max_length=80,
+        help_text="برای کاتالوگ/تولید یکی از کلیدهای شناخته‌شده؛ برای فایل نام ستون.",
+    )
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField("نمایش در صفحه", default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "فیلد اطلاعات برنامه‌ریزی"
+        verbose_name_plural = "فیلدهای اطلاعات برنامه‌ریزی (نوار شیشه‌ای)"
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class PlanningDisplaySettings(models.Model):
+    """Singleton-style settings for the planning detail glass strip and matrix.
+
+    Manage via «مدیریت داده‌ها». Prefer a single row; ``load()`` returns the first
+    row or sensible defaults.
+    """
+
+    height_coefficient = models.DecimalField(
+        "ضریب عرض کادر آبی",
+        max_digits=4,
+        decimal_places=2,
+        default=1,
+        help_text="مثلاً ۱٫۲ یعنی عرض کادر آبی ۲۰٪ بیشتر از حالت پایه.",
+    )
+    matrix_unit_numbers = models.CharField(
+        "واحدهای جدول ماتریس",
+        max_length=40,
+        default="1,2,4",
+        help_text="شماره واحدها با ویرگول؛ مثلاً ۱,۲,۴",
+    )
+    show_group_breakdown = models.BooleanField(
+        "نمایش تفکیک گروه در کادر آبی",
+        default=True,
+        help_text="زیر هر واحد، تعداد قالب هر گروه محصول نمایش داده شود.",
+    )
+
+    class Meta:
+        verbose_name = "تنظیمات نمایش برنامه‌ریزی"
+        verbose_name_plural = "تنظیمات نمایش برنامه‌ریزی (کادر آبی و ماتریس)"
+
+    def __str__(self) -> str:
+        return f"ضریب عرض {self.height_coefficient} · واحدها {self.matrix_unit_numbers}"
+
+    @classmethod
+    def load(cls) -> "PlanningDisplaySettings":
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls(height_coefficient=1, matrix_unit_numbers="1,2,4", show_group_breakdown=True)
+        return obj
+
+    def unit_numbers(self) -> list[int]:
+        nums: list[int] = []
+        for part in (self.matrix_unit_numbers or "").replace("،", ",").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                nums.append(int(part))
+            except ValueError:
+                continue
+        return nums or [1, 2, 4]
+
+class ProgramUidScheme(models.Model):
+    """Active law for building the planning program UID (شناسه برنامه).
+
+    Managed via «مدیریت داده‌ها». Digits and base year can be redefined here;
+    ``segments_json`` documents each segment for future custom schemes.
+    """
+
+    name = models.CharField("نام قانون", max_length=120, default="قانون اصلی ۱۴ رقمی")
+    is_active = models.BooleanField("فعال", default=True)
+    base_year = models.PositiveIntegerField(
+        "سال مبدأ شمسی",
+        default=1370,
+        help_text="کد سال = سال برنامه‌ریزی − مبدأ + ۱ (مثلاً ۱۴۰۵ با مبدأ ۱۳۷۰ → ۳۶).",
+    )
+    year_digits = models.PositiveSmallIntegerField("ارقام کد سال", default=2)
+    program_digits = models.PositiveSmallIntegerField("ارقام شماره برنامه", default=3)
+    unit_digits = models.PositiveSmallIntegerField("ارقام واحد", default=1)
+    machine_digits = models.PositiveSmallIntegerField("ارقام دستگاه", default=2)
+    date_sum_digits = models.PositiveSmallIntegerField("ارقام جمع روزها", default=3)
+    production_type_digits = models.PositiveSmallIntegerField("ارقام نوع تولید", default=1)
+    mold_row_digits = models.PositiveSmallIntegerField("ارقام ردیف قالب", default=2)
+    segments_json = models.JSONField(
+        "تعریف قطعات شناسه",
+        default=list,
+        blank=True,
+        help_text="ساختار قطعات برای مستندسازی و بازتعریف آینده.",
+    )
+    notes = models.TextField(
+        "توضیحات",
+        blank=True,
+        help_text="شرح قانون برای اپراتور / برنامه‌نویس.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "قانون شناسه برنامه"
+        verbose_name_plural = "قانون شناسه برنامه (بازتعریف)"
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.segments_json:
+            from planning.uid import DEFAULT_SEGMENTS
+            self.segments_json = list(DEFAULT_SEGMENTS)
+        super().save(*args, **kwargs)
+        if self.is_active:
+            type(self).objects.exclude(pk=self.pk).filter(is_active=True).update(is_active=False)
+
+    @classmethod
+    def load(cls) -> "ProgramUidScheme":
+        obj = cls.objects.filter(is_active=True).first() or cls.objects.first()
+        if obj is None:
+            from planning.uid import DEFAULT_SEGMENTS
+            obj = cls(
+                name="قانون اصلی ۱۴ رقمی",
+                is_active=True,
+                base_year=1370,
+                segments_json=list(DEFAULT_SEGMENTS),
+                notes=(
+                    "YY=سال−۱۳۷۰+۱ | PPP=شماره برنامه | U=واحد | MM=دستگاه | "
+                    "DDD=جمع آفست اکسل تاریخ برنامه و تعویض قالب | T=نوع تولید | RR=ردیف قالب"
+                ),
+            )
+        return obj
+
+    @property
+    def total_digits(self) -> int:
+        return (
+            self.year_digits
+            + self.program_digits
+            + self.unit_digits
+            + self.machine_digits
+            + self.date_sum_digits
+            + self.production_type_digits
+            + self.mold_row_digits
+        )
+
+
+class SystemAlarm(models.Model):
+    """Serious (and optionally advisory) alarms for «مدیریت داده‌ها»."""
+
+    class Severity(models.TextChoices):
+        SERIOUS = "serious", "جدی"
+        ADVISORY = "advisory", "پیشنهادی"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "باز"
+        REVIEWED = "reviewed", "بررسی‌شده"
+        CLEARED = "cleared", "پاک‌شده"
+
+    class Kind(models.TextChoices):
+        UID_DUPLICATE = "uid_duplicate", "تکرار شناسه برنامه"
+        DATA_TRANSFER = "data_transfer", "انتقال داده اکسل"
+        PRODUCTION_CONFLICT = "production_conflict", "تداخل تولید / سوابق"
+        OTHER = "other", "سایر"
+
+    severity = models.CharField(
+        "سطح", max_length=12, choices=Severity.choices, default=Severity.SERIOUS, db_index=True
+    )
+    kind = models.CharField(
+        "نوع", max_length=40, choices=Kind.choices, default=Kind.OTHER, db_index=True
+    )
+    status = models.CharField(
+        "وضعیت", max_length=12, choices=Status.choices, default=Status.OPEN, db_index=True
+    )
+    title = models.CharField("عنوان", max_length=200)
+    message = models.TextField("شرح")
+    suggestion = models.TextField(
+        "پیشنهاد اصلاح",
+        blank=True,
+        help_text="برای آلارم‌های جدی (مثل شناسه) راه‌حل پیشنهادی اینجا ثبت می‌شود.",
+    )
+    details = models.JSONField("جزئیات", default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="بررسی‌کننده",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "آلارم سیستم"
+        verbose_name_plural = "آلارم‌های سیستم (بررسی و پاک‌سازی)"
+
+    def __str__(self) -> str:
+        return f"[{self.get_severity_display()}] {self.title}"
+
+    def mark_reviewed(self, user=None) -> None:
+        from django.utils import timezone
+        self.status = self.Status.REVIEWED
+        self.reviewed_at = timezone.now()
+        if user is not None:
+            self.reviewed_by = user
+        self.save(update_fields=["status", "reviewed_at", "reviewed_by"])
+
+    def mark_cleared(self, user=None) -> None:
+        from django.utils import timezone
+        self.status = self.Status.CLEARED
+        self.reviewed_at = timezone.now()
+        if user is not None:
+            self.reviewed_by = user
+        self.save(update_fields=["status", "reviewed_at", "reviewed_by"])
+
+
+class ExcelUpload(models.Model):
+    """Imported workbook container shown under «فایل‌های اکسل»."""
+
+    title = models.CharField("نام فایل", max_length=200)
+    file = models.FileField(
+        "فایل اکسل",
+        upload_to="excel_uploads/%Y/%m/",
+        blank=True,
+        null=True,
+        help_text="فرمت‌های رایج: .xlsx ، .xlsm ، .csv",
+    )
+    original_name = models.CharField("نام اصلی فایل", max_length=255, blank=True)
+    notes = models.TextField("توضیحات", blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="بارگذارنده",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "فایل اکسل"
+        verbose_name_plural = "فایل‌های اکسل"
+
+    def __str__(self) -> str:
+        return self.title or self.original_name or f"اکسل #{self.pk}"
+
+    @property
+    def table_count(self) -> int:
+        return self.tables.count()
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_name:
+            self.original_name = getattr(self.file, "name", "") or ""
+            self.original_name = self.original_name.replace("\\", "/").split("/")[-1]
+        super().save(*args, **kwargs)
+
+
+class ExcelTable(models.Model):
+    """One imported sheet/table from an Excel workbook (editable grid)."""
+
+    upload = models.ForeignKey(
+        ExcelUpload,
+        on_delete=models.CASCADE,
+        related_name="tables",
+        verbose_name="فایل",
+    )
+    name = models.CharField("نام جدول", max_length=200)
+    sheet_name = models.CharField("نام شیت اصلی", max_length=200, blank=True)
+    headers = models.JSONField("ستون‌ها", default=list, blank=True)
+    rows = models.JSONField("ردیف‌ها", default=list, blank=True)
+    layout = models.JSONField(
+        "چیدمان گرید",
+        default=dict,
+        blank=True,
+        help_text="عرض ستون‌ها و ارتفاع ردیف‌ها برای نمایش شبیه اکسل",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "جدول اکسل"
+        verbose_name_plural = "جداول اکسل"
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def source_id(self) -> str:
+        return f"excel_table_{self.pk}"
+
+    @property
+    def row_count(self) -> int:
+        return len(self.rows) if isinstance(self.rows, list) else 0
+
+    @property
+    def column_count(self) -> int:
+        return len(self.headers) if isinstance(self.headers, list) else 0
+
+    def column_defs(self) -> list[tuple[str, str]]:
+        """(key, label) pairs for report source picker."""
+        headers = self.headers if isinstance(self.headers, list) else []
+        out = []
+        for i, h in enumerate(headers):
+            label = str(h or f"ستون {i + 1}")[:120]
+            out.append((f"col_{i}", label))
+        return out
+
+
+class SystemNamingKey(models.Model):
+    """Editable system naming dictionary: keys, column titles, and exact addresses.
+
+    Stable ``key`` never changes; users rename ``label``. ``address`` points to the
+    concrete place in code/UI (template data-col, admin model, transfer field, …).
+    """
+
+    class Category(models.TextChoices):
+        SECTION = "section", "بخش سیستم"
+        TABLE = "table", "جدول / صفحه"
+        COLUMN = "column", "سرستون"
+        TRANSFER = "transfer", "انتقال داده"
+        REPORT = "report", "گزارش"
+        STATUS = "status", "وضعیت"
+        UID = "uid", "شناسه / UID"
+        OTHER = "other", "سایر"
+
+    key = models.CharField(
+        "کلید پایدار",
+        max_length=220,
+        unique=True,
+        db_index=True,
+        help_text="شناسه ثابت برنامه‌نویسی؛ با تغییر عنوان عوض نمی‌شود.",
+    )
+    label = models.CharField("عنوان نمایشی", max_length=200)
+    default_label = models.CharField("عنوان پیش‌فرض", max_length=200, blank=True)
+    address = models.CharField(
+        "آدرس دقیق",
+        max_length=400,
+        blank=True,
+        db_index=True,
+        help_text="مسیر پیدا کردن در سامانه / کد، مثلاً templates/...#data-col=…",
+    )
+    category = models.CharField(
+        "دسته",
+        max_length=20,
+        choices=Category.choices,
+        default=Category.OTHER,
+        db_index=True,
+    )
+    section_key = models.CharField(
+        "کلید بخش سیستم",
+        max_length=80,
+        blank=True,
+        db_index=True,
+        help_text="ارجاع به آیتم داده‌های سیستم (مثلاً weekly_plans)",
+    )
+    linked_section_key = models.CharField(
+        "ربط به بخش دیگر",
+        max_length=80,
+        blank=True,
+        db_index=True,
+        help_text="اختیاری: لینک معنایی به بخش دیگری از سامانه",
+    )
+    table_key = models.CharField("کلید جدول", max_length=120, blank=True, db_index=True)
+    column_key = models.CharField("کلید ستون", max_length=120, blank=True, db_index=True)
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    is_active = models.BooleanField(
+        "فعال / نمایش",
+        default=True,
+        help_text="غیرفعال = پنهان‌کردن سرستون از UIهایی که رجیستری را می‌خوانند",
+    )
+    is_custom = models.BooleanField(
+        "افزوده توسط کاربر",
+        default=False,
+        help_text="ستون/کلید دستی که در بذر اولیه نبوده است",
+    )
+    is_key = models.BooleanField(
+        "ستون کلیدی",
+        default=False,
+        help_text="برای بروزرسانی اکسل: ستون‌های هویت ردیف (مثلاً شماره حواله + کد کالا)",
+    )
+    notes = models.TextField("یادداشت", blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["category", "table_key", "order", "key"]
+        verbose_name = "کلید نام‌گذاری سیستم"
+        verbose_name_plural = "کلیدهای نام‌گذاری سیستم"
+        indexes = [
+            models.Index(fields=["table_key", "order"]),
+            models.Index(fields=["category", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.key} → {self.label}"
+
+    @property
+    def is_renamed(self) -> bool:
+        default = (self.default_label or "").strip()
+        return bool(default) and self.label.strip() != default
+
+
+class FlexibleDataset(models.Model):
+    """Dynamic destination table (product-data tabs, vouchers, …) with JSON rows."""
+
+    destination_id = models.CharField("مقصد", max_length=64, db_index=True)
+    level_id = models.CharField("سطح / تب", max_length=64, db_index=True)
+    title = models.CharField("عنوان", max_length=200, blank=True)
+    columns = models.JSONField(
+        "ستون‌ها",
+        default=list,
+        blank=True,
+        help_text="[{key,label,type,is_key,order}]",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["destination_id", "level_id"]
+        verbose_name = "جدول پویا مقصد"
+        verbose_name_plural = "جداول پویا مقصد"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["destination_id", "level_id"],
+                name="uniq_flexible_dataset_dest_level",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.destination_id}/{self.level_id}"
+
+    @property
+    def has_schema(self) -> bool:
+        return bool(self.columns)
+
+    @property
+    def row_count(self) -> int:
+        return self.rows.count()
+
+
+class FlexibleRow(models.Model):
+    dataset = models.ForeignKey(
+        FlexibleDataset,
+        on_delete=models.CASCADE,
+        related_name="rows",
+        verbose_name="جدول",
+    )
+    values = models.JSONField("مقادیر", default=dict, blank=True)
+    identity_key = models.CharField(
+        "کلید هویت",
+        max_length=500,
+        blank=True,
+        db_index=True,
+        help_text="ترکیب نرمال‌شده ستون‌های کلیدی برای بروزرسانی",
+    )
+    order = models.PositiveIntegerField("ترتیب", default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "ردیف جدول پویا"
+        verbose_name_plural = "ردیف‌های جدول پویا"
+        indexes = [
+            models.Index(fields=["dataset", "identity_key"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"row#{self.pk} {self.identity_key or '—'}"
+
+
+class TableLayoutSettings(models.Model):
+    """Global table row height + per-section column-width lock flags.
+
+    Managed from «داده‌های سیستم». ``section_width_locks`` maps section keys
+    (reports, product_data, history, …) to booleans.
+    """
+
+    SECTION_CHOICES = (
+        ("reports", "گزارش‌ها"),
+        ("product_data", "دیتای محصولات"),
+        ("history", "سوابق تولید"),
+        ("planning", "برنامه‌ریزی هفتگی"),
+        ("production", "ثبت و کنترل تولید"),
+        ("excel", "جداول اکسل"),
+        ("forms", "فرم‌های چاپی"),
+        ("system", "داده‌های سیستم"),
+    )
+
+    row_height_px = models.PositiveSmallIntegerField(
+        "ارتفاع یکنواخت ردیف جداول (پیکسل)",
+        default=36,
+        help_text="بین ۱۸ تا ۱۲۰. روی همه جداول سامانه اعمال می‌شود.",
+    )
+    section_width_locks = models.JSONField(
+        "قفل عرض ستون به تفکیک بخش",
+        default=dict,
+        blank=True,
+        help_text='مثال: {"reports": true, "history": false}',
+    )
+
+    class Meta:
+        verbose_name = "تنظیمات نمایش جداول"
+        verbose_name_plural = "تنظیمات نمایش جداول (ارتفاع ردیف و قفل عرض)"
+
+    def __str__(self) -> str:
+        return f"ارتفاع ردیف {self.row_height_px}px"
+
+    @classmethod
+    def load(cls) -> "TableLayoutSettings":
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls(row_height_px=36, section_width_locks={})
+        return obj
+
+    def clamped_row_height(self) -> int:
+        try:
+            h = int(self.row_height_px or 36)
+        except (TypeError, ValueError):
+            h = 36
+        return max(18, min(120, h))
+
+    def is_width_locked(self, section_key: str) -> bool:
+        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
+        return bool(locks.get(str(section_key or ""), False))
+
+    def normalized_locks(self) -> dict[str, bool]:
+        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
+        out: dict[str, bool] = {}
+        for key, _label in self.SECTION_CHOICES:
+            out[key] = bool(locks.get(key, False))
+        return out
+
+
+# Pipe production-time calculation master data (see catalog.pipe_calc).
+from .pipe_calc.models import (  # noqa: E402
+    PipeLayerSpec,
+    PipeLengthCut,
+    PipeProductLine,
+    PipeSizeProfile,
+)
+

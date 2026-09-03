@@ -1,45 +1,83 @@
 {% extends "base.html" %}
-{% block title %}داشبورد · برنامه‌ریزی تولید{% endblock %}
+{% block title %}داشبورد · سامانه برنامه ریزی و کنترل تولید{% endblock %}
 {% block heading %}داشبورد عملیات{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
 
 {% block content %}
-<section class="cards">
-  <article class="card">
-    <p class="card-label">تولید اتصالات</p>
-    <p class="card-value num">{{ fitting_produced }}</p>
-    <p class="card-sub">عدد تولیدشده</p>
+{# ────── KPI Cards Row 1: Key Metrics ────── #}
+<section class="dash-kpi-row">
+  <article class="dash-kpi">
+    <div class="dash-kpi-icon dash-kpi-blue">📦</div>
+    <div class="dash-kpi-body">
+      <p class="dash-kpi-value num">{{ fitting_produced }}</p>
+      <p class="dash-kpi-label">تولید اتصالات</p>
+    </div>
   </article>
-  <article class="card">
-    <p class="card-label">تولید لوله</p>
-    <p class="card-value num">{{ pipe_produced }}</p>
-    <p class="card-sub">شاخه/کلاف تولیدشده</p>
+  <article class="dash-kpi">
+    <div class="dash-kpi-icon dash-kpi-teal">🔧</div>
+    <div class="dash-kpi-body">
+      <p class="dash-kpi-value num">{{ pipe_produced }}</p>
+      <p class="dash-kpi-label">تولید لوله</p>
+    </div>
   </article>
-  <article class="card">
-    <p class="card-label">انحراف اتصالات</p>
-    <p class="card-value num">{{ fitting_deviation }}</p>
-    <p class="card-sub">تولید منهای برنامه</p>
+  <article class="dash-kpi">
+    <div class="dash-kpi-icon {% if fitting_efficiency >= 90 %}dash-kpi-green{% elif fitting_efficiency >= 70 %}dash-kpi-amber{% else %}dash-kpi-red{% endif %}">⚡</div>
+    <div class="dash-kpi-body">
+      <p class="dash-kpi-value num">{{ fitting_efficiency }}<span class="dash-kpi-unit">%</span></p>
+      <p class="dash-kpi-label">بهره‌وری تولید</p>
+    </div>
   </article>
-  <article class="card">
-    <p class="card-label">ضایعات اتصالات</p>
-    <p class="card-value num">{{ fitting_scrap }}</p>
-    <p class="card-sub">عدد</p>
+  <article class="dash-kpi">
+    <div class="dash-kpi-icon {% if scrap_rate > 3 %}dash-kpi-red{% elif scrap_rate > 1 %}dash-kpi-amber{% else %}dash-kpi-green{% endif %}">🗑️</div>
+    <div class="dash-kpi-body">
+      <p class="dash-kpi-value num">{{ scrap_rate }}<span class="dash-kpi-unit">%</span></p>
+      <p class="dash-kpi-label">نرخ ضایعات</p>
+    </div>
   </article>
-  <article class="card">
-    <p class="card-label">توقفات</p>
-    <p class="card-value num">{{ stoppage_minutes }}</p>
-    <p class="card-sub">دقیقه ثبت‌شده</p>
+  <article class="dash-kpi">
+    <div class="dash-kpi-icon dash-kpi-purple">🏭</div>
+    <div class="dash-kpi-body">
+      <p class="dash-kpi-value num">{{ active_machines }}<span class="dash-kpi-unit">/{{ total_machines }}</span></p>
+      <p class="dash-kpi-label">دستگاه فعال</p>
+    </div>
   </article>
-  <article class="card {% if low_stock_count %}card-warn{% endif %}">
-    <p class="card-label">هشدار موجودی</p>
-    <p class="card-value num">{{ low_stock_count }}</p>
-    <p class="card-sub">قلم زیر سطح سفارش</p>
+  <article class="dash-kpi">
+    <div class="dash-kpi-icon {% if low_stock_count %}dash-kpi-red{% else %}dash-kpi-green{% endif %}">📊</div>
+    <div class="dash-kpi-body">
+      <p class="dash-kpi-value num">{{ low_stock_count }}</p>
+      <p class="dash-kpi-label">هشدار موجودی</p>
+    </div>
   </article>
 </section>
 
+{# ────── KPI Cards Row 2: Secondary ────── #}
+<section class="dash-kpi-row dash-kpi-row-sm">
+  <article class="dash-mini-kpi">
+    <span class="dash-mini-label">انحراف تولید</span>
+    <span class="dash-mini-value num {% if fitting_deviation < 0 %}text-danger{% elif fitting_deviation > 0 %}text-ok{% endif %}">{{ fitting_deviation }}</span>
+  </article>
+  <article class="dash-mini-kpi">
+    <span class="dash-mini-label">ضایعات (عدد)</span>
+    <span class="dash-mini-value num">{{ fitting_scrap }}</span>
+  </article>
+  <article class="dash-mini-kpi">
+    <span class="dash-mini-label">توقفات (دقیقه)</span>
+    <span class="dash-mini-value num">{{ stoppage_minutes }}</span>
+  </article>
+  <article class="dash-mini-kpi">
+    <span class="dash-mini-label">برنامه‌های فعال</span>
+    <span class="dash-mini-value num">{{ active_programs }}</span>
+  </article>
+  <article class="dash-mini-kpi">
+    <span class="dash-mini-label">پیش‌نویس</span>
+    <span class="dash-mini-value num">{{ pending_plans }}</span>
+  </article>
+</section>
+
+{# ────── Charts Row ────── #}
 <section class="grid-2">
-  <div class="panel">
-    <div class="panel-head"><h2>تولید اتصالات به تفکیک واحد</h2></div>
+  <div class="panel dash-chart-panel">
+    <div class="panel-head"><h2>تولید به تفکیک واحد</h2></div>
     <div class="panel-body">
       {% if unit_bars %}
       <div class="bars">
@@ -55,7 +93,7 @@
     </div>
   </div>
 
-  <div class="panel">
+  <div class="panel dash-chart-panel">
     <div class="panel-head"><h2>توقفات به تفکیک دلیل (دقیقه)</h2></div>
     <div class="panel-body">
       {% if reason_bars %}
@@ -63,7 +101,7 @@
         {% for bar in reason_bars %}
         <div class="bar-row">
           <span>{{ bar.label }}</span>
-          <span class="bar-track"><span class="bar-fill" style="width: {{ bar.pct }}%"></span></span>
+          <span class="bar-track"><span class="bar-fill bar-fill-warn" style="width: {{ bar.pct }}%"></span></span>
           <span class="bar-val num">{{ bar.value }}</span>
         </div>
         {% endfor %}
@@ -73,11 +111,53 @@
   </div>
 </section>
 
+{# ────── Top Products + Reorder Warnings ────── #}
 <section class="grid-2">
+  <div class="panel dash-chart-panel">
+    <div class="panel-head"><h2>بیشترین تولید (محصولات)</h2></div>
+    <div class="panel-body">
+      {% if top_product_bars %}
+      <div class="bars">
+        {% for bar in top_product_bars %}
+        <div class="bar-row">
+          <span title="{{ bar.label }}">{{ bar.label|truncatechars:30 }}</span>
+          <span class="bar-track"><span class="bar-fill bar-fill-teal" style="width: {{ bar.pct }}%"></span></span>
+          <span class="bar-val num">{{ bar.value }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<p class="empty">هنوز تولیدی ثبت نشده است.</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="panel dash-chart-panel">
+    <div class="panel-head"><h2>هشدار سفارش مجدد</h2></div>
+    <div class="panel-body">
+      {% if low_stock %}
+      <table class="table table-compact">
+        <thead><tr><th>قطعه</th><th>موجودی</th><th>سطح سفارش</th><th>وضعیت</th></tr></thead>
+        <tbody>
+          {% for p in low_stock %}
+          <tr>
+            <td>{{ p.name }}</td>
+            <td class="num">{{ p.stock_finished }}</td>
+            <td class="num">{{ p.reorder_level }}</td>
+            <td><span class="dash-badge dash-badge-danger">زیر حد</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">همه اقلام بالای سطح سفارش هستند. ✓</p>{% endif %}
+    </div>
+  </div>
+</section>
+
+{# ────── Recent Production Table ────── #}
+<section class="dash-full-panel">
   <div class="panel">
     <div class="panel-head"><h2>آخرین تولیدات اتصالات</h2></div>
     {% if recent_fittings %}
-    <table class="table">
+    <table class="table table-compact">
       <thead><tr><th>تاریخ</th><th>دستگاه/واحد</th><th>قطعه</th><th>تولید</th><th>برنامه</th><th>انحراف</th></tr></thead>
       <tbody>
         {% for r in recent_fittings %}
@@ -87,26 +167,12 @@
           <td>{{ r.program.item.product.name }}</td>
           <td class="num">{{ r.produced_quantity }}</td>
           <td class="num">{{ r.planned_quantity }}</td>
-          <td class="num">{{ r.deviation }}</td>
+          <td class="num {% if r.deviation < 0 %}text-danger{% elif r.deviation > 0 %}text-ok{% endif %}">{{ r.deviation }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="empty">هنوز تولیدی ثبت نشده است.</p>{% endif %}
-  </div>
-
-  <div class="panel">
-    <div class="panel-head"><h2>هشدار سفارش مجدد</h2></div>
-    {% if low_stock %}
-    <table class="table">
-      <thead><tr><th>قطعه</th><th>موجودی</th><th>سطح سفارش</th></tr></thead>
-      <tbody>
-        {% for p in low_stock %}
-        <tr><td>{{ p.name }}</td><td class="num">{{ p.stock_finished }}</td><td class="num">{{ p.reorder_level }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}<p class="empty">همه اقلام بالای سطح سفارش هستند.</p>{% endif %}
+    {% else %}<p class="empty" style="padding:20px">هنوز تولیدی ثبت نشده است.</p>{% endif %}
   </div>
 </section>
 {% endblock %}
