@@ -125,11 +125,13 @@ class PipeCalcSeedAndServiceTests(TestCase):
         )
         self.assertEqual(sorted(sizes), list(PROTECT_SIZES))
         profile = PipeSizeProfile.objects.get(line=line, size_mm=110)
-        self.assertEqual(profile.length_cuts.count(), 9)
+        self.assertEqual(profile.length_cuts.count(), 10)
         self.assertEqual(profile.layers.count(), 1)
         cut_30 = PipeLengthCut.objects.get(size_profile=profile, length_code="30cm_1s")
         cut_50 = PipeLengthCut.objects.get(size_profile=profile, length_code="50cm_1s")
+        coupler = PipeLengthCut.objects.get(size_profile=profile, length_code="coupler")
         self.assertLess(cut_30.cut_length_mm, cut_50.cut_length_mm)
+        self.assertEqual(coupler.label, "رابط")
 
     def test_general_no_40_200_triple_layer(self):
         line = PipeProductLine.objects.get(code=LINE_GENERAL)
@@ -194,11 +196,30 @@ class PipeCalcViewTests(TestCase):
     def test_hub_loads_protect(self):
         resp = self.client.get("/data/pipe-calc/?line=protect")
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "لوله پروتکت")
-        self.assertContains(resp, "کسری از سقف")
+        self.assertContains(resp, "لوله‌های پروتکت")
+        self.assertContains(resp, "سایز لوله")
+        self.assertContains(resp, "سقف دپو")
         self.assertContains(resp, "Ø110")
+        self.assertNotContains(resp, "اسکلت")
+        self.assertNotContains(resp, "بعداً تکمیل می‌شود")
 
-    def test_run_endpoint(self):
+    def test_matrix_run_endpoint(self):
+        resp = self.client.post(
+            "/data/pipe-calc/run/",
+            data='{"line":"protect","size_mm":75,"mode":"matrix","qty_source":"deduct_stock"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertTrue(payload["ok"])
+        matrix = payload["matrix"]
+        self.assertTrue(matrix["depot_rows"])
+        self.assertEqual(matrix["depot_rows"][-1]["length_code"], "coupler")
+        self.assertEqual(matrix["depot_rows"][-1]["label"], "رابط")
+        self.assertIn("production", matrix)
+        self.assertTrue(matrix["production"]["rows"])
+
+    def test_run_endpoint_legacy_scenario(self):
         resp = self.client.post(
             "/data/pipe-calc/run/",
             {
@@ -216,6 +237,31 @@ class PipeCalcViewTests(TestCase):
         self.assertIn("depot", payload["result"])
         self.assertGreater(payload["result"]["time"]["total"]["seconds"], 0)
 
-    def test_nav_link_present(self):
+    def test_tabs_and_title(self):
         resp = self.client.get("/data/pipe-calc/")
-        self.assertContains(resp, "محاسبات زمان لوله")
+        self.assertContains(resp, "محاسبات زمان تولید")
+        self.assertContains(resp, "لوله‌های جنرال سایلنت")
+        self.assertContains(resp, "لوله‌های سایلنت ۱۰")
+        self.assertContains(resp, "نوار آبیاری (تیپ)")
+        self.assertContains(resp, "لوله فلت (PC)")
+        self.assertNotContains(resp, "اسکلت")
+
+
+class PipeCalcMatrixEngineTests(TestCase):
+    def test_depot_matrix_row_math(self):
+        from catalog.pipe_calc.engine import calc_depot_matrix_row
+
+        row = calc_depot_matrix_row(
+            length_code="100cm_1s",
+            label="۱ متری",
+            depot_ceiling=1000,
+            stock=700,
+            voucher=100,
+            avg_monthly_sales=200,
+        )
+        self.assertEqual(row.remaining_after_voucher, 600)
+        self.assertEqual(row.months_remaining, 3.0)
+        self.assertEqual(row.depot_remaining_pct, 60.0)
+        self.assertEqual(row.deduct_from_depot_stock, 300)
+        self.assertEqual(row.deduct_from_depot_remaining, 400)
+        self.assertEqual(row.required_qty, 300)

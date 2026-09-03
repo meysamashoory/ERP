@@ -58,7 +58,7 @@ def build_system_groups() -> list[SystemGroup]:
         FlexibleRow,
         Machine,
         MoldOption,
-        PipeProductLine,
+        PipeCalcRule, PipeProductLine,
         PlanningDisplaySettings,
         PlanningInsightField,
         Product,
@@ -373,10 +373,20 @@ def build_system_groups() -> list[SystemGroup]:
                     admin_changelist="admin:catalog_pipeproductline_changelist",
                     admin_add="admin:catalog_pipeproductline_add",
                     description=(
-                        "تعریف خطوط محصول، حالت لایه، بلینگ، اسکلت/فعال، و پروفایل سایز "
-                        "(سرعت، بلینگ، بسته، سقف دپو) — تنظیمات سیستم، نه صفحه محاسبه عملیاتی."
+                        "تعریف خطوط محصول، پروفایل سایز، سقف دپو، و قوانین محاسبه زمان تولید "
+                        "(ضرایب درپوش/اسپیسر/کاور و ترکیب مواد)."
                     ),
                     count_fn=_count(PipeProductLine),
+                ),
+                SystemItem(
+                    key="pipe_calc_rules",
+                    title="قوانین محاسبه زمان تولید",
+                    admin_changelist="admin:catalog_pipecalcrule_changelist",
+                    admin_add="admin:catalog_pipecalcrule_add",
+                    description=(
+                        "ضرایب درپوش سوکت/لوله، اسپیسر، کاور و ترکیب مواد برای جدول محاسباتی."
+                    ),
+                    count_fn=_count(PipeCalcRule),
                 ),
                 SystemItem(
                     key="insight_fields",

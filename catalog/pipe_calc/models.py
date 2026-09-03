@@ -116,6 +116,27 @@ class PipeLengthCut(models.Model):
     nominal_cm = models.PositiveIntegerField("طول اسمی (cm)")
     cut_length_mm = models.PositiveIntegerField("طول برش واقعی (mm)")
     socket_ends = models.PositiveSmallIntegerField("تعداد سر سوکت", default=1)
+    depot_ceiling = models.PositiveIntegerField(
+        "سقف دپو (عدد)",
+        default=0,
+        help_text="سقف دپوی این طول اسمی؛ برای همه محصولات قابل تعریف است.",
+    )
+    avg_monthly_sales = models.DecimalField(
+        "میانگین فروش ماهانه",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+    )
+    stock_on_hand = models.IntegerField(
+        "موجودی (عدد)",
+        default=0,
+        help_text="از داده محصولات همگام می‌شود؛ در صورت نیاز قابل ویرایش است.",
+    )
+    voucher_qty = models.IntegerField(
+        "حواله (عدد)",
+        default=0,
+        help_text="از تب حواله‌های داده محصولات خوانده می‌شود.",
+    )
     is_active = models.BooleanField("فعال", default=True)
 
     class Meta:
@@ -163,6 +184,65 @@ class PipeLayerSpec(models.Model):
 
     def __str__(self) -> str:
         return f"{self.size_profile} / {LAYER_LABELS.get(self.layer, self.layer)}"
+
+
+
+class PipeCalcRule(models.Model):
+    """Configurable production-matrix factors (system data / per line).
+
+    Mostly reads product + BOM; these knobs scale accessories and material mix.
+    """
+
+    line = models.ForeignKey(
+        PipeProductLine,
+        on_delete=models.CASCADE,
+        related_name="calc_rules",
+        verbose_name="خط",
+        null=True,
+        blank=True,
+        help_text="خالی = قانون سراسری برای همه خطوط ماتریسی.",
+    )
+    code = models.SlugField("کد قانون", max_length=40)
+    name = models.CharField("نام", max_length=120)
+    socket_cap_per_socket = models.DecimalField(
+        "درپوش سوکت به ازای هر سر",
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal("1"),
+    )
+    pipe_cap_per_piece = models.DecimalField(
+        "درپوش لوله به ازای هر شاخه",
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal("1"),
+    )
+    spacer_per_piece = models.DecimalField(
+        "اسپیسر به ازای هر شاخه",
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal("0"),
+    )
+    cover_per_piece = models.DecimalField(
+        "کاور به ازای هر شاخه",
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal("0"),
+    )
+    # Extra material-mix multipliers keyed by layer code, e.g. {"inner": 1.0}.
+    material_factors = models.JSONField("ضرایب ترکیب مواد", default=dict, blank=True)
+    is_active = models.BooleanField("فعال", default=True)
+    notes = models.TextField("یادداشت", blank=True)
+
+    class Meta:
+        ordering = ["line__order", "code"]
+        unique_together = ("line", "code")
+        verbose_name = "قانون محاسبه زمان تولید"
+        verbose_name_plural = "قوانین محاسبه زمان تولید"
+
+    def __str__(self) -> str:
+        scope = self.line.code if self.line_id else "سراسری"
+        return f"{scope} / {self.name or self.code}"
+
 
 
 # Default line code used when seeding / demos.

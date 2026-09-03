@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}محاسبات زمان تولید لوله{% endblock %}
-{% block heading %}محاسبات زمان تولید لوله{% endblock %}
+{% block title %}محاسبات زمان تولید{% endblock %}
+{% block heading %}محاسبات زمان تولید{% endblock %}
 {% block nav_data %}{% endblock %}
 {% block nav_pipe_calc %}active{% endblock %}
 
@@ -15,179 +15,102 @@
 {% endblock %}
 
 {% block content %}
-<div class="pipe-calc-lead">
-  <p class="panel-hint">
-    زمان خط تولید و بلینگ (جزئی و تجمیع)، کسری از سقف دپو، کسری بعد از حواله، و نیاز BOM/لایه‌ها.
-    نرخ‌ها و طول برش واقعی برای هر سایز قابل تنظیم است؛ جزئیات تیپ و خطوط اسکلت بعداً تکمیل می‌شود.
-  </p>
-</div>
+{% csrf_token %}
 
-<div class="tabs product-data-tabs pipe-calc-tabs">
+<nav class="tabs product-data-tabs pipe-calc-tabs" aria-label="خطوط لوله">
   {% for ln in lines %}
   <a class="tab {% if active_line == ln.code %}active{% endif %}"
-     href="{% url 'pipe_calc' %}?line={{ ln.code }}">
-    {{ ln.name }}
-    {% if ln.is_scaffold %}<span class="pipe-badge">اسکلت</span>{% endif %}
-  </a>
+     href="{% url 'pipe_calc' %}?line={{ ln.code }}">{{ ln.name }}</a>
   {% empty %}
   <span class="muted">خطی تعریف نشده است.</span>
   {% endfor %}
-</div>
+</nav>
 
 {% if overview %}
 {% with line=overview.line %}
-<div class="pipe-calc-meta panel panel-compact">
-  <div class="pipe-calc-meta-grid">
-    <div>
-      <span class="muted">حالت لایه</span>
-      <strong>
-        {% if line.layer_mode == "single" %}تک‌لایه
-        {% elif line.layer_mode == "triple" %}سه‌لایه
-        {% else %}سفارشی{% endif %}
-      </strong>
-    </div>
-    <div>
-      <span class="muted">بلینگ</span>
-      <strong>{% if line.needs_billing %}فعال{% else %}ندارد{% endif %}</strong>
-    </div>
-    <div>
-      <span class="muted">وضعیت</span>
-      <strong>{% if line.is_scaffold %}داربست — جزئیات بعداً{% else %}آماده محاسبه{% endif %}</strong>
-    </div>
-  </div>
-  {% if line.notes %}<p class="panel-hint">{{ line.notes }}</p>{% endif %}
-</div>
 
-{% if not line.is_scaffold or overview.sizes %}
-<div class="pipe-calc-layout">
-  <section class="panel panel-compact pipe-calc-form-panel">
-    <h3 class="panel-title">محاسبه سناریو</h3>
-    <form id="pipe-calc-form" class="pipe-calc-form" data-run-url="{% url 'pipe_calc_run' %}">
-      {% csrf_token %}
-      <input type="hidden" name="line" value="{{ line.code }}">
-      <label>
-        سایز (mm)
-        <select name="size_mm" id="pipe-size" required>
-          {% for s in overview.sizes %}
-          <option value="{{ s.size_mm }}"
-                  data-lengths='{{ s.lengths|safe }}'
-                  data-speed="{{ s.line_speed_m_per_min }}"
-                  data-billing="{{ s.billing_pieces_per_hour }}"
-                  data-pack="{{ s.pack_qty }}"
-                  data-ceiling="{{ s.depot_ceiling }}"
-                  data-stock="{{ s.stock_on_hand }}"
-                  data-size-id="{{ s.id }}">Ø{{ s.size_mm }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>
-        طول اسمی
-        <select name="length_code" id="pipe-length"></select>
-      </label>
-      <label>
-        تعداد تولید
-        <input type="number" name="pieces" id="pipe-pieces" min="1" value="100" required>
-      </label>
-      <label>
-        مقدار حواله خروجی
-        <input type="number" name="voucher_qty" id="pipe-voucher" min="0" value="0">
-      </label>
-      <div class="pipe-calc-actions">
-        <button type="submit" class="btn">محاسبه</button>
-        <button type="button" class="btn btn-ghost" id="pipe-agg-btn">تجمیع نمونه (همه سایزها ×۱۰۰)</button>
-      </div>
-    </form>
-    <p class="muted pipe-cut-hint" id="pipe-cut-hint"></p>
-  </section>
+{% if line.is_matrix_line and matrix %}
+<section class="pcx"
+         id="pcx-root"
+         data-line="{{ line.code }}"
+         data-run-url="{% url 'pipe_calc_run' %}"
+         data-stock-url="{% url 'pipe_calc_save_stock' %}"
+         data-can-edit="{% if can_edit %}1{% else %}0{% endif %}">
+  <script type="application/json" id="pcx-matrix-json">{{ matrix_json|safe }}</script>
 
-  <section class="panel panel-compact pipe-calc-result-panel" id="pipe-result" hidden>
-    <h3 class="panel-title">نتیجه</h3>
-    <div class="intel-kpis pipe-result-kpis" id="pipe-result-kpis"></div>
-    <div class="table-scroll">
-      <table class="table" id="pipe-time-table">
-        <thead>
-          <tr><th>مرحله</th><th>زمان</th><th>ساعت</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <h4 class="pipe-subhead">سقف دپو</h4>
-    <div class="table-scroll">
-      <table class="table" id="pipe-depot-table">
-        <thead>
-          <tr>
-            <th>سقف</th><th>موجودی</th><th>کسری از سقف (فضای خالی)</th>
-            <th>موجودی بعد حواله</th><th>کسری بعد حواله</th><th>قابل پر تا سقف</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <h4 class="pipe-subhead">BOM / مواد لایه‌ها</h4>
-    <div class="table-scroll">
-      <table class="table" id="pipe-bom-table">
-        <thead>
-          <tr>
-            <th>کد</th><th>نام</th><th>نیاز</th><th>موجود</th><th>کسری</th><th>سفارش</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div id="pipe-agg-box" class="pipe-agg-box" hidden></div>
-  </section>
-</div>
-
-<div class="panel panel-compact panel-list">
-  <h3 class="panel-title">پروفایل سایزها</h3>
-  <div class="table-scroll">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>سایز</th>
-          <th>سرعت (m/min)</th>
-          <th>بلینگ (عدد/ساعت)</th>
-          <th>بسته</th>
-          <th>سقف دپو</th>
-          <th>موجودی</th>
-          <th>فضای خالی</th>
-          <th>طول‌های برش</th>
-        </tr>
-      </thead>
-      <tbody>
+  <div class="pcx-toolbar">
+    <label class="pcx-field">
+      <span>سایز لوله</span>
+      <select id="pcx-size">
         {% for s in overview.sizes %}
-        <tr>
-          <td class="num">Ø{{ s.size_mm }}</td>
-          <td class="num">{{ s.line_speed_m_per_min }}</td>
-          <td class="num">{{ s.billing_pieces_per_hour }}</td>
-          <td class="num">{{ s.pack_qty }}</td>
-          <td class="num">{{ s.depot_ceiling }}</td>
-          <td class="num">{{ s.stock_on_hand }}</td>
-          <td class="num {% if s.empty_space %}is-alert-cell{% endif %}">{{ s.empty_space }}</td>
-          <td class="pipe-len-cell">
-            {% for lc in s.lengths %}
-            <span class="pipe-len-chip" title="برش {{ lc.cut_length_mm }} mm">{{ lc.label }}</span>
-            {% empty %}—{% endfor %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="8" class="empty muted">سایزی برای این خط ثبت نشده است.</td></tr>
+        <option value="{{ s.size_mm }}" {% if selected_size_mm == s.size_mm %}selected{% endif %}>Ø{{ s.size_mm }}</option>
         {% endfor %}
-      </tbody>
-    </table>
+      </select>
+    </label>
+    <p class="pcx-hint">موجودی و حواله از داده محصولات می‌آید؛ سقف دپو برای همه طول‌ها قابل تعریف است.</p>
   </div>
-</div>
+
+  <article class="pcx-card">
+    <header class="pcx-card-head"><h3>برنامه دپو و نیاز تولید</h3></header>
+    <div class="pcx-scroll">
+      <table class="pcx-table" id="pcx-depot-table">
+        <thead>
+          <tr>
+            <th>طول اسمی</th>
+            <th>سقف دپو</th>
+            <th>موجودی</th>
+            <th>حواله</th>
+            <th>مانده بعد از حواله</th>
+            <th>میانگین فروش</th>
+            <th>مانده به ماه</th>
+            <th>درصد دپوی مانده</th>
+            <th>کسر از دپو (موجودی)</th>
+            <th>کسر از دپو (مانده)</th>
+            <th>مقدار مورد نیاز</th>
+          </tr>
+        </thead>
+        <tbody id="pcx-depot-body"></tbody>
+      </table>
+    </div>
+    <footer class="pcx-card-foot">
+      <button type="button" class="btn pcx-primary" id="pcx-calc">محاسبه</button>
+    </footer>
+  </article>
+
+  <div id="pcx-results" class="pcx-results" hidden>
+    <div class="pcx-toolbar">
+      <label class="pcx-field">
+        <span>مبنای مقدار</span>
+        <select id="pcx-qty-source"></select>
+      </label>
+      <p class="pcx-hint">با تغییر گزینه، ستون‌های جدول محاسباتی بر همان مبنا بازمحاسبه می‌شوند.</p>
+    </div>
+    <article class="pcx-card pcx-card-calc">
+      <header class="pcx-card-head"><h3>جدول محاسباتی تولید و مواد</h3></header>
+      <div class="pcx-scroll">
+        <table class="pcx-table pcx-table-calc">
+          <thead id="pcx-prod-head"></thead>
+          <tbody id="pcx-prod-body"></tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+</section>
+
 {% else %}
-<div class="panel panel-compact">
-  <p class="panel-hint">
-    این خط به‌صورت داربست ثبت شده است. پس از دریافت فرمول‌ها و نرخ‌های کارخانه،
-    پروفایل سایز و موتور محاسبه مخصوص آن فعال می‌شود بدون سنگین شدن هسته سیستم.
-  </p>
-  {% if line.settings %}
-  <pre class="pipe-settings-pre">{{ line.settings }}</pre>
+<section class="panel panel-compact pcx-placeholder">
+  <h3 class="panel-title">{{ line.name }}</h3>
+  <p class="panel-hint">جزئیات محاسبه این خط به‌زودی تکمیل می‌شود.</p>
+  {% if overview.sizes %}
+  <div class="pcx-chips">
+    {% for s in overview.sizes %}
+    <span class="pcx-chip">Ø{{ s.size_mm }}</span>
+    {% endfor %}
+  </div>
   {% endif %}
-</div>
+</section>
 {% endif %}
+
 {% endwith %}
 {% endif %}
 {% endblock %}
@@ -195,174 +118,265 @@
 {% block scripts %}
 <script>
 (function () {
-  var sizeSel = document.getElementById("pipe-size");
-  var lengthSel = document.getElementById("pipe-length");
-  var cutHint = document.getElementById("pipe-cut-hint");
-  var form = document.getElementById("pipe-calc-form");
-  if (!form || !sizeSel) return;
+  var root = document.getElementById("pcx-root");
+  if (!root) return;
 
-  var sizesMap = {};
-  {% if overview %}
-  sizesMap = {
-    {% for s in overview.sizes %}
-    "{{ s.size_mm }}": {
-      id: {{ s.id }},
-      speed: {{ s.line_speed_m_per_min }},
-      billing: {{ s.billing_pieces_per_hour }},
-      pack: {{ s.pack_qty }},
-      ceiling: {{ s.depot_ceiling }},
-      stock: {{ s.stock_on_hand }},
-      lengths: [
-        {% for lc in s.lengths %}
-        {code: "{{ lc.code }}", label: "{{ lc.label|escapejs }}", cut: {{ lc.cut_length_mm }}, ends: {{ lc.socket_ends }}}{% if not forloop.last %},{% endif %}
-        {% endfor %}
-      ]
-    }{% if not forloop.last %},{% endif %}
-    {% endfor %}
-  };
-  {% endif %}
-
-  function fillLengths() {
-    var key = sizeSel.value;
-    var info = sizesMap[key] || {lengths: []};
-    lengthSel.innerHTML = "";
-    info.lengths.forEach(function (lc, i) {
-      var opt = document.createElement("option");
-      opt.value = lc.code;
-      opt.textContent = lc.label;
-      opt.dataset.cut = lc.cut;
-      opt.dataset.ends = lc.ends;
-      if (i === 0) opt.selected = true;
-      lengthSel.appendChild(opt);
-    });
-    updateCutHint();
+  var canEdit = root.getAttribute("data-can-edit") === "1";
+  var runUrl = root.getAttribute("data-run-url");
+  var stockUrl = root.getAttribute("data-stock-url");
+  var lineCode = root.getAttribute("data-line");
+  var matrix = {};
+  try {
+    matrix = JSON.parse(document.getElementById("pcx-matrix-json").textContent || "{}") || {};
+  } catch (err) {
+    matrix = {depot_rows: [], qty_source_choices: [], default_qty_source: "deduct_stock"};
   }
 
-  function updateCutHint() {
-    var info = sizesMap[sizeSel.value] || {};
-    var opt = lengthSel.options[lengthSel.selectedIndex];
-    if (!opt) { cutHint.textContent = ""; return; }
-    cutHint.textContent =
-      "طول برش واقعی: " + (opt.dataset.cut || "—") + " mm · سرعت خط: " +
-      (info.speed || "—") + " m/min · بلینگ: " + (info.billing || "—") +
-      " عدد/ساعت · بسته: " + (info.pack || "—");
-  }
+  var depotBody = document.getElementById("pcx-depot-body");
+  var sizeSel = document.getElementById("pcx-size");
+  var calcBtn = document.getElementById("pcx-calc");
+  var results = document.getElementById("pcx-results");
+  var qtySel = document.getElementById("pcx-qty-source");
+  var prodHead = document.getElementById("pcx-prod-head");
+  var prodBody = document.getElementById("pcx-prod-body");
 
-  sizeSel.addEventListener("change", fillLengths);
-  lengthSel.addEventListener("change", updateCutHint);
-  fillLengths();
-
-  function csrf() {
-    var el = form.querySelector("[name=csrfmiddlewaretoken]");
+  function csrfToken() {
+    var el = document.querySelector("[name=csrfmiddlewaretoken]");
     return el ? el.value : "";
   }
 
-  function showResult(data) {
-    var box = document.getElementById("pipe-result");
-    box.hidden = false;
-    var r = data.result || data;
-    var kpis = document.getElementById("pipe-result-kpis");
-    var tf = r.time_fmt || {};
-    var t = r.time || {};
-    kpis.innerHTML =
-      '<div class="intel-kpi"><span class="intel-kpi-value">' + (t.meters || 0) + '</span><span class="intel-kpi-label">متر تولید</span></div>' +
-      '<div class="intel-kpi"><span class="intel-kpi-value">' + (tf.line || "—") + '</span><span class="intel-kpi-label">زمان خط</span></div>' +
-      '<div class="intel-kpi"><span class="intel-kpi-value">' + (tf.billing || "—") + '</span><span class="intel-kpi-label">زمان بلینگ</span></div>' +
-      '<div class="intel-kpi"><span class="intel-kpi-value">' + (tf.total || "—") + '</span><span class="intel-kpi-label">جمع زمان</span></div>' +
-      '<div class="intel-kpi"><span class="intel-kpi-value">' + (t.packs || 0) + '</span><span class="intel-kpi-label">تعداد بسته</span></div>';
-
-    var tb = document.querySelector("#pipe-time-table tbody");
-    tb.innerHTML =
-      "<tr><td>خط تولید</td><td class='num'>" + (tf.line || "") + "</td><td class='num'>" + ((t.line && t.line.hours) || 0) + "</td></tr>" +
-      "<tr><td>بلینگ</td><td class='num'>" + (tf.billing || "") + "</td><td class='num'>" + ((t.billing && t.billing.hours) || 0) + "</td></tr>" +
-      "<tr><td>جمع</td><td class='num'>" + (tf.total || "") + "</td><td class='num'>" + ((t.total && t.total.hours) || 0) + "</td></tr>";
-
-    var d = r.depot || {};
-    document.querySelector("#pipe-depot-table tbody").innerHTML =
-      "<tr>" +
-      "<td class='num'>" + (d.ceiling || 0) + "</td>" +
-      "<td class='num'>" + (d.stock || 0) + "</td>" +
-      "<td class='num'>" + (d.empty_space || 0) + "</td>" +
-      "<td class='num'>" + (d.stock_after_voucher || 0) + "</td>" +
-      "<td class='num'>" + (d.empty_after_voucher || 0) + "</td>" +
-      "<td class='num'>" + (d.fill_to_ceiling || 0) + "</td>" +
-      "</tr>";
-
-    var bom = (r.bom && r.bom.lines) || [];
-    var bomBody = document.querySelector("#pipe-bom-table tbody");
-    if (!bom.length) {
-      bomBody.innerHTML = "<tr><td colspan='6' class='muted'>ماده/BOM برای این سایز تعریف نشده یا موجودی کاتالوگ خالی است.</td></tr>";
-    } else {
-      bomBody.innerHTML = bom.map(function (line) {
-        return "<tr class='" + (line.order_suggested ? "is-alert-row" : "") + "'>" +
-          "<td>" + (line.code || "—") + "</td>" +
-          "<td>" + (line.name || "") + "</td>" +
-          "<td class='num'>" + line.qty_needed + " " + (line.unit || "") + "</td>" +
-          "<td class='num'>" + line.qty_available + "</td>" +
-          "<td class='num'>" + line.qty_short + "</td>" +
-          "<td>" + (line.order_suggested ? "سفارش‌گذاری" : "—") + "</td></tr>";
-      }).join("");
-    }
-
-    if (data.aggregate) {
-      var aggBox = document.getElementById("pipe-agg-box");
-      aggBox.hidden = false;
-      var af = data.aggregate_fmt || {};
-      var a = data.aggregate;
-      aggBox.innerHTML =
-        "<h4 class='pipe-subhead'>تجمیع</h4>" +
-        "<p>اقلام: " + a.item_count + " · تعداد: " + a.pieces + " · متر: " + a.meters +
-        " · خط: " + af.line + " · بلینگ: " + af.billing + " · جمع: " + af.total + "</p>";
-    }
+  function fmtNum(value, digits) {
+    if (value === null || value === undefined || value === "") return "—";
+    var n = Number(value);
+    if (!isFinite(n)) return "—";
+    if (digits === 0) return String(Math.round(n));
+    var f = Math.pow(10, digits);
+    return String(Math.round(n * f) / f);
   }
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var url = form.getAttribute("data-run-url");
-    var body = new FormData(form);
-    fetch(url, {method: "POST", body: body, headers: {"X-CSRFToken": csrf()}})
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (!data.ok) { alert(data.error || "خطا"); return; }
-        document.getElementById("pipe-agg-box").hidden = true;
-        showResult(data);
-      })
-      .catch(function () { alert("خطا در محاسبه"); });
-  });
+  function fmtPct(value) {
+    if (value === null || value === undefined) return "—";
+    return fmtNum(value, 1) + "٪";
+  }
 
-  var aggBtn = document.getElementById("pipe-agg-btn");
-  if (aggBtn) {
-    aggBtn.addEventListener("click", function () {
-      var batch = Object.keys(sizesMap).map(function (sz) {
-        var lengths = sizesMap[sz].lengths || [];
-        return {
-          size_mm: parseInt(sz, 10),
-          length_code: lengths[0] ? lengths[0].code : "",
-          pieces: 100
-        };
-      });
-      var url = form.getAttribute("data-run-url");
-      var fd = new FormData();
-      fd.append("csrfmiddlewaretoken", csrf());
-      fd.append("line", form.querySelector("[name=line]").value);
-      fd.append("batch", JSON.stringify(batch));
-      fetch(url, {method: "POST", body: fd, headers: {"X-CSRFToken": csrf()}})
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (!data.ok) { alert(data.error || "خطا"); return; }
-          var first = (data.details && data.details[0]) || null;
-          if (first) {
-            showResult({result: first, aggregate: data.aggregate, aggregate_fmt: data.aggregate_fmt});
-          } else {
-            document.getElementById("pipe-result").hidden = false;
-            var aggBox = document.getElementById("pipe-agg-box");
-            aggBox.hidden = false;
-            var af = data.aggregate_fmt || {};
-            aggBox.textContent = "تجمیع — خط: " + (af.line || "") + " · بلینگ: " + (af.billing || "") + " · جمع: " + (af.total || "");
-          }
-        });
+  function recompute(row) {
+    var ceiling = Math.max(0, parseInt(row.depot_ceiling, 10) || 0);
+    var stock = parseInt(row.stock, 10) || 0;
+    var voucher = Math.max(0, parseInt(row.voucher, 10) || 0);
+    var avg = Math.max(0, parseFloat(row.avg_monthly_sales) || 0);
+    var remaining = stock - voucher;
+    row.remaining_after_voucher = remaining;
+    row.months_remaining = avg > 0 ? Math.round((remaining / avg) * 100) / 100 : null;
+    row.depot_remaining_pct = ceiling > 0 ? Math.round((remaining / ceiling) * 1000) / 10 : null;
+    row.deduct_from_depot_stock = Math.max(0, ceiling - stock);
+    row.deduct_from_depot_remaining = Math.max(0, ceiling - remaining);
+    if (row._requiredTouched !== true) {
+      row.required_qty = row.deduct_from_depot_stock;
+    }
+    return row;
+  }
+
+  function renderDepot() {
+    var rows = (matrix.depot_rows || []).map(function (row) {
+      return recompute(Object.assign({}, row));
+    });
+    matrix.depot_rows = rows;
+    depotBody.innerHTML = rows.map(function (row, idx) {
+      return (
+        '<tr data-idx="' + idx + '">' +
+          '<td class="pcx-sticky">' + (row.label || row.length_code || "") + "</td>" +
+          '<td><input class="pcx-input" data-field="depot_ceiling" type="number" min="0" step="1" value="' + (row.depot_ceiling || 0) + '"></td>' +
+          "<td>" + (canEdit
+            ? '<input class="pcx-input" data-field="stock" type="number" step="1" value="' + (row.stock || 0) + '">'
+            : '<span class="pcx-num">' + fmtNum(row.stock, 0) + "</span>") + "</td>" +
+          "<td>" + (canEdit
+            ? '<input class="pcx-input" data-field="voucher" type="number" min="0" step="1" value="' + (row.voucher || 0) + '">'
+            : '<span class="pcx-num">' + fmtNum(row.voucher, 0) + "</span>") + "</td>" +
+          '<td class="pcx-num" data-col="remaining">' + fmtNum(row.remaining_after_voucher, 0) + "</td>" +
+          '<td><input class="pcx-input" data-field="avg_monthly_sales" type="number" min="0" step="0.01" value="' + (row.avg_monthly_sales || 0) + '"></td>' +
+          '<td class="pcx-num" data-col="months">' + (row.months_remaining === null ? "—" : fmtNum(row.months_remaining, 2)) + "</td>" +
+          '<td class="pcx-num" data-col="pct">' + fmtPct(row.depot_remaining_pct) + "</td>" +
+          '<td class="pcx-num" data-col="deduct_stock">' + fmtNum(row.deduct_from_depot_stock, 0) + "</td>" +
+          '<td class="pcx-num" data-col="deduct_remaining">' + fmtNum(row.deduct_from_depot_remaining, 0) + "</td>" +
+          '<td><input class="pcx-input" data-field="required_qty" type="number" min="0" step="1" value="' + (row.required_qty || 0) + '"></td>' +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function depotPatches() {
+    return (matrix.depot_rows || []).map(function (row) {
+      return {
+        id: row.id,
+        depot_ceiling: row.depot_ceiling,
+        avg_monthly_sales: row.avg_monthly_sales,
+        stock_on_hand: row.stock,
+        voucher_qty: row.voucher,
+        required_qty: row.required_qty
+      };
     });
   }
+
+  function fillQtyChoices(choices, selected) {
+    var list = choices || matrix.qty_source_choices || [];
+    var current = selected || matrix.default_qty_source || "deduct_stock";
+    qtySel.innerHTML = list.map(function (item) {
+      return '<option value="' + item.value + '"' + (item.value === current ? " selected" : "") + ">" + item.label + "</option>";
+    }).join("");
+  }
+
+  function renderProduction(prod) {
+    if (!prod) return;
+    var headers = prod.material_headers || [];
+    prodHead.innerHTML =
+      "<tr>" +
+      "<th>طول اسمی</th>" +
+      "<th>زمان تولید خط لوله</th>" +
+      "<th>زمان تولید بلینگ</th>" +
+      "<th>درپوش سوکت</th>" +
+      "<th>درپوش لوله</th>" +
+      "<th>اسپیسر</th>" +
+      "<th>کاور</th>" +
+      headers.map(function (h) { return "<th>" + (h.label || h.key) + "</th>"; }).join("") +
+      "</tr>";
+    prodBody.innerHTML = (prod.rows || []).map(function (row) {
+      var mats = row.material_values || {};
+      return (
+        "<tr>" +
+          '<td class="pcx-sticky">' + (row.label || row.length_code || "") + "</td>" +
+          '<td class="pcx-num">' + (row.line_fmt || "—") + "</td>" +
+          '<td class="pcx-num">' + (row.billing_fmt || "—") + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.socket_caps, 2) + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.pipe_caps, 2) + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.spacers, 2) + "</td>" +
+          '<td class="pcx-num">' + fmtNum(row.covers, 2) + "</td>" +
+          headers.map(function (h) {
+            return '<td class="pcx-num">' + fmtNum(mats[h.key], 4) + "</td>";
+          }).join("") +
+        "</tr>"
+      );
+    }).join("");
+    fillQtyChoices(prod.qty_source_choices || matrix.qty_source_choices, prod.qty_source || matrix.default_qty_source);
+    results.hidden = false;
+  }
+
+  function runCalc(qtySource) {
+    calcBtn.disabled = true;
+    var previous = calcBtn.textContent;
+    calcBtn.textContent = "در حال محاسبه…";
+    fetch(runUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken(),
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({
+        line: lineCode,
+        size_mm: parseInt(sizeSel.value, 10),
+        mode: "matrix",
+        qty_source: qtySource || qtySel.value || matrix.default_qty_source || "deduct_stock",
+        depot_rows: depotPatches()
+      })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        calcBtn.disabled = false;
+        calcBtn.textContent = previous;
+        if (!data.ok) {
+          alert(data.error || "خطا در محاسبه");
+          return;
+        }
+        matrix = data.matrix || matrix;
+        if (matrix.depot_rows) renderDepot();
+        renderProduction(matrix.production);
+      })
+      .catch(function () {
+        calcBtn.disabled = false;
+        calcBtn.textContent = previous;
+        alert("خطا در ارتباط با سرور");
+      });
+  }
+
+  depotBody.addEventListener("input", function (event) {
+    var input = event.target.closest("[data-field]");
+    if (!input) return;
+    var tr = input.closest("tr");
+    var idx = parseInt(tr.getAttribute("data-idx"), 10);
+    var row = matrix.depot_rows[idx];
+    if (!row) return;
+    var field = input.getAttribute("data-field");
+    if (field === "avg_monthly_sales") {
+      row.avg_monthly_sales = parseFloat(input.value) || 0;
+    } else if (field === "required_qty") {
+      row.required_qty = Math.max(0, parseInt(input.value, 10) || 0);
+      row._requiredTouched = true;
+    } else if (field === "depot_ceiling") {
+      row.depot_ceiling = Math.max(0, parseInt(input.value, 10) || 0);
+      row._requiredTouched = false;
+    } else if (field === "stock") {
+      row.stock = parseInt(input.value, 10) || 0;
+      row._requiredTouched = false;
+    } else if (field === "voucher") {
+      row.voucher = Math.max(0, parseInt(input.value, 10) || 0);
+      row._requiredTouched = false;
+    }
+    recompute(row);
+    tr.querySelector('[data-col="remaining"]').textContent = fmtNum(row.remaining_after_voucher, 0);
+    tr.querySelector('[data-col="months"]').textContent = row.months_remaining === null ? "—" : fmtNum(row.months_remaining, 2);
+    tr.querySelector('[data-col="pct"]').textContent = fmtPct(row.depot_remaining_pct);
+    tr.querySelector('[data-col="deduct_stock"]').textContent = fmtNum(row.deduct_from_depot_stock, 0);
+    tr.querySelector('[data-col="deduct_remaining"]').textContent = fmtNum(row.deduct_from_depot_remaining, 0);
+    if (field !== "required_qty") {
+      var req = tr.querySelector('[data-field="required_qty"]');
+      if (req && row._requiredTouched !== true) req.value = row.required_qty;
+    }
+  });
+
+  depotBody.addEventListener("change", function (event) {
+    if (!canEdit) return;
+    var input = event.target.closest("[data-field]");
+    if (!input) return;
+    var field = input.getAttribute("data-field");
+    if (["depot_ceiling", "avg_monthly_sales", "stock", "voucher"].indexOf(field) < 0) return;
+    var tr = input.closest("tr");
+    var idx = parseInt(tr.getAttribute("data-idx"), 10);
+    var row = matrix.depot_rows[idx];
+    if (!row || !row.id) return;
+    var body = new URLSearchParams();
+    body.set("length_id", String(row.id));
+    body.set("depot_ceiling", String(row.depot_ceiling || 0));
+    body.set("avg_monthly_sales", String(row.avg_monthly_sales || 0));
+    body.set("stock_on_hand", String(row.stock || 0));
+    body.set("voucher_qty", String(row.voucher || 0));
+    fetch(stockUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": csrfToken(),
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: body.toString()
+    }).catch(function () {});
+  });
+
+  sizeSel.addEventListener("change", function () {
+    var url = new URL(window.location.href);
+    url.searchParams.set("line", lineCode);
+    url.searchParams.set("size", sizeSel.value);
+    window.location.href = url.toString();
+  });
+
+  calcBtn.addEventListener("click", function () {
+    runCalc(qtySel.value || matrix.default_qty_source);
+  });
+
+  qtySel.addEventListener("change", function () {
+    if (!results.hidden) runCalc(qtySel.value);
+  });
+
+  fillQtyChoices(matrix.qty_source_choices, matrix.default_qty_source);
+  renderDepot();
 })();
 </script>
 {% endblock %}

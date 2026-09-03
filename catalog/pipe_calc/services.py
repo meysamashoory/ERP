@@ -6,9 +6,13 @@ from typing import Any
 
 from django.db.models import Prefetch
 
-from catalog.models import Product
+from catalog.models import FlexibleDataset, FlexibleRow, Product
 
 from .engine import (
+    calc_depot_matrix_row,
+    calc_production_matrix_row,
+    resolve_qty_from_depot_row,
+
     CalcItemInput,
     ScenarioResult,
     aggregate_times,
@@ -18,7 +22,13 @@ from .engine import (
     calc_production_time,
     format_duration,
 )
-from .models import PipeLengthCut, PipeProductLine, PipeSizeProfile
+from .models import PipeCalcRule, PipeLengthCut, PipeProductLine, PipeSizeProfile
+from .constants import (
+    MATRIX_LINE_CODES,
+    NOMINAL_LENGTHS,
+    QTY_SOURCE_CHOICES,
+    QTY_SOURCE_DEDUCT_STOCK,
+)
 from .seed import seed_pipe_calc_defaults
 
 
@@ -29,7 +39,13 @@ def ensure_seeded() -> None:
 
 def list_lines() -> list[PipeProductLine]:
     ensure_seeded()
-    return list(PipeProductLine.objects.filter(is_active=True).order_by("order", "code"))
+    from .constants import LINE_CODES
+
+    lines = list(PipeProductLine.objects.filter(is_active=True).order_by("order", "code"))
+    rank = {code: idx for idx, code in enumerate(LINE_CODES)}
+    lines = [ln for ln in lines if ln.code in rank]
+    lines.sort(key=lambda ln: (rank.get(ln.code, 999), ln.order, ln.code))
+    return lines
 
 
 def get_line(code: str) -> PipeProductLine | None:
@@ -262,9 +278,19 @@ def run_line_aggregate(
 def line_overview(line: PipeProductLine) -> dict[str, Any]:
     """Lightweight overview for hub UI (no heavy joins beyond prefetch)."""
     profiles = load_size_profiles(line)
+    order_map = {code: idx for idx, (code, *_rest) in enumerate(NOMINAL_LENGTHS)}
     size_rows = []
     for p in profiles:
         depot = calc_depot(int(p.depot_ceiling or 0), int(p.stock_on_hand or 0), 0)
+        lengths = list(p.length_cuts.all())
+        lengths.sort(
+            key=lambda lc: (
+                order_map.get(lc.length_code, 999),
+                lc.nominal_cm,
+                lc.socket_ends,
+                lc.id,
+            )
+        )
         size_rows.append(
             {
                 "id": p.id,
@@ -277,13 +303,18 @@ def line_overview(line: PipeProductLine) -> dict[str, Any]:
                 "empty_space": depot.empty_space,
                 "lengths": [
                     {
+                        "id": lc.id,
                         "code": lc.length_code,
                         "label": lc.label,
                         "nominal_cm": lc.nominal_cm,
                         "cut_length_mm": lc.cut_length_mm,
                         "socket_ends": lc.socket_ends,
+                        "depot_ceiling": int(lc.depot_ceiling or 0),
+                        "avg_monthly_sales": float(lc.avg_monthly_sales or 0),
+                        "stock_on_hand": int(lc.stock_on_hand or 0),
+                        "voucher_qty": int(lc.voucher_qty or 0),
                     }
-                    for lc in p.length_cuts.all()
+                    for lc in lengths
                 ],
                 "layers": [
                     {
@@ -305,8 +336,229 @@ def line_overview(line: PipeProductLine) -> dict[str, Any]:
             "needs_billing": line.needs_billing,
             "uses_nominal_lengths": line.uses_nominal_lengths,
             "is_scaffold": line.is_scaffold,
+            "is_matrix_line": line.code in MATRIX_LINE_CODES,
             "notes": line.notes,
             "settings": line.settings or {},
         },
         "sizes": size_rows,
     }
+
+
+
+def _voucher_qty_by_product_code() -> dict[str, int]:
+    """Sum voucher quantities from flexible product-data vouchers tab."""
+    ds = (
+        FlexibleDataset.objects.filter(destination_id="product_data", level_id="vouchers")
+        .order_by("-updated_at")
+        .first()
+    )
+    if ds is None:
+        return {}
+    totals: dict[str, int] = {}
+    for row in FlexibleRow.objects.filter(dataset=ds).iterator():
+        values = row.values or {}
+        code = str(
+            values.get("کد_کالا")
+            or values.get("کد کالا")
+            or values.get("product_code")
+            or values.get("code")
+            or ""
+        ).strip()
+        if not code:
+            continue
+        raw = values.get("مقدار") or values.get("qty") or values.get("quantity") or 0
+        try:
+            qty = int(float(str(raw).replace(",", "").strip() or 0))
+        except (TypeError, ValueError):
+            qty = 0
+        totals[code] = totals.get(code, 0) + qty
+    return totals
+
+
+def _sync_length_stock_from_products(profile: PipeSizeProfile) -> None:
+    """Refresh length stock/voucher snapshots from linked product + vouchers when empty."""
+    vouchers = _voucher_qty_by_product_code()
+    product = profile.product
+    product_stock = int(product.stock_finished or 0) if product else int(profile.stock_on_hand or 0)
+    product_code = (product.code if product else "") or ""
+    product_voucher = vouchers.get(product_code, 0)
+    lengths = list(profile.length_cuts.filter(is_active=True))
+    if not lengths:
+        return
+    # If length rows still at zero, distribute/copy product snapshot as a starting point.
+    for lc in lengths:
+        changed = False
+        if lc.stock_on_hand == 0 and product_stock:
+            lc.stock_on_hand = product_stock
+            changed = True
+        if lc.voucher_qty == 0 and product_voucher:
+            lc.voucher_qty = product_voucher
+            changed = True
+        if lc.depot_ceiling == 0 and profile.depot_ceiling:
+            lc.depot_ceiling = int(profile.depot_ceiling)
+            changed = True
+        if changed:
+            lc.save(
+                update_fields=["stock_on_hand", "voucher_qty", "depot_ceiling"]
+            )
+
+
+def _resolve_calc_rule(line: PipeProductLine) -> PipeCalcRule | None:
+    rule = (
+        PipeCalcRule.objects.filter(line=line, code="default", is_active=True).first()
+        or PipeCalcRule.objects.filter(line__isnull=True, code="default", is_active=True).first()
+    )
+    return rule
+
+
+def build_depot_matrix(profile: PipeSizeProfile) -> list[dict[str, Any]]:
+    """Upper planning table rows for one size."""
+    _sync_length_stock_from_products(profile)
+    rows: list[dict[str, Any]] = []
+    order_map = {code: idx for idx, (code, *_rest) in enumerate(NOMINAL_LENGTHS)}
+    lengths = list(profile.length_cuts.filter(is_active=True))
+    lengths.sort(key=lambda lc: (order_map.get(lc.length_code, 999), lc.nominal_cm, lc.socket_ends, lc.id))
+    for lc in lengths:
+        row = calc_depot_matrix_row(
+            length_code=lc.length_code,
+            label=lc.label,
+            depot_ceiling=int(lc.depot_ceiling or 0),
+            stock=int(lc.stock_on_hand or 0),
+            voucher=int(lc.voucher_qty or 0),
+            avg_monthly_sales=float(lc.avg_monthly_sales or 0),
+            required_qty=None,
+        )
+        data = row.to_dict()
+        data["id"] = lc.id
+        data["nominal_cm"] = lc.nominal_cm
+        data["cut_length_mm"] = lc.cut_length_mm
+        data["socket_ends"] = lc.socket_ends
+        rows.append(data)
+    return rows
+
+
+def build_production_matrix(
+    profile: PipeSizeProfile,
+    depot_rows: list[dict[str, Any]],
+    *,
+    qty_source: str = QTY_SOURCE_DEDUCT_STOCK,
+) -> dict[str, Any]:
+    """Lower computational table + material column headers."""
+    line = profile.line
+    rule = _resolve_calc_rule(line)
+    socket_cap = float(rule.socket_cap_per_socket) if rule else 1.0
+    pipe_cap = float(rule.pipe_cap_per_piece) if rule else 1.0
+    spacer = float(rule.spacer_per_piece) if rule else 0.0
+    cover = float(rule.cover_per_piece) if rule else 0.0
+    material_factors = (rule.material_factors if rule else {}) or {}
+
+    layers = [
+        {
+            "layer": ly.layer,
+            "material_code": ly.material_code,
+            "material_name": ly.material_name,
+            "kg_per_meter": float(ly.kg_per_meter or 0),
+            "share_percent": float(ly.share_percent or 0),
+        }
+        for ly in profile.layers.all()
+    ]
+    # Also fold BOM component names into material columns when present.
+    bom_comps = _bom_components_for_product(profile.product)
+
+    material_headers: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for ly in layers:
+        key = ly["layer"]
+        if key in seen:
+            continue
+        seen.add(key)
+        material_headers.append(
+            {
+                "key": f"layer:{key}",
+                "label": ly["material_name"] or ly["material_code"] or key,
+            }
+        )
+    for comp in bom_comps:
+        key = f"bom:{(comp.get('code') or comp.get('name') or '').strip()}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        material_headers.append({"key": key, "label": comp.get("name") or comp.get("code") or key})
+
+    length_by_code = {
+        lc.length_code: lc for lc in profile.length_cuts.filter(is_active=True)
+    }
+    out_rows: list[dict[str, Any]] = []
+    for depot in depot_rows:
+        code = depot.get("length_code") or ""
+        lc = length_by_code.get(code)
+        if lc is None:
+            continue
+        qty = resolve_qty_from_depot_row(depot, qty_source)
+        prod = calc_production_matrix_row(
+            length_code=code,
+            label=str(depot.get("label") or lc.label),
+            qty=qty,
+            cut_length_mm=float(lc.cut_length_mm or 0),
+            line_speed_m_per_min=float(profile.line_speed_m_per_min or 0),
+            billing_pieces_per_hour=float(profile.billing_pieces_per_hour or 0),
+            socket_ends=int(lc.socket_ends or 0),
+            needs_billing=bool(line.needs_billing),
+            layers=layers,
+            socket_cap_per_socket=socket_cap,
+            pipe_cap_per_piece=pipe_cap,
+            spacer_per_piece=spacer,
+            cover_per_piece=cover,
+            material_factors={str(k): float(v) for k, v in material_factors.items()},
+        )
+        data = prod.to_dict()
+        # Flatten materials for table cells.
+        material_values: dict[str, float] = {}
+        for mat in data.get("materials") or []:
+            material_values[f"layer:{mat.get('layer')}"] = float(mat.get("kg_total") or 0)
+        for comp in bom_comps:
+            key = f"bom:{(comp.get('code') or comp.get('name') or '').strip()}"
+            per = float(comp.get("qty_per_unit") or 0)
+            material_values[key] = round(qty * per, 4)
+        data["material_values"] = material_values
+        data["qty_source"] = qty_source
+        out_rows.append(data)
+
+    return {
+        "qty_source": qty_source,
+        "qty_source_choices": [{"value": v, "label": lbl} for v, lbl in QTY_SOURCE_CHOICES],
+        "material_headers": material_headers,
+        "rows": out_rows,
+        "rule": {
+            "code": rule.code if rule else "default",
+            "name": rule.name if rule else "پیش‌فرض",
+            "socket_cap_per_socket": socket_cap,
+            "pipe_cap_per_piece": pipe_cap,
+            "spacer_per_piece": spacer,
+            "cover_per_piece": cover,
+        },
+    }
+
+
+def size_matrix_payload(
+    profile: PipeSizeProfile,
+    *,
+    qty_source: str = QTY_SOURCE_DEDUCT_STOCK,
+    include_production: bool = False,
+) -> dict[str, Any]:
+    depot_rows = build_depot_matrix(profile)
+    payload: dict[str, Any] = {
+        "size_mm": profile.size_mm,
+        "size_id": profile.id,
+        "line_code": profile.line.code,
+        "is_matrix_line": profile.line.code in MATRIX_LINE_CODES,
+        "depot_rows": depot_rows,
+        "qty_source_choices": [{"value": v, "label": lbl} for v, lbl in QTY_SOURCE_CHOICES],
+        "default_qty_source": QTY_SOURCE_DEDUCT_STOCK,
+    }
+    if include_production:
+        payload["production"] = build_production_matrix(
+            profile, depot_rows, qty_source=qty_source or QTY_SOURCE_DEDUCT_STOCK
+        )
+    return payload
+

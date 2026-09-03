@@ -863,6 +863,7 @@ class TableLayoutSettings(models.Model):
 
 # Pipe production-time calculation master data (see catalog.pipe_calc).
 from .pipe_calc.models import (  # noqa: E402
+    PipeCalcRule,
     PipeLayerSpec,
     PipeLengthCut,
     PipeProductLine,

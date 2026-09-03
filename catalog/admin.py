@@ -515,6 +515,7 @@ class SystemNamingKeyAdmin(admin.ModelAdmin):
 
 # ---- Pipe production calculation ----
 from .pipe_calc.models import (  # noqa: E402
+    PipeCalcRule,
     PipeLayerSpec,
     PipeLengthCut,
     PipeProductLine,
@@ -576,3 +577,19 @@ class PipeSizeProfileAdmin(admin.ModelAdmin):
     )
     list_filter = ("line", "is_active")
     inlines = [PipeLengthCutInline, PipeLayerSpecInline]
+
+
+@admin.register(PipeCalcRule)
+class PipeCalcRuleAdmin(admin.ModelAdmin):
+    list_display = (
+        "code",
+        "name",
+        "line",
+        "socket_cap_per_socket",
+        "pipe_cap_per_piece",
+        "spacer_per_piece",
+        "cover_per_piece",
+        "is_active",
+    )
+    list_filter = ("is_active", "line")
+    search_fields = ("code", "name")
