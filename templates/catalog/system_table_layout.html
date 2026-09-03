@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}ارتفاع ردیف و قفل عرض ستون{% endblock %}
+{% block heading %}ارتفاع ردیف و قفل عرض ستون جداول{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_system_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions">
+  <a class="btn btn-sm btn-ghost" href="{% url 'system_data' %}">بازگشت به داده‌های سیستم</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="panel panel-compact table-layout-form" data-table-section="system">
+  {% csrf_token %}
+  <div class="panel-body">
+    <p class="panel-hint">
+      ارتفاع ردیف روی همه جداول سامانه یکسان اعمال می‌شود.
+      قفل عرض ستون برای هر بخش جداگانه است؛ وقتی قفل باشد دستگیره تغییر عرض (مرز قابل کشیدن) پنهان می‌شود.
+    </p>
+
+    <div class="field" style="max-width:280px">
+      <label for="id_row_height_px">ارتفاع یکنواخت ردیف (پیکسل)</label>
+      <input class="input" type="number" name="row_height_px" id="id_row_height_px"
+             min="18" max="120" step="1" value="{{ row_height_px }}">
+      <span class="muted" style="font-size:12px">بین ۱۸ تا ۱۲۰</span>
+    </div>
+
+    <div class="field" style="margin-top:18px">
+      <label>قفل عرض ستون به تفکیک بخش</label>
+      <div class="lock-grid">
+        {% for item in lock_items %}
+        <label class="lock-item chk">
+          <input type="checkbox" name="lock_{{ item.key }}" value="1" {% if item.locked %}checked{% endif %}>
+          <span>{{ item.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="line-actions" style="margin-top:18px">
+      <button type="submit" class="btn">ذخیره تنظیمات</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

@@ -77,6 +77,7 @@ class SystemDataNoShortcutsTests(TestCase):
         system_config_urls = {
             "system_naming_keys",
             "system_table_columns",
+            "system_table_layout",
             "planning_process_list",
         }
         for group in build_system_groups():
@@ -106,3 +107,39 @@ class SystemDataNoShortcutsTests(TestCase):
         resp2 = self.client.get(reverse("system_section", args=["product_data_hub"]))
         self.assertEqual(resp2.status_code, 302)
         self.assertIn("/admin/catalog/flexibledataset/", resp2["Location"])
+
+
+class TableLayoutSettingsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from django.contrib.auth import get_user_model
+
+        call_command("seed_demo")
+        cls.User = get_user_model()
+        cls.admin = cls.User.objects.get(username="admin")
+
+    def test_table_layout_page_save(self):
+        from django.urls import reverse
+        from catalog.models import TableLayoutSettings
+
+        self.client.login(username="admin", password="erp12345")
+        url = reverse("system_table_layout")
+        get = self.client.get(url)
+        self.assertEqual(get.status_code, 200)
+        self.assertContains(get, "ارتفاع یکنواخت ردیف")
+        self.assertContains(get, "قفل عرض ستون")
+        resp = self.client.post(
+            url,
+            {
+                "row_height_px": "44",
+                "lock_reports": "1",
+                "lock_history": "1",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        settings = TableLayoutSettings.load()
+        self.assertEqual(settings.clamped_row_height(), 44)
+        self.assertTrue(settings.is_width_locked("reports"))
+        self.assertTrue(settings.is_width_locked("history"))
+        self.assertFalse(settings.is_width_locked("product_data"))

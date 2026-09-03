@@ -18,7 +18,7 @@
   <p class="panel-hint">پس از ورود Table یا Sheet، از «انتقال داده» برای ارسال ستون‌ها به بخش‌های سامانه استفاده کنید. CSV با جداکننده <code>;</code> یا <code>,</code> هم پشتیبانی می‌شود.</p>
   {% if rows %}
   <div class="table-scroll">
-    <table class="table">
+    <table class="table" data-table-section="excel">
       <thead>
         <tr>
           <th data-col="title">{% system_col "catalog.excel_list" "title" "نام فایل" %}</th>

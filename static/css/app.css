@@ -681,20 +681,48 @@ tr.is-conflict-row > td {
 .panel-head h2 { margin: 0; font-size: 16px; }
 .panel-body { padding: 18px 20px; }
 
-.table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.table th, .table td { text-align: center; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: auto; }
+.table th, .table td {
+  text-align: center;
+  padding: 0 12px;
+  height: var(--table-row-height, 36px);
+  min-height: var(--table-row-height, 36px);
+  line-height: 1.25;
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+.table th:last-child,
+.table td:last-child { border-left: none; }
 .table th {
   font-size: 12px;
   color: #1e3a5f;
   background: #c7d7ea;
   font-weight: 700;
   border-bottom: 1px solid #9eb6d4;
+  position: relative;
 }
 .table thead th { background: #c7d7ea; }
 .table tbody tr:nth-child(even) td { background: #fafbfc; }
 
 .table tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: #f8fafc; }
+.table.col-resize-enabled th .col-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.table.col-resize-enabled th .col-resizer:hover,
+.table.col-resize-enabled th .col-resizer:active {
+  background: rgba(37, 99, 235, 0.35);
+}
+.table.col-width-locked th .col-resizer { display: none !important; }
+body.is-col-resizing { cursor: col-resize !important; user-select: none; }
 .num { font-variant-numeric: tabular-nums; }
 
 .bars { display: flex; flex-direction: column; gap: 12px; }
@@ -2085,7 +2113,7 @@ table.js-table-nav tbody tr.is-row-selected:hover { cursor: pointer; }
 }
 .panel-head-row h2 { margin: 0; }
 .selected-col-row {
-  display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
+  display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 8px;
   align-items: center; background: #fff; border: 1px solid var(--line);
   border-radius: 10px; padding: 6px 8px; margin-bottom: 6px; font-size: 13px;
   cursor: pointer;
@@ -2095,12 +2123,77 @@ table.js-table-nav tbody tr.is-row-selected:hover { cursor: pointer; }
   background: #eef2ff;
 }
 .sel-rename { height: 32px !important; min-height: 32px !important; font-size: 13px; }
+.sel-width { width: 72px; height: 32px !important; min-height: 32px !important; font-size: 12px; text-align: center; }
+.width-label, .key-label { font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.col-header-preview {
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #e8eef6;
+  overflow-x: auto;
+}
+.col-header-preview-track {
+  display: flex;
+  flex-direction: row;
+  min-height: 36px;
+  align-items: stretch;
+}
+.col-header-preview-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-left: 1px solid #9eb6d4;
+  background: #c7d7ea;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e3a5f;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.col-header-preview-cell:last-child { border-left: none; }
+.col-header-preview-cell.is-active { outline: 2px solid var(--brand); outline-offset: -2px; }
+.col-header-preview-cell.is-key { background: #bfdbfe; }
+.col-header-preview-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.col-header-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+}
+.col-header-resizer:hover,
+.col-header-resizer:active { background: rgba(37, 99, 235, 0.4); }
 .col-path {
   margin-top: 10px; padding: 8px 10px; border-radius: 8px;
   background: #f1f5f9; font-size: 12px; border: 1px dashed var(--line);
 }
 .level-label { font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .level-label select { height: 32px; }
+
+.table-layout-form .lock-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 16px;
+  margin-top: 8px;
+}
+.table-layout-form .lock-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
 
 .stepper { display: flex; align-items: center; gap: 4px; }
 .stepper .input { text-align: center; }

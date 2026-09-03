@@ -798,6 +798,69 @@ class FlexibleRow(models.Model):
         return f"row#{self.pk} {self.identity_key or '—'}"
 
 
+class TableLayoutSettings(models.Model):
+    """Global table row height + per-section column-width lock flags.
+
+    Managed from «داده‌های سیستم». ``section_width_locks`` maps section keys
+    (reports, product_data, history, …) to booleans.
+    """
+
+    SECTION_CHOICES = (
+        ("reports", "گزارش‌ها"),
+        ("product_data", "دیتای محصولات"),
+        ("history", "سوابق تولید"),
+        ("planning", "برنامه‌ریزی هفتگی"),
+        ("production", "ثبت و کنترل تولید"),
+        ("excel", "جداول اکسل"),
+        ("forms", "فرم‌های چاپی"),
+        ("system", "داده‌های سیستم"),
+    )
+
+    row_height_px = models.PositiveSmallIntegerField(
+        "ارتفاع یکنواخت ردیف جداول (پیکسل)",
+        default=36,
+        help_text="بین ۱۸ تا ۱۲۰. روی همه جداول سامانه اعمال می‌شود.",
+    )
+    section_width_locks = models.JSONField(
+        "قفل عرض ستون به تفکیک بخش",
+        default=dict,
+        blank=True,
+        help_text='مثال: {"reports": true, "history": false}',
+    )
+
+    class Meta:
+        verbose_name = "تنظیمات نمایش جداول"
+        verbose_name_plural = "تنظیمات نمایش جداول (ارتفاع ردیف و قفل عرض)"
+
+    def __str__(self) -> str:
+        return f"ارتفاع ردیف {self.row_height_px}px"
+
+    @classmethod
+    def load(cls) -> "TableLayoutSettings":
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls(row_height_px=36, section_width_locks={})
+        return obj
+
+    def clamped_row_height(self) -> int:
+        try:
+            h = int(self.row_height_px or 36)
+        except (TypeError, ValueError):
+            h = 36
+        return max(18, min(120, h))
+
+    def is_width_locked(self, section_key: str) -> bool:
+        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
+        return bool(locks.get(str(section_key or ""), False))
+
+    def normalized_locks(self) -> dict[str, bool]:
+        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
+        out: dict[str, bool] = {}
+        for key, _label in self.SECTION_CHOICES:
+            out[key] = bool(locks.get(key, False))
+        return out
+
+
 # Pipe production-time calculation master data (see catalog.pipe_calc).
 from .pipe_calc.models import (  # noqa: E402
     PipeLayerSpec,

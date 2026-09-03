@@ -22,6 +22,7 @@ from .models import (
     StoppageReason,
     SystemAlarm,
     SystemNamingKey,
+    TableLayoutSettings,
 )
 
 
@@ -196,6 +197,38 @@ class PlanningDisplaySettingsAdmin(admin.ModelAdmin):
         if PlanningDisplaySettings.objects.exists():
             return False
         return super().has_add_permission(request)
+
+
+@admin.register(TableLayoutSettings)
+class TableLayoutSettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "row_height_px", "section_width_locks")
+    list_display_links = ("id",)
+    list_editable = ("row_height_px",)
+    fieldsets = (
+        (
+            "ارتفاع ردیف",
+            {
+                "fields": ("row_height_px",),
+                "description": "ارتفاع یکسان برای همه ردیف‌های جداول سامانه (پیکسل).",
+            },
+        ),
+        (
+            "قفل عرض ستون",
+            {
+                "fields": ("section_width_locks",),
+                "description": (
+                    "برای هر بخش کلید را true کنید تا دستگیره تغییر عرض ستون پنهان شود. "
+                    'مثال: {"reports": true, "product_data": false, "history": true}'
+                ),
+            },
+        ),
+    )
+
+    def has_add_permission(self, request):
+        if TableLayoutSettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
 
 @admin.register(ProgramUidScheme)
 class ProgramUidSchemeAdmin(admin.ModelAdmin):

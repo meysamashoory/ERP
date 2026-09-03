@@ -910,6 +910,47 @@ def system_naming_key_delete(request: HttpRequest) -> JsonResponse:
 
 
 @login_required
+def system_table_layout(request: HttpRequest) -> HttpResponse:
+    """Global row height + per-section column-width lock flags."""
+    from .models import TableLayoutSettings
+
+    if not _can_edit_naming(request.user) and request.method == "POST":
+        return HttpResponseForbidden("مجاز نیستید.")
+
+    settings = TableLayoutSettings.load()
+    if settings.pk is None:
+        settings.save()
+
+    if request.method == "POST":
+        try:
+            height = int(request.POST.get("row_height_px") or 36)
+        except (TypeError, ValueError):
+            height = 36
+        settings.row_height_px = max(18, min(120, height))
+        locks = {}
+        for key, _label in TableLayoutSettings.SECTION_CHOICES:
+            locks[key] = request.POST.get(f"lock_{key}") == "1"
+        settings.section_width_locks = locks
+        settings.save()
+        messages.success(request, "تنظیمات نمایش جداول ذخیره شد.")
+        return redirect("system_table_layout")
+
+    locks = settings.normalized_locks()
+    lock_items = [
+        {"key": key, "label": label, "locked": locks.get(key, False)}
+        for key, label in TableLayoutSettings.SECTION_CHOICES
+    ]
+    return render(
+        request,
+        "catalog/system_table_layout.html",
+        {
+            "row_height_px": settings.clamped_row_height(),
+            "lock_items": lock_items,
+        },
+    )
+
+
+@login_required
 def system_table_columns(request: HttpRequest) -> HttpResponse:
     """Manage column headers per table: rename, show/hide, link to sections, add."""
     from .models import SystemNamingKey

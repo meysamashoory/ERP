@@ -73,6 +73,7 @@ def build_system_groups() -> list[SystemGroup]:
         StoppageReason,
         SystemAlarm,
         SystemNamingKey,
+        TableLayoutSettings,
     )
 
     return [
@@ -104,6 +105,18 @@ def build_system_groups() -> list[SystemGroup]:
                         category=SystemNamingKey.Category.COLUMN
                     ).count(),
                     can_add=False,
+                ),
+                SystemItem(
+                    key="table_layout",
+                    title="ارتفاع ردیف و قفل عرض ستون جداول",
+                    admin_changelist="",
+                    url_name="system_table_layout",
+                    can_add=False,
+                    description=(
+                        "ارتفاع یکنواخت ردیف‌ها برای همه جداول، و قفل عرض ستون "
+                        "به‌صورت جداگانه برای هر بخش (گزارش، دیتای محصولات، سوابق، …)."
+                    ),
+                    count_fn=_count(TableLayoutSettings),
                 ),
             ],
         ),
