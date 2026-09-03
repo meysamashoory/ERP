@@ -157,13 +157,31 @@ body.admin-embed #content a:visited {
 }
 
 /* Resizable / editable headers on admin tables */
-body.admin-embed .admin-resizable-table {
+body.admin-embed .admin-resizable-table,
+body.admin-embed .admin-table-fit-width {
   table-layout: fixed;
-  width: 100%;
+  width: max-content;
+  max-width: none;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+body.admin-embed .admin-resizable-table th,
+body.admin-embed .admin-resizable-table td {
+  overflow: hidden;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-track {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  line-height: inherit;
+  will-change: transform;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-track.is-revealing {
+  max-width: none;
 }
 body.admin-embed .admin-th-resizable {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 body.admin-embed .admin-th-label {
   display: inline-block;

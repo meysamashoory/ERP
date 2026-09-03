@@ -708,6 +708,43 @@ tr.is-conflict-row > td {
 
 .table tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: #f8fafc; }
+
+/* Fit-width resizable tables: grow/shrink from RTL start (right), not full bleed */
+.table.table-fit-width,
+.table.col-resize-enabled {
+  width: max-content;
+  max-width: none;
+  table-layout: fixed;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+.table-scroll > .table.table-fit-width,
+.table-scroll > .table.col-resize-enabled,
+.table-scroll-wide > .table.table-fit-width,
+.table-scroll-wide > .table.col-resize-enabled {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+}
+.table.col-resize-enabled th,
+.table.col-resize-enabled td,
+.table.table-fit-width th,
+.table.table-fit-width td {
+  overflow: hidden;
+  max-height: var(--table-row-height, 36px);
+}
+.table.col-resize-enabled .cell-reveal-track,
+.table.table-fit-width .cell-reveal-track {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  line-height: inherit;
+  will-change: transform;
+}
+.table.col-resize-enabled .cell-reveal-track.is-revealing,
+.table.table-fit-width .cell-reveal-track.is-revealing {
+  max-width: none;
+}
 .table.col-resize-enabled th .col-resizer {
   position: absolute;
   top: 0;

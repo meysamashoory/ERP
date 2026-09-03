@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{% static "admin/css/responsive.css" %}">
 {% if LANGUAGE_BIDI %}<link rel="stylesheet" href="{% static "admin/css/responsive_rtl.css" %}">{% endif %}
 {% endblock %}
-<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=3">
+<link rel="stylesheet" href="{% static 'css/admin_embed.css' %}?v=4">
 {% block blockbots %}<meta name="robots" content="NONE,NOARCHIVE">{% endblock %}
 </head>
 <body class="{% if is_popup %}popup {% endif %}admin-embed {% block bodyclass %}{% endblock %}"
@@ -123,7 +123,7 @@
 
 {% block footer %}{% endblock %}
 {% if not is_popup %}
-<script src="{% static 'js/admin_table_layout.js' %}?v=1"></script>
+<script src="{% static 'js/admin_table_layout.js' %}?v=2"></script>
 {% endif %}
 </body>
 </html>

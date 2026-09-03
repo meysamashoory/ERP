@@ -62,20 +62,47 @@
     });
   }
 
+  function applyFitWidth(table, widths) {
+    var total = 0;
+    var i;
+    for (i = 0; i < (widths || []).length; i++) {
+      var w = widths[i];
+      total += w && w > 0 ? w : 0;
+    }
+    if (!total) {
+      // measure current if no saved widths
+      var cells = headerCells(table);
+      cells.forEach(function (th) {
+        total += Math.max(40, Math.round(th.getBoundingClientRect().width));
+      });
+    }
+    if (!total) return;
+    table.classList.add("admin-table-fit-width");
+    table.style.tableLayout = "fixed";
+    table.style.width = total + "px";
+    table.style.minWidth = total + "px";
+    table.style.maxWidth = "none";
+    table.style.marginInlineStart = "0";
+    table.style.marginInlineEnd = "auto";
+  }
+
   function applyWidths(table, widths) {
     var cells = headerCells(table);
     if (!cells.length) return;
     var cg = ensureColgroup(table, cells.length);
-    table.style.tableLayout = "fixed";
-    table.style.width = "100%";
+    var resolved = [];
     cells.forEach(function (th, i) {
       var w = widths && widths[i];
-      if (!w || w < 40) return;
+      if (!w || w < 40) {
+        w = Math.max(40, Math.round(th.getBoundingClientRect().width));
+      }
+      resolved[i] = w;
       cg.children[i].style.width = w + "px";
       th.style.width = w + "px";
       th.style.minWidth = w + "px";
       th.style.maxWidth = w + "px";
     });
+    applyFitWidth(table, resolved);
   }
 
   function applyHeaderLabels(table, labels) {
@@ -226,8 +253,13 @@
     handle.addEventListener("mousedown", function (e) {
       e.preventDefault();
       e.stopPropagation();
+      var cells0 = headerCells(table);
+      var snap = cells0.map(function (cell) {
+        return Math.max(40, Math.round(cell.getBoundingClientRect().width));
+      });
+      applyWidths(table, snap);
       var startX = e.clientX;
-      var startW = th.getBoundingClientRect().width;
+      var startW = snap[colIndex];
       document.body.classList.add("admin-resizing-col");
 
       function onMove(ev) {
@@ -236,11 +268,16 @@
         var w = Math.max(48, Math.min(640, Math.round(startW + dx)));
         var cells = headerCells(table);
         var cg = ensureColgroup(table, cells.length);
-        table.style.tableLayout = "fixed";
-        cg.children[colIndex].style.width = w + "px";
-        th.style.width = w + "px";
-        th.style.minWidth = w + "px";
-        th.style.maxWidth = w + "px";
+        var widths = snap.slice();
+        widths[colIndex] = w;
+        cells.forEach(function (cell, i) {
+          var cw = widths[i];
+          cg.children[i].style.width = cw + "px";
+          cell.style.width = cw + "px";
+          cell.style.minWidth = cw + "px";
+          cell.style.maxWidth = cw + "px";
+        });
+        applyFitWidth(table, widths);
       }
 
       function onUp() {
@@ -269,20 +306,84 @@
       var text = label ? label.textContent : th.textContent;
       var w = Math.max(56, Math.min(480, measureText(text)));
       var cells = headerCells(table);
-      var cg = ensureColgroup(table, cells.length);
-      table.style.tableLayout = "fixed";
-      cg.children[colIndex].style.width = w + "px";
-      th.style.width = w + "px";
-      th.style.minWidth = w + "px";
-      th.style.maxWidth = w + "px";
+      var widths = cells.map(function (cell, i) {
+        if (i === colIndex) return w;
+        return parseInt(cell.style.width, 10) || Math.max(40, Math.round(cell.getBoundingClientRect().width));
+      });
+      applyWidths(table, widths);
       var state = loadState();
       var id = tableId(table);
       state[id] = state[id] || {};
-      var widths = state[id].widths || [];
-      while (widths.length < cells.length) widths.push(null);
-      widths[colIndex] = w;
       state[id].widths = widths;
       saveState(state);
+    });
+  }
+
+
+  var activeReveal = null;
+
+  function stopReveal() {
+    if (!activeReveal) return;
+    if (activeReveal.timer) clearTimeout(activeReveal.timer);
+    if (activeReveal.track) {
+      activeReveal.track.style.transition = "transform 0.35s ease";
+      activeReveal.track.style.transform = "translate(0, 0)";
+      activeReveal.track.classList.remove("is-revealing");
+    }
+    activeReveal = null;
+  }
+
+  function ensureRevealTrack(cell) {
+    var existing = cell.querySelector(":scope > .cell-reveal-track");
+    if (existing) return existing;
+    if (cell.querySelector("a, button, input, select, textarea, .admin-col-resizer")) return null;
+    var track = document.createElement("span");
+    track.className = "cell-reveal-track";
+    while (cell.firstChild) track.appendChild(cell.firstChild);
+    cell.appendChild(track);
+    return track;
+  }
+
+  function playCellReveal(cell) {
+    if (!cell) return;
+    if (cell.querySelector("a, button, input, select, textarea, .admin-col-resizer")) return;
+    var track = ensureRevealTrack(cell);
+    if (!track) return;
+    var overflowX = Math.max(0, Math.ceil(track.scrollWidth - cell.clientWidth + 4));
+    var overflowY = Math.max(0, Math.ceil(track.scrollHeight - cell.clientHeight + 2));
+    if (overflowX <= 1 && overflowY <= 1) return;
+    stopReveal();
+    var tx = overflowX > 1 ? overflowX : 0;
+    var ty = overflowY > 1 ? -overflowY : 0;
+    var distance = Math.abs(tx) + Math.abs(ty);
+    var duration = Math.max(1400, Math.min(6000, distance * 28));
+    track.classList.add("is-revealing");
+    track.style.transition = "none";
+    track.style.transform = "translate(0, 0)";
+    void track.offsetWidth;
+    track.style.transition = "transform " + duration + "ms linear";
+    track.style.transform = "translate(" + tx + "px, " + ty + "px)";
+    var timer = setTimeout(function () {
+      track.style.transition = "transform 0.45s ease";
+      track.style.transform = "translate(0, 0)";
+      var resetTimer = setTimeout(function () {
+        track.classList.remove("is-revealing");
+        if (activeReveal && activeReveal.track === track) activeReveal = null;
+      }, 480);
+      if (activeReveal && activeReveal.track === track) activeReveal.timer = resetTimer;
+    }, duration + 280);
+    activeReveal = { track: track, timer: timer, cell: cell };
+  }
+
+  function bindReveal(table) {
+    if (table.dataset.revealBound === "1") return;
+    table.dataset.revealBound = "1";
+    table.addEventListener("click", function (e) {
+      if (document.body.classList.contains("admin-resizing-col")) return;
+      if (e.target.closest("a, button, input, select, textarea, .admin-col-resizer, .admin-th-input")) return;
+      var cell = e.target.closest("td, th");
+      if (!cell || !table.contains(cell)) return;
+      playCellReveal(cell);
     });
   }
 
@@ -312,8 +413,19 @@
 
     var state = loadState();
     var saved = state[tableId(table)] || {};
-    applyWidths(table, saved.widths);
+    if (saved.widths && saved.widths.length) {
+      applyWidths(table, saved.widths);
+    } else {
+      requestAnimationFrame(function () {
+        var cells = headerCells(table);
+        var widths = cells.map(function (cell) {
+          return Math.max(40, Math.round(cell.getBoundingClientRect().width));
+        });
+        applyWidths(table, widths);
+      });
+    }
     applyHeaderLabels(table, saved.labels);
+    bindReveal(table);
   }
 
   function enhanceAll() {
