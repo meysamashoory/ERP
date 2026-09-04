@@ -276,7 +276,7 @@
 {{ param_capable_keys|json_script:"param-capable-keys" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=6"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=7"></script>
 <script>
 (function () {
   var formEl = document.getElementById("report-builder-form");
