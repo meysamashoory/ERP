@@ -50,10 +50,15 @@ def system_data_hub(request: HttpRequest) -> HttpResponse:
     """Accordion hub — each item opens full Django-admin capabilities in app chrome."""
     from django.urls import NoReverseMatch, reverse
 
-    from .naming_registry import ensure_registry_seeded, lookup_naming_rows
+    from .naming_registry import (
+        ensure_registry_seeded,
+        lookup_naming_rows,
+        refresh_system_hub_labels,
+    )
     from .system_sections import build_system_groups
 
     ensure_registry_seeded()
+    refresh_system_hub_labels()
 
     groups = build_system_groups()
     naming_keys: list[str] = []
