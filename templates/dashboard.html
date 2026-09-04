@@ -82,7 +82,7 @@
       <h2>تحلیل فروش و روند</h2>
       <p class="muted">
         {% if dashboard_charts.sales_source == "vouchers" %}
-        مبنای مقدار: حواله‌های دیتای محصولات
+        رتبه‌بندی محصولات از حواله‌ها · روند فصلی/سالانه از حجم تولید
         {% else %}
         مبنای مقدار: حجم تولید (تا زمان بارگذاری فروش/حواله کامل)
         {% endif %}
@@ -106,6 +106,14 @@
           <option value="low">کم‌فروش‌ترین</option>
         </select>
       </label>
+      <label class="dash-ctl">
+        <span>نقطه الف</span>
+        <select id="dash-compare-a"></select>
+      </label>
+      <label class="dash-ctl">
+        <span>نقطه ب</span>
+        <select id="dash-compare-b"></select>
+      </label>
       <button type="button" class="btn btn-sm btn-ghost" id="dash-chart-reset">بازنشانی</button>
     </div>
   </div>
@@ -115,16 +123,9 @@
       <div class="panel-head">
         <h2 id="dash-main-title">روند سالانه</h2>
         <div class="dash-compare" id="dash-compare">
-          {% with c=dashboard_charts.compare %}
-          <span class="muted">{{ c.label_a }} → {{ c.label_b }}</span>
-          {% if c.pct != None %}
-          <strong class="num {% if c.pct < 0 %}text-danger{% elif c.pct > 0 %}text-ok{% endif %}">
-            {% if c.pct > 0 %}+{% endif %}{{ c.pct }}%
-          </strong>
-          {% else %}
-          <span class="muted">—</span>
-          {% endif %}
-          {% endwith %}
+          <span class="muted" id="dash-compare-labels">— → —</span>
+          <strong class="num" id="dash-compare-pct">—</strong>
+          <span class="muted num" id="dash-compare-values"></span>
         </div>
       </div>
       <div class="panel-body dash-canvas-wrap">
@@ -246,5 +247,5 @@
 
 {% block scripts %}
 <script src="{% static 'vendor/chart.js/chart.umd.min.js' %}"></script>
-<script src="{% static 'js/dashboard_charts.js' %}?v=1"></script>
+<script src="{% static 'js/dashboard_charts.js' %}?v=2"></script>
 {% endblock %}

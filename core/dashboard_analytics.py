@@ -6,8 +6,6 @@ import json
 from collections import defaultdict
 from typing import Any
 
-from django.db.models import Sum
-
 from catalog.models import FlexibleDataset, FlexibleRow, Product
 from production.models import ProductionDayEntry
 
@@ -176,8 +174,43 @@ def build_dashboard_charts() -> dict[str, Any]:
             }
         )
 
-    # Point-to-point comparison: last two years if possible, else last two seasons aggregate.
-    compare = {"label_a": "—", "label_b": "—", "value_a": 0, "value_b": 0, "pct": None}
+    # Point catalog for interactive A→B % change (Power-BI style).
+    compare_points: list[dict[str, Any]] = []
+    for y in years_sorted:
+        compare_points.append(
+            {
+                "id": f"y:{y}",
+                "label": str(y),
+                "group": "سال",
+                "value": round(year_totals[y], 2),
+            }
+        )
+    for s in season_order:
+        label = SEASON_LABELS[s]
+        if label in season_totals:
+            compare_points.append(
+                {
+                    "id": f"s:{s}",
+                    "label": label,
+                    "group": "فصل",
+                    "value": round(season_totals[label], 2),
+                }
+            )
+    for y in recent_years:
+        for s in season_order:
+            val = season_year.get((y, s), 0.0)
+            if val > 0:
+                compare_points.append(
+                    {
+                        "id": f"ys:{y}-{s}",
+                        "label": f"{SEASON_LABELS[s]} {y}",
+                        "group": "فصل‌سال",
+                        "value": round(val, 2),
+                    }
+                )
+
+    # Default comparison: last two years if possible, else last two seasons aggregate.
+    compare = {"label_a": "—", "label_b": "—", "value_a": 0, "value_b": 0, "pct": None, "id_a": "", "id_b": ""}
     if len(years_sorted) >= 2:
         a, b = years_sorted[-2], years_sorted[-1]
         va, vb = year_totals[a], year_totals[b]
@@ -187,17 +220,25 @@ def build_dashboard_charts() -> dict[str, Any]:
             "value_a": round(va, 2),
             "value_b": round(vb, 2),
             "pct": round(((vb - va) / va) * 100, 1) if va else None,
+            "id_a": f"y:{a}",
+            "id_b": f"y:{b}",
         }
     elif season_totals:
-        ordered = [(SEASON_LABELS[s], season_totals[SEASON_LABELS[s]]) for s in season_order if SEASON_LABELS[s] in season_totals]
+        ordered = [
+            (SEASON_LABELS[s], season_totals[SEASON_LABELS[s]], s)
+            for s in season_order
+            if SEASON_LABELS[s] in season_totals
+        ]
         if len(ordered) >= 2:
-            (la, va), (lb, vb) = ordered[-2], ordered[-1]
+            (la, va, sa), (lb, vb, sb) = ordered[-2], ordered[-1]
             compare = {
                 "label_a": la,
                 "label_b": lb,
                 "value_a": round(va, 2),
                 "value_b": round(vb, 2),
                 "pct": round(((vb - va) / va) * 100, 1) if va else None,
+                "id_a": f"s:{sa}",
+                "id_b": f"s:{sb}",
             }
 
     stock_alerts = [
@@ -213,6 +254,7 @@ def build_dashboard_charts() -> dict[str, Any]:
 
     return {
         "sales_source": sales_source,
+        "trend_source": "production",
         "years": {"labels": year_labels, "values": year_values},
         "seasons": {
             "labels": [SEASON_LABELS[s] for s in season_order],
@@ -230,6 +272,7 @@ def build_dashboard_charts() -> dict[str, Any]:
             "values": [round(r["qty"], 2) for r in bottom],
         },
         "compare": compare,
+        "compare_points": compare_points,
         "stock_alerts": stock_alerts,
     }
 

@@ -16,6 +16,11 @@
   var typeSel = document.getElementById("dash-chart-type");
   var scopeSel = document.getElementById("dash-chart-scope");
   var resetBtn = document.getElementById("dash-chart-reset");
+  var compareA = document.getElementById("dash-compare-a");
+  var compareB = document.getElementById("dash-compare-b");
+  var compareLabels = document.getElementById("dash-compare-labels");
+  var comparePct = document.getElementById("dash-compare-pct");
+  var compareValues = document.getElementById("dash-compare-values");
   var titleEl = document.getElementById("dash-main-title");
   var mainCanvas = document.getElementById("dash-main-chart");
   var seasonCanvas = document.getElementById("dash-season-chart");
@@ -24,6 +29,68 @@
   var mainChart = null;
   var seasonChart = null;
   var palette = ["#0e7490", "#2563eb", "#ca8a04", "#be123c", "#059669", "#7c3aed", "#db2777", "#334155"];
+  var points = data.compare_points || [];
+  var defaultCompare = data.compare || {};
+
+  function fillCompareSelects() {
+    if (!compareA || !compareB) return;
+    compareA.innerHTML = "";
+    compareB.innerHTML = "";
+    if (!points.length) {
+      var empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "—";
+      compareA.appendChild(empty.cloneNode(true));
+      compareB.appendChild(empty);
+      return;
+    }
+    points.forEach(function (p) {
+      var optA = document.createElement("option");
+      optA.value = p.id;
+      optA.textContent = (p.group ? p.group + ": " : "") + p.label;
+      var optB = optA.cloneNode(true);
+      compareA.appendChild(optA);
+      compareB.appendChild(optB);
+    });
+    var idA = defaultCompare.id_a || points[0].id;
+    var idB = defaultCompare.id_b || (points[1] ? points[1].id : points[0].id);
+    compareA.value = idA;
+    compareB.value = idB;
+  }
+
+  function pointById(id) {
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].id === id) return points[i];
+    }
+    return null;
+  }
+
+  function updateCompare() {
+    if (!compareLabels || !comparePct) return;
+    var a = pointById(compareA && compareA.value);
+    var b = pointById(compareB && compareB.value);
+    if (!a || !b) {
+      compareLabels.textContent = "— → —";
+      comparePct.textContent = "—";
+      comparePct.className = "num";
+      if (compareValues) compareValues.textContent = "";
+      return;
+    }
+    compareLabels.textContent = a.label + " → " + b.label;
+    if (compareValues) {
+      compareValues.textContent = "(" + a.value + " → " + b.value + ")";
+    }
+    if (!a.value) {
+      comparePct.textContent = "—";
+      comparePct.className = "num";
+      return;
+    }
+    var pct = ((b.value - a.value) / a.value) * 100;
+    var rounded = Math.round(pct * 10) / 10;
+    comparePct.textContent = (rounded > 0 ? "+" : "") + rounded + "%";
+    comparePct.className =
+      "num " + (rounded < 0 ? "text-danger" : rounded > 0 ? "text-ok" : "");
+  }
 
   function scopePayload(scope) {
     if (scope === "seasons") {
@@ -137,14 +204,20 @@
 
   if (typeSel) typeSel.addEventListener("change", renderMain);
   if (scopeSel) scopeSel.addEventListener("change", renderMain);
+  if (compareA) compareA.addEventListener("change", updateCompare);
+  if (compareB) compareB.addEventListener("change", updateCompare);
   if (resetBtn) {
     resetBtn.addEventListener("click", function () {
       if (typeSel) typeSel.value = "bar";
       if (scopeSel) scopeSel.value = "years";
+      fillCompareSelects();
+      updateCompare();
       renderMain();
     });
   }
 
+  fillCompareSelects();
+  updateCompare();
   renderMain();
   renderSeason();
 })();

@@ -27,6 +27,8 @@ class DashboardAnalyticsTests(TestCase):
         self.assertIn("labels", charts["top_products"])
         self.assertIn("values", charts["top_products"])
         self.assertIn("pct", charts["compare"])
+        self.assertIn("compare_points", charts)
+        self.assertIsInstance(charts["compare_points"], list)
 
     def test_dashboard_page_has_chart_controls(self):
         self.client.login(username="dashadmin", password="erp12345")
@@ -35,8 +37,12 @@ class DashboardAnalyticsTests(TestCase):
         self.assertContains(resp, "تحلیل فروش و روند")
         self.assertContains(resp, "dash-chart-type")
         self.assertContains(resp, "dash-chart-scope")
+        self.assertContains(resp, "dash-compare-a")
+        self.assertContains(resp, "dash-compare-b")
         self.assertContains(resp, "پرفروش‌ترین")
         self.assertContains(resp, "کم‌فروش‌ترین")
+        self.assertContains(resp, "نقطه الف")
+        self.assertContains(resp, "نقطه ب")
         self.assertContains(resp, "chart.umd.min.js")
         self.assertContains(resp, "dashboard_charts.js")
         self.assertContains(resp, "برنامه‌ریزی توسط سیستم")
