@@ -277,7 +277,7 @@
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
 <script src="{% static 'js/report_builder_display.js' %}?v=8"></script>
-<script src="{% static 'js/form_enter_nav.js' %}?v=1"></script>
+<script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {
   var formEl = document.getElementById("report-builder-form");

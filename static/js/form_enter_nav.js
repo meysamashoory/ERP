@@ -12,11 +12,17 @@
   function isVisible(el) {
     if (!el || el.disabled) return false;
     if (el.hidden || el.getAttribute("aria-hidden") === "true") return false;
-    if (el.offsetParent === null && getComputedStyle(el).position !== "fixed") {
-      // display:none or not in layout; allow fixed
-      var st = getComputedStyle(el);
+    var st = global.getComputedStyle ? getComputedStyle(el) : null;
+    if (st) {
       if (st.display === "none" || st.visibility === "hidden") return false;
-      if (el.getClientRects().length === 0) return false;
+      if (parseFloat(st.opacity || "1") === 0) return false;
+    }
+    // Do not use offsetParent — it is null for many visible nodes inside <dialog>.
+    if (typeof el.getClientRects === "function" && el.getClientRects().length === 0) {
+      // Still allow zero-size when parent dialog is open but not yet laid out
+      var dlg = el.closest && el.closest("dialog");
+      if (dlg && dlg.open) return true;
+      return false;
     }
     return true;
   }
