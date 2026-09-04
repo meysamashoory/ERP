@@ -658,12 +658,27 @@
           openFormulaDialog(parseInt(fx.getAttribute("data-fx"), 10));
           return;
         }
-        if (e.target.closest("select") || e.target.closest("input") || e.target.closest("button")) return;
         var row = e.target.closest(".display-col-row");
         if (!row) return;
-        activeIdx = parseInt(row.dataset.idx, 10);
-        renderSelected();
-        if (condScope === "private") renderConditions();
+        var idx = parseInt(row.dataset.idx, 10);
+        if (!isNaN(idx) && idx !== activeIdx) {
+          activeIdx = idx;
+          renderSelected();
+          if (condScope === "private") renderConditions();
+          // Re-focus the same control if user clicked an input/select
+          if (e.target && e.target.closest && e.target.closest("input, select")) {
+            var focusSel = null;
+            if (e.target.getAttribute("data-label") != null) focusSel = '[data-label="' + idx + '"]';
+            else if (e.target.getAttribute("data-level") != null) focusSel = '[data-level="' + idx + '"]';
+            else if (e.target.getAttribute("data-width") != null) focusSel = '[data-width="' + idx + '"]';
+            else if (e.target.getAttribute("data-format") != null) focusSel = '[data-format="' + idx + '"]';
+            else if (e.target.getAttribute("data-key") != null) focusSel = '[data-key="' + idx + '"]';
+            if (focusSel) {
+              var el = list.querySelector(focusSel);
+              if (el && el.focus) try { el.focus(); } catch (err) {}
+            }
+          }
+        }
       });
       list.addEventListener("dblclick", function (e) {
         var fx = e.target.closest("[data-fx], .fx-cell");
