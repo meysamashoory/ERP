@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}گزارش‌ها{% endblock %}
 {% block heading %}گزارش‌ها{% endblock %}
 {% block nav_reports %}{% endblock %}
@@ -7,7 +8,8 @@
 {% block topbar_actions %}
 {% if can_create %}
 <div class="topbar-actions">
-  <button type="button" class="btn btn-sm btn-primary-soft" id="btn-create-report">+ ایجاد گزارش</button>
+  <button type="button" class="btn btn-sm btn-primary-soft" id="btn-create-report"
+          data-create-url="{% url 'report_create' %}">+ ایجاد گزارش</button>
 </div>
 {% endif %}
 {% endblock %}
@@ -173,6 +175,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'js/form_enter_nav.js' %}?v=1"></script>
 <script>
 (function () {
   var dialog = document.getElementById("report-action-dialog");
@@ -192,24 +195,14 @@
     if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
     if (window.enhance) window.enhance(body);
     if (window.ERPNormalizeNumbers) window.ERPNormalizeNumbers.init(body);
-
-    var createForm = body.querySelector("#create-report-form");
-    if (createForm) {
-      createForm.addEventListener("submit", function () {
-        // Submit create into the standalone report popup window.
-        var w = screen.availWidth || 1200;
-        var h = screen.availHeight || 800;
-        var feat = "popup=yes,width=" + w + ",height=" + h + ",left=0,top=0,resizable=yes,scrollbars=yes";
-        window.open("about:blank", "erp-report-app", feat);
-        createForm.setAttribute("target", "erp-report-app");
-      });
-    }
+    if (window.ERPFormEnterNav) window.ERPFormEnterNav.bind(body);
   }
 
   var createBtn = document.getElementById("btn-create-report");
   if (createBtn) {
     createBtn.addEventListener("click", function () {
-      openFromTemplate("tpl-create");
+      // Create environment opens in standalone report window; list stays in main app.
+      openReportApp(createBtn.getAttribute("data-create-url") || "{% url 'report_create' %}");
     });
   }
 

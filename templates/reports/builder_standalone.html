@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=2">
 </head>
 <body class="report-app">
 <form method="post"
@@ -257,7 +257,7 @@
     </div>
   </div>
   <div class="form-actions">
-    <button type="button" class="btn" id="condition-save-btn">ثبت شرط</button>
+    <button type="button" class="btn" id="condition-save-btn" data-enter-save>ثبت شرط</button>
     <button type="button" class="btn btn-ghost" id="condition-cancel-btn" data-dialog-close>انصراف</button>
   </div>
 </dialog>
@@ -276,7 +276,8 @@
 {{ param_capable_keys|json_script:"param-capable-keys" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=7"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=8"></script>
+<script src="{% static 'js/form_enter_nav.js' %}?v=1"></script>
 <script>
 (function () {
   var formEl = document.getElementById("report-builder-form");
@@ -328,6 +329,17 @@
       if (dlg && dlg.close) dlg.close();
     });
   });
+
+  if (window.ERPFormEnterNav) {
+    var meta = document.getElementById("meta-editor");
+    if (meta) window.ERPFormEnterNav.bind(meta, { saveSelector: "#confirm-meta-btn" });
+    var condDlg = document.getElementById("condition-dialog");
+    if (condDlg) window.ERPFormEnterNav.bind(condDlg, { saveSelector: "#condition-save-btn" });
+    var formulaDlg = document.getElementById("formula-dialog");
+    if (formulaDlg) window.ERPFormEnterNav.bind(formulaDlg, { saveSelector: "#formula-save-btn" });
+    var linkDlg = document.getElementById("source-link-dialog");
+    if (linkDlg) window.ERPFormEnterNav.bind(linkDlg, { saveSelector: "#save-links-btn" });
+  }
 
   if (window.ERPReportBuilderDisplay) {
     window.ERPReportBuilderDisplay.init({

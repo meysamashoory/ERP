@@ -48,7 +48,7 @@ def build_system_groups() -> list[SystemGroup]:
         ProductionHistoryRecord,
         ProductionProgram,
     )
-    from reports.models import PrintForm, SavedReport
+    from reports.models import PrintForm, ReportParameterDef, SavedReport
 
     from .models import (
         DeviationReason,
@@ -139,6 +139,14 @@ def build_system_groups() -> list[SystemGroup]:
                     admin_changelist="admin:reports_savedreport_changelist",
                     admin_add="admin:reports_savedreport_add",
                     count_fn=_count(SavedReport),
+                ),
+                SystemItem(
+                    key="report_parameter_defs",
+                    title="تعریف پارامترهای گزارش",
+                    admin_changelist="admin:reports_reportparameterdef_changelist",
+                    admin_add="admin:reports_reportparameterdef_add",
+                    description="پارامترهای قابل استفاده در شرط‌های گزارش (تاریخ، کد، عدد) — مثلاً امروز، ابتدای ماه، کد کالای انتخابی",
+                    count_fn=_count(ReportParameterDef),
                 ),
             ],
         ),

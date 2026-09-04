@@ -88,8 +88,9 @@ class ReportFlowTests(TestCase):
         self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
 
         get_create = self.client.get(reverse("report_create"))
-        self.assertEqual(get_create.status_code, 302)
-        self.assertIn("/reports/", get_create["Location"])
+        self.assertEqual(get_create.status_code, 200)
+        self.assertContains(get_create, "گزارش جدید")
+        self.assertContains(get_create, "report-builder-form")
 
     def test_report_sources_include_history_not_excel(self):
         from reports.columns import get_column_groups, run_report

@@ -253,10 +253,86 @@ textarea.input, textarea {
   font-weight: 700;
   font-size: 12px;
   white-space: nowrap;
+  position: relative;
 }
 .table tbody tr:hover { background: #f8fafc; }
 .table .num { font-variant-numeric: tabular-nums; direction: ltr; text-align: left; }
 .empty { padding: 16px; color: var(--rp-muted); }
+
+/* Fit-width + column resize + cell marquee (standalone pages do not load app.css) */
+.table.table-fit-width,
+.table.col-resize-enabled {
+  width: max-content;
+  max-width: none;
+  table-layout: fixed;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+.table-scroll > .table.table-fit-width,
+.table-scroll > .table.col-resize-enabled,
+.table-scroll-wide > .table.table-fit-width,
+.table-scroll-wide > .table.col-resize-enabled {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+}
+.table.col-resize-enabled th,
+.table.col-resize-enabled td,
+.table.table-fit-width th,
+.table.table-fit-width td {
+  overflow: hidden;
+  max-height: var(--table-row-height, 36px);
+}
+.table .cell-reveal-track {
+  display: block;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  max-width: 100%;
+  line-height: inherit;
+  will-change: transform;
+}
+.table .cell-reveal-track.is-revealing {
+  max-width: none;
+  width: max-content;
+  overflow: visible;
+  white-space: nowrap;
+}
+.table .cell-reveal-inner {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  white-space: nowrap;
+  will-change: transform;
+}
+.table .cell-reveal-seg {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.table .cell-reveal-gap {
+  flex: 0 0 auto;
+  display: inline-block;
+  height: 1px;
+}
+.table.col-resize-enabled th .col-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.table.col-resize-enabled th .col-resizer-edge {
+  left: 0;
+  width: 8px;
+}
+.table.col-resize-enabled th .col-resizer:hover,
+.table.col-resize-enabled th .col-resizer:active {
+  background: rgba(37, 99, 235, 0.35);
+}
+.table.col-width-locked th .col-resizer { display: none !important; }
+body.is-col-resizing { cursor: col-resize !important; user-select: none; }
 
 /* ——— Builder layout (fixed zones) ——— */
 .rp-builder-body {
@@ -597,7 +673,8 @@ textarea.input, textarea {
   flex-direction: column;
   gap: 6px;
 }
-.condition-row {
+/* Card-style fallback rows only (divs). Never apply flex to <tr class="condition-row">. */
+.conditions-list > .condition-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -608,9 +685,42 @@ textarea.input, textarea {
   padding: 6px 8px;
   font-size: 12px;
 }
-.condition-row.is-private {
+.conditions-list > .condition-row.is-private {
   border-color: #f9a8d4;
   background: #fdf2f8;
+}
+.conditions-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid var(--rp-line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+.conditions-table thead th {
+  background: #e8eef6;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.conditions-table tbody tr.condition-row {
+  display: table-row;
+  background: #fff;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+.conditions-table tbody tr.condition-row.is-private {
+  background: #fdf2f8;
+}
+.conditions-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rp-line);
+  vertical-align: middle;
+}
+.conditions-table .cond-row-actions {
+  white-space: nowrap;
+  text-align: left;
 }
 .condition-row .badge-private { margin-inline-start: 2px; }
 
@@ -763,6 +873,8 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
 .rp-viewer-body .table-scroll > .table {
   margin: 0;
   direction: rtl;
+}
+.rp-viewer-body .table-scroll > .table:not(.table-fit-width):not(.col-resize-enabled) {
   width: max(100%, max-content);
 }
 .rp-viewer-body .table-scroll thead th {

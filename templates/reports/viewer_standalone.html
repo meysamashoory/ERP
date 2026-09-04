@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ report.heading_label }}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=1">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=2">
   <style>
     :root { --table-row-height: {{ table_row_height_px|default:36 }}px; }
   </style>
@@ -13,7 +13,10 @@
 <body class="report-app"
       style="--table-row-height: {{ table_row_height_px|default:36 }}px"
       data-table-width-locks="{{ table_width_locks_json|default:'{}'|escape }}"
-      data-list-url="{{ list_url|default:'' }}">
+      data-list-url="{{ list_url|default:'' }}"
+      data-report-level="{{ level|default:1 }}"
+      data-can-go-back="{% if can_go_back %}1{% else %}0{% endif }"
+      data-back-url="{% if can_go_back %}?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}{% endif %}">
 <div class="rp-shell" id="report-viewer-shell">
   <div class="rp-titlebar">
     <span class="rp-title" id="rp-window-title">{{ report.heading_label }}</span>
@@ -145,12 +148,31 @@
 <script src="{% static 'js/number_normalize.js' %}?v=1"></script>
 <script src="{% static 'js/table_nav.js' %}?v=6"></script>
 <script src="{% static 'js/table_layout.js' %}?v=8"></script>
+<script src="{% static 'js/form_enter_nav.js' %}?v=1"></script>
 <script>
 (function () {
   var listUrl = document.body.getAttribute("data-list-url") || "";
   if (!listUrl) listUrl = "{% url 'report_list' %}";
   var listLink = document.getElementById("rp-list-link");
   if (listLink && !listLink.getAttribute("href")) listLink.setAttribute("href", listUrl);
+
+  function closeReportWindow() {
+    if (window.opener) {
+      try { window.close(); } catch (e) {}
+      if (!window.closed) window.location.href = listUrl;
+    } else {
+      window.location.href = listUrl;
+    }
+  }
+
+  function goBackOneLevel() {
+    var backUrl = document.body.getAttribute("data-back-url") || "";
+    if (backUrl) {
+      window.location.href = backUrl;
+      return true;
+    }
+    return false;
+  }
 
   function toast(msg) {
     var el = document.getElementById("rp-toast");
@@ -161,14 +183,7 @@
     el._t = setTimeout(function () { el.classList.remove("show"); }, 2200);
   }
 
-  document.getElementById("rp-close").addEventListener("click", function () {
-    if (window.opener) {
-      try { window.close(); } catch (e) {}
-      if (!window.closed) window.location.href = listUrl;
-    } else {
-      window.location.href = listUrl;
-    }
-  });
+  document.getElementById("rp-close").addEventListener("click", closeReportWindow);
   document.getElementById("rp-minimize").addEventListener("click", function () {
     try { window.blur(); } catch (e) {}
     toast("از نوار وظیفه مرورگر می‌توانید بازگردید");
@@ -209,6 +224,27 @@
   if (needParams && paramDialog && typeof paramDialog.showModal === "function") {
     try { if (!paramDialog.open) paramDialog.showModal(); } catch (e) {}
   }
+  if (paramDialog && window.ERPFormEnterNav) {
+    window.ERPFormEnterNav.bind(paramDialog, { saveSelector: "#report-param-ok" });
+  }
+
+  // ESC: level 2+ → back one level; level 1 → exit report
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (paramDialog && paramDialog.open) return; // native dialog handles Esc
+    var openDlg = document.querySelector("dialog[open]");
+    if (openDlg) return;
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT")) {
+      // still allow Escape as navigation while focusing table cells / body
+    }
+    e.preventDefault();
+    var canBack = document.body.getAttribute("data-can-go-back") === "1";
+    var level = parseInt(document.body.getAttribute("data-report-level") || "1", 10) || 1;
+    if (canBack || level > 1) {
+      if (goBackOneLevel()) return;
+    }
+    closeReportWindow();
+  });
 
   var table = document.getElementById("report-data-table");
   var tbody = table ? table.querySelector("tbody") : null;

@@ -94,6 +94,16 @@ class SystemDataNoShortcutsTests(TestCase):
                     msg=f"{item.key} is neither admin nor allowed system-config UI",
                 )
 
+    def test_report_parameter_defs_in_system_data(self):
+        reports = next(g for g in build_system_groups() if g.key == "reports")
+        keys = [i.key for i in reports.items]
+        self.assertIn("report_parameter_defs", keys)
+        item = next(i for i in reports.items if i.key == "report_parameter_defs")
+        self.assertEqual(item.admin_changelist, "admin:reports_reportparameterdef_changelist")
+        page = self.client.get(reverse("system_data"))
+        self.assertContains(page, "تعریف پارامترهای گزارش")
+        self.assertContains(page, reverse("admin:reports_reportparameterdef_changelist"))
+
     def test_flexible_dataset_admin_loads(self):
         resp = self.client.get(reverse("admin:catalog_flexibledataset_changelist"))
         self.assertEqual(resp.status_code, 200)
