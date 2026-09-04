@@ -1149,3 +1149,7 @@ class ReportUiPolishTests(TestCase):
         self.assertIn(".content:has(.panel-list)", css)
         self.assertIn("white-space: nowrap", css)
         self.assertIn('th.style.position = "sticky"', js)
+        self.assertIn("REVEAL_SPEED_PX_PER_SEC", js)
+        self.assertIn("cell-reveal-inner", js)
+        self.assertIn("overflow: hidden", css)
+        self.assertNotIn("distance * 28", js)

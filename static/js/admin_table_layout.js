@@ -321,15 +321,61 @@
 
 
   var activeReveal = null;
+  var REVEAL_SPEED_PX_PER_SEC = 52;
+  var REVEAL_GAP_EM = 3;
+
+  function teardownMarqueeDom(track) {
+    if (!track) return;
+    var inner = track.querySelector(":scope > .cell-reveal-inner");
+    if (!inner) {
+      track.style.transform = "";
+      track.style.transition = "";
+      track.style.width = "";
+      track.style.maxWidth = "";
+      track.style.whiteSpace = "";
+      track.classList.remove("is-revealing");
+      return;
+    }
+    var seg = inner.querySelector(".cell-reveal-seg");
+    track.style.transform = "";
+    track.style.transition = "";
+    track.style.width = "";
+    track.style.maxWidth = "";
+    track.style.whiteSpace = "";
+    track.classList.remove("is-revealing");
+    while (track.firstChild) track.removeChild(track.firstChild);
+    if (seg) {
+      while (seg.firstChild) track.appendChild(seg.firstChild);
+    }
+  }
+
+  function buildMarqueeDom(track) {
+    teardownMarqueeDom(track);
+    var frag = document.createDocumentFragment();
+    while (track.firstChild) frag.appendChild(track.firstChild);
+    var inner = document.createElement("span");
+    inner.className = "cell-reveal-inner";
+    var seg1 = document.createElement("span");
+    seg1.className = "cell-reveal-seg";
+    seg1.appendChild(frag);
+    var gap = document.createElement("span");
+    gap.className = "cell-reveal-gap";
+    gap.style.width = REVEAL_GAP_EM + "em";
+    gap.setAttribute("aria-hidden", "true");
+    var seg2 = seg1.cloneNode(true);
+    seg2.setAttribute("aria-hidden", "true");
+    inner.appendChild(seg1);
+    inner.appendChild(gap);
+    inner.appendChild(seg2);
+    track.appendChild(inner);
+    return { inner: inner, seg: seg1, gap: gap };
+  }
 
   function stopReveal() {
     if (!activeReveal) return;
+    if (activeReveal.raf) cancelAnimationFrame(activeReveal.raf);
     if (activeReveal.timer) clearTimeout(activeReveal.timer);
-    if (activeReveal.track) {
-      activeReveal.track.style.transition = "transform 0.35s ease";
-      activeReveal.track.style.transform = "translate(0, 0)";
-      activeReveal.track.classList.remove("is-revealing");
-    }
+    teardownMarqueeDom(activeReveal.track);
     activeReveal = null;
   }
 
@@ -347,8 +393,11 @@
   function playCellReveal(cell) {
     if (!cell) return;
     if (cell.querySelector("a, button, input, select, textarea, .admin-col-resizer")) return;
+    if (activeReveal && activeReveal.cell === cell && activeReveal.running) return;
+
     var track = ensureRevealTrack(cell);
     if (!track) return;
+
     track.classList.add("is-revealing");
     track.style.whiteSpace = "nowrap";
     track.style.width = "max-content";
@@ -356,47 +405,45 @@
     track.style.transform = "translate(0, 0)";
     track.style.transition = "none";
     void track.offsetWidth;
-    var overflowX = Math.max(0, Math.ceil(track.scrollWidth - cell.clientWidth + 4));
-    var overflowY = 0;
+
+    var overflowX = Math.max(0, Math.ceil(track.scrollWidth - cell.clientWidth + 2));
     if (overflowX <= 1) {
-      track.style.whiteSpace = "normal";
-      track.style.width = cell.clientWidth + "px";
-      void track.offsetWidth;
-      overflowY = Math.max(0, Math.ceil(track.scrollHeight - cell.clientHeight + 2));
-      track.style.width = "max-content";
-    }
-    if (overflowX <= 1 && overflowY <= 1) {
       track.classList.remove("is-revealing");
       track.style.whiteSpace = "";
       track.style.width = "";
       track.style.maxWidth = "";
       return;
     }
+
     stopReveal();
+    track = ensureRevealTrack(cell);
+    if (!track) return;
+    var parts = buildMarqueeDom(track);
     track.classList.add("is-revealing");
-    if (overflowX > 1) track.style.whiteSpace = "nowrap";
-    var tx = overflowX > 1 ? overflowX : 0;
-    var ty = overflowY > 1 ? -overflowY : 0;
-    var distance = Math.abs(tx) + Math.abs(ty);
-    var duration = Math.max(1400, Math.min(6000, distance * 28));
+    track.style.whiteSpace = "nowrap";
+    track.style.width = "max-content";
+    track.style.maxWidth = "none";
     track.style.transition = "none";
-    track.style.transform = "translate(0, 0)";
     void track.offsetWidth;
-    track.style.transition = "transform " + duration + "ms linear";
-    track.style.transform = "translate(" + tx + "px, " + ty + "px)";
-    var timer = setTimeout(function () {
-      track.style.transition = "transform 0.45s ease";
-      track.style.transform = "translate(0, 0)";
-      var resetTimer = setTimeout(function () {
-        track.classList.remove("is-revealing");
-        track.style.whiteSpace = "";
-        track.style.width = "";
-        track.style.maxWidth = "";
-        if (activeReveal && activeReveal.track === track) activeReveal = null;
-      }, 480);
-      if (activeReveal && activeReveal.track === track) activeReveal.timer = resetTimer;
-    }, duration + 280);
-    activeReveal = { track: track, timer: timer, cell: cell };
+
+    var loopWidth = Math.max(1, Math.ceil(parts.seg.offsetWidth + parts.gap.offsetWidth));
+    var startTs = null;
+
+    function frame(ts) {
+      if (!activeReveal || activeReveal.track !== track) return;
+      if (!cell.isConnected) {
+        stopReveal();
+        return;
+      }
+      if (startTs == null) startTs = ts;
+      var elapsed = (ts - startTs) / 1000;
+      var dist = (elapsed * REVEAL_SPEED_PX_PER_SEC) % loopWidth;
+      track.style.transform = "translate(" + dist + "px, 0)";
+      activeReveal.raf = requestAnimationFrame(frame);
+    }
+
+    activeReveal = { track: track, cell: cell, raf: null, timer: null, running: true };
+    activeReveal.raf = requestAnimationFrame(frame);
   }
 
   function bindReveal(table) {

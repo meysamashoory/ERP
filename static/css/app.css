@@ -736,11 +736,19 @@ tr.is-conflict-row > td {
   height: var(--table-row-height, 36px);
   min-height: var(--table-row-height, 36px);
   max-height: var(--table-row-height, 36px);
-  line-height: 1.25;
+  line-height: calc(var(--table-row-height, 36px) - 2px);
   border-bottom: 1px solid var(--line);
   border-left: 1px solid var(--line);
   vertical-align: middle;
   box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+.table tbody tr,
+.table thead tr {
+  height: var(--table-row-height, 36px);
+  max-height: var(--table-row-height, 36px);
 }
 .table th:last-child,
 .table td:last-child { border-left: none; }
@@ -782,8 +790,7 @@ tr.is-conflict-row > td {
   overflow: hidden;
   max-height: var(--table-row-height, 36px);
 }
-.table.col-resize-enabled .cell-reveal-track,
-.table.table-fit-width .cell-reveal-track {
+.table .cell-reveal-track {
   display: block;
   overflow: hidden;
   text-overflow: clip;
@@ -792,11 +799,28 @@ tr.is-conflict-row > td {
   line-height: inherit;
   will-change: transform;
 }
-.table.col-resize-enabled .cell-reveal-track.is-revealing,
-.table.table-fit-width .cell-reveal-track.is-revealing {
+/* Parent td/th keeps overflow:hidden so row height never grows while revealing */
+.table .cell-reveal-track.is-revealing {
   max-width: none;
+  width: max-content;
   overflow: visible;
   white-space: nowrap;
+}
+.table .cell-reveal-inner {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  white-space: nowrap;
+  will-change: transform;
+}
+.table .cell-reveal-seg {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.table .cell-reveal-gap {
+  flex: 0 0 auto;
+  display: inline-block;
+  height: 1px;
 }
 .table.col-resize-enabled th .col-resizer {
   position: absolute;
