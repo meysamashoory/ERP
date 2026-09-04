@@ -127,7 +127,7 @@ class TableLayoutSettingsTests(TestCase):
         url = reverse("system_table_layout")
         get = self.client.get(url)
         self.assertEqual(get.status_code, 200)
-        self.assertContains(get, "ارتفاع ردیف گزارش")
+        self.assertContains(get, "ارتفاع ردیف همه جداول")
         self.assertContains(get, "قفل عرض ستون گزارش")
         resp = self.client.post(
             url,

@@ -871,6 +871,15 @@ def system_naming_key_save(request: HttpRequest) -> JsonResponse:
         row.is_active = bool(payload.get("is_active"))
     if "is_key" in payload:
         row.is_key = bool(payload.get("is_key"))
+    if "default_width_px" in payload:
+        try:
+            width = int(payload.get("default_width_px") or 0)
+        except (TypeError, ValueError):
+            width = 0
+        if width <= 0:
+            row.default_width_px = 0
+        else:
+            row.default_width_px = max(40, min(800, width))
     if "notes" in payload:
         row.notes = str(payload.get("notes") or "")[:2000]
     if create and not row.category:
@@ -883,6 +892,7 @@ def system_naming_key_save(request: HttpRequest) -> JsonResponse:
         "label": row.label,
         "is_active": row.is_active,
         "is_key": row.is_key,
+        "default_width_px": int(row.default_width_px or 0),
         "linked_section_key": row.linked_section_key,
         "is_renamed": row.is_renamed,
     })
@@ -955,28 +965,52 @@ def system_table_layout(request: HttpRequest) -> HttpResponse:
 @login_required
 def system_table_columns(request: HttpRequest) -> HttpResponse:
     """Manage column headers per table: rename, show/hide, link to sections, add."""
+    from reports.columns import (
+        DEFAULT_WIDTH_BY_KIND,
+        column_width_kind,
+        type_default_column_width,
+    )
+
     from .models import SystemNamingKey
     from .naming_registry import ensure_registry_seeded, section_choices
 
     ensure_registry_seeded()
     table_key = (request.GET.get("table") or "").strip()
+
+    # UI tables + report source tables (report.*) so default column widths are editable.
     tables = list(
         SystemNamingKey.objects.filter(category=SystemNamingKey.Category.TABLE)
         .order_by("label")
     )
+    report_sources = list(
+        SystemNamingKey.objects.filter(category=SystemNamingKey.Category.REPORT)
+        .exclude(table_key="")
+        .order_by("order", "label")
+    )
+    seen_keys = {t.table_key for t in tables if t.table_key}
+    for src in report_sources:
+        tk = src.table_key or ""
+        if tk and tk not in seen_keys:
+            tables.append(src)
+            seen_keys.add(tk)
+
     if not table_key and tables:
-        table_key = tables[0].table_key or tables[0].key.replace("ui.table.", "").replace("admin.table.", "")
-        # Prefer table_key field
         table_key = tables[0].table_key or ""
     columns = []
     table_meta = None
+    is_report_table = bool(table_key.startswith("report."))
+    report_source_id = table_key[len("report.") :] if is_report_table else ""
     if table_key:
         table_meta = (
             SystemNamingKey.objects.filter(
                 category=SystemNamingKey.Category.TABLE, table_key=table_key
             ).first()
+            or SystemNamingKey.objects.filter(
+                category=SystemNamingKey.Category.REPORT, table_key=table_key
+            ).first()
             or SystemNamingKey.objects.filter(key=f"ui.table.{table_key}").first()
             or SystemNamingKey.objects.filter(key=f"admin.table.{table_key}").first()
+            or SystemNamingKey.objects.filter(key=f"report.source.{report_source_id}").first()
         )
         columns = list(
             SystemNamingKey.objects.filter(
@@ -984,6 +1018,18 @@ def system_table_columns(request: HttpRequest) -> HttpResponse:
                 table_key=table_key,
             ).order_by("order", "id")
         )
+        if is_report_table:
+            for row in columns:
+                kind = column_width_kind(report_source_id, row.column_key or "")
+                row.width_kind = kind
+                row.type_default_width = type_default_column_width(
+                    report_source_id, row.column_key or ""
+                )
+                row.effective_width = (
+                    int(row.default_width_px)
+                    if int(row.default_width_px or 0) > 0
+                    else row.type_default_width
+                )
     return render(
         request,
         "catalog/system_table_columns.html",
@@ -994,6 +1040,8 @@ def system_table_columns(request: HttpRequest) -> HttpResponse:
             "columns": columns,
             "section_choices": section_choices(),
             "can_edit": _can_edit_naming(request.user),
+            "is_report_table": is_report_table,
+            "width_kind_defaults": DEFAULT_WIDTH_BY_KIND,
         },
     )
 

@@ -707,6 +707,14 @@ class SystemNamingKey(models.Model):
         default=False,
         help_text="برای بروزرسانی اکسل: ستون‌های هویت ردیف (مثلاً شماره حواله + کد کالا)",
     )
+    default_width_px = models.PositiveSmallIntegerField(
+        "عرض ستون (پیکسل)",
+        default=0,
+        help_text=(
+            "پیش‌فرض عرض ستون هنگام افزودن به گزارش. "
+            "۰ = استفاده از پیش‌فرض نوع (متن/عدد/تاریخ/…)."
+        ),
+    )
     notes = models.TextField("یادداشت", blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -819,7 +827,7 @@ class TableLayoutSettings(models.Model):
     row_height_px = models.PositiveSmallIntegerField(
         "ارتفاع یکنواخت ردیف جداول (پیکسل)",
         default=36,
-        help_text="بین ۱۸ تا ۱۲۰. فقط روی جداول گزارش‌ها و داده‌های سیستم اعمال می‌شود.",
+        help_text="بین ۱۸ تا ۱۲۰. روی همه جداول سامانه اعمال می‌شود.",
     )
     section_width_locks = models.JSONField(
         "قفل عرض ستون به تفکیک بخش",

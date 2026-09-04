@@ -366,9 +366,12 @@ def _harvest_reports() -> list[dict[str, Any]]:
     from reports.columns import COLUMNS_BY_SOURCE, get_column_groups
 
     out: list[dict[str, Any]] = []
-    for gi, group in enumerate(get_column_groups(), start=1):
+    groups = get_column_groups()
+    harvested_sources: set[str] = set()
+    for gi, group in enumerate(groups, start=1):
         gid = str(group.get("id") or "")
         glabel = str(group.get("label") or gid)
+        harvested_sources.add(gid)
         out.append(
             _spec(
                 key=f"report.source.{gid}",
@@ -379,7 +382,25 @@ def _harvest_reports() -> list[dict[str, Any]]:
                 order=gi,
             )
         )
+        for i, pair in enumerate(group.get("columns") or [], start=1):
+            if not pair:
+                continue
+            col_key, label = pair[0], pair[1]
+            out.append(
+                _spec(
+                    key=f"report.col.{gid}.{col_key}",
+                    label=str(label),
+                    address=f"گزارش‌ها ← منبع {gid} ← ستون «{label}»",
+                    category=SystemNamingKey.Category.COLUMN,
+                    section_key="saved_reports",
+                    table_key=f"report.{gid}",
+                    column_key=str(col_key),
+                    order=i,
+                )
+            )
     for source, cols in COLUMNS_BY_SOURCE.items():
+        if source in harvested_sources:
+            continue
         for i, tup in enumerate(cols, start=1):
             if len(tup) < 2:
                 continue

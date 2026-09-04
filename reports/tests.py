@@ -974,3 +974,59 @@ class ReportColumnKeyAndWidthTests(TestCase):
         self.assertIn("_drill_keys", payloads[0])
         self.assertIn("c1", payloads[0]["_drill_keys"])
         self.assertNotIn("c2", payloads[0]["_drill_keys"])
+
+
+class ReportDefaultColumnWidthTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+
+        call_command("seed_demo")
+
+    def test_type_defaults_and_naming_override(self):
+        from catalog.models import SystemNamingKey
+        from catalog.naming_registry import sync_naming_registry
+        from reports.columns import (
+            DEFAULT_WIDTH_BY_KIND,
+            get_column_groups,
+            resolve_default_column_width,
+        )
+
+        sync_naming_registry()
+        self.assertEqual(
+            resolve_default_column_width("fitting", "produced"),
+            DEFAULT_WIDTH_BY_KIND["number"],
+        )
+        self.assertEqual(
+            resolve_default_column_width("fitting", "product"),
+            DEFAULT_WIDTH_BY_KIND["text"],
+        )
+        row = SystemNamingKey.objects.get(key="report.col.fitting.product")
+        row.default_width_px = 240
+        row.save(update_fields=["default_width_px"])
+        self.assertEqual(resolve_default_column_width("fitting", "product"), 240)
+        groups = get_column_groups()
+        fitting = next(g for g in groups if g["id"] == "fitting")
+        self.assertEqual(fitting["default_widths"]["product"], 240)
+        self.assertEqual(fitting["default_widths"]["produced"], DEFAULT_WIDTH_BY_KIND["number"])
+
+    def test_report_form_has_no_header_preview(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from reports.models import SavedReport
+
+        User = get_user_model()
+        expert = User.objects.get(username="expert")
+        report = SavedReport.objects.create(
+            owner=expert,
+            created_by=expert,
+            title="بدون پیش‌نمایش",
+            number=401,
+            data_source="fitting",
+            columns=[],
+        )
+        self.client.login(username="expert", password="erp12345")
+        resp = self.client.get(reverse("report_edit", args=[report.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "col-header-preview")
+        self.assertContains(resp, "نحوه نمایش")

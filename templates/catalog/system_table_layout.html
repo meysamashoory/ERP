@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}ارتفاع ردیف و عرض ستون گزارش‌ها{% endblock %}
-{% block heading %}ارتفاع ردیف و عرض ستون گزارش‌ها{% endblock %}
+{% block title %}ارتفاع ردیف جداول و عرض ستون گزارش‌ها{% endblock %}
+{% block heading %}ارتفاع ردیف جداول و عرض ستون گزارش‌ها{% endblock %}
 {% block nav_data %}{% endblock %}
 {% block nav_system_data %}active{% endblock %}
 
@@ -15,12 +15,16 @@
   {% csrf_token %}
   <div class="panel-body">
     <p class="panel-hint">
-      ارتفاع ردیف فقط روی جداول <strong>گزارش‌ها</strong> و جداول <strong>مدیریت داده‌های سامانه</strong> اعمال می‌شود؛ سایر بخش‌ها ارتفاع پیش‌فرض دارند.
-      تغییر عرض ستون با کشیدن موس فقط در <strong>گزارش‌ها</strong> فعال است (از جمله لبه چپ جدول).
+      ارتفاع ردیف روی <strong>همه جداول و صفحات سامانه</strong> اعمال می‌شود
+      (گزارش‌ها، دیتای محصولات، برنامه‌ریزی، تولید، اکسل، فرم‌ها و داده‌های سیستم).
+      تغییر عرض ستون با کشیدن موس فقط در <strong>گزارش‌ها</strong> فعال است.
+      عرض پیش‌فرض ستون‌های منابع گزارش را از
+      <a href="{% url 'system_table_columns' %}">سرستون‌های جداول</a>
+      (جداول با کلید <code>report.*</code>) تنظیم کنید.
     </p>
 
     <div class="field" style="max-width:280px">
-      <label for="id_row_height_px">ارتفاع ردیف گزارش‌ها / سیستم (پیکسل)</label>
+      <label for="id_row_height_px">ارتفاع ردیف همه جداول (پیکسل)</label>
       <input class="input" type="number" name="row_height_px" id="id_row_height_px"
              min="18" max="120" step="1" value="{{ row_height_px }}">
       <span class="muted" style="font-size:12px">بین ۱۸ تا ۱۲۰</span>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}سرستون‌های جداول{% endblock %}
-{% block heading %}سرستون‌های جداول سامانه{% endblock %}
+{% block heading %}سرستون‌های جداول و عرض ستون گزارش{% endblock %}
 {% block nav_data %}{% endblock %}
 {% block nav_system_data %}active{% endblock %}
 
@@ -13,10 +13,17 @@
 
 {% block content %}
 {% csrf_token %}
-<div class="panel panel-list naming-cols-panel">
+<div class="panel panel-list naming-cols-panel" data-table-section="system">
   <p class="panel-hint">
     برای هر جدول سامانه می‌توانید عنوان سرستون را تغییر دهید، ستون را پنهان کنید،
     به بخش دیگری ربط دهید، یا ستون سفارشی اضافه کنید.
+    {% if is_report_table %}
+    برای منابع گزارش، فیلد <strong>عرض ستون</strong> پیش‌فرض هنگام افزودن ستون به گزارش است؛
+    خالی = پیش‌فرض نوع (متن {{ width_kind_defaults.text }}px، عدد {{ width_kind_defaults.number }}px،
+    تاریخ {{ width_kind_defaults.date }}px، کد {{ width_kind_defaults.code }}px، …).
+    {% else %}
+    جداول با کلید <code>report.*</code> منابع قابل استفاده در گزارش هستند و فیلد عرض ستون دارند.
+    {% endif %}
   </p>
 
   <form class="list-filter-bar naming-filter-bar" method="get">
@@ -44,14 +51,19 @@
 
   {% if table_key %}
   <div class="table-scroll">
-    <table class="table table-compact naming-cols-table">
+    <table class="table table-compact naming-cols-table" data-table-section="system">
       <thead>
         <tr>
           <th style="width:60px">ترتیب</th>
           <th>کلید ستون</th>
           <th>عنوان سرستون</th>
+          {% if is_report_table %}
+          <th style="width:140px">عرض ستون</th>
+          <th style="width:110px">نوع / پیش‌فرض</th>
+          {% else %}
           <th>آدرس دقیق</th>
           <th style="width:160px">ربط به بخش</th>
+          {% endif %}
           <th style="width:90px">نمایش</th>
           {% if can_edit %}<th style="width:120px">عملیات</th>{% endif %}
         </tr>
@@ -72,6 +84,20 @@
             <input class="input naming-label-input" data-field="label" maxlength="200" value="{{ row.label }}">
             {% else %}{{ row.label }}{% endif %}
           </td>
+          {% if is_report_table %}
+          <td>
+            {% if can_edit %}
+            <input class="input naming-width-input" data-field="default_width_px" type="number"
+                   min="0" max="800" step="1"
+                   value="{% if row.default_width_px %}{{ row.default_width_px }}{% endif %}"
+                   placeholder="{{ row.type_default_width }}"
+                   title="خالی یا ۰ = پیش‌فرض نوع ({{ row.type_default_width }}px)">
+            {% else %}
+              {% if row.default_width_px %}{{ row.default_width_px }}px{% else %}نوع: {{ row.type_default_width }}px{% endif %}
+            {% endif %}
+          </td>
+          <td class="muted" style="font-size:12px">{{ row.width_kind }} → {{ row.type_default_width }}px</td>
+          {% else %}
           <td><div class="naming-address" title="{{ row.address }}">{{ row.address|default:"—" }}</div></td>
           <td>
             {% if can_edit %}
@@ -82,6 +108,7 @@
             </select>
             {% else %}{{ row.linked_section_key|default:"—" }}{% endif %}
           </td>
+          {% endif %}
           <td>
             {% if can_edit %}
             <input type="checkbox" data-field="is_active" {% if row.is_active %}checked{% endif %}>
@@ -97,13 +124,13 @@
           {% endif %}
         </tr>
         {% empty %}
-        <tr><td colspan="7" class="empty">ستونی برای این جدول نیست.</td></tr>
+        <tr><td colspan="8" class="empty">ستونی برای این جدول نیست.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  {% if can_edit %}
+  {% if can_edit and not is_report_table %}
   <div class="naming-add-col panel" style="margin-top:14px;padding:12px 14px">
     <h3 class="import-heading">افزودن سرستون سفارشی</h3>
     <div class="excel-import-form">
@@ -139,6 +166,7 @@
   var csrf = (document.querySelector("[name=csrfmiddlewaretoken]") || {}).value
     || (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
   var tableKey = "{{ table_key|escapejs }}";
+  var isReport = {% if is_report_table %}true{% else %}false{% endif %};
   var statusEl = document.getElementById("cols-status");
   function setStatus(msg, isError) {
     statusEl.textContent = msg || "";
@@ -149,9 +177,15 @@
       id: Number(tr.getAttribute("data-id")),
       label: (tr.querySelector('[data-field="label"]') || {}).value,
       order: Number((tr.querySelector('[data-field="order"]') || {}).value || 0),
-      linked_section_key: (tr.querySelector('[data-field="linked_section_key"]') || {}).value,
       is_active: !!(tr.querySelector('[data-field="is_active"]') || {}).checked
     };
+    var linkEl = tr.querySelector('[data-field="linked_section_key"]');
+    if (linkEl) body.linked_section_key = linkEl.value;
+    var widthEl = tr.querySelector('[data-field="default_width_px"]');
+    if (widthEl) {
+      var raw = (widthEl.value || "").trim();
+      body.default_width_px = raw === "" ? 0 : Number(raw);
+    }
     return fetch("{% url 'system_naming_key_save' %}", {
       method: "POST",
       headers: {
@@ -193,7 +227,7 @@
     });
   });
   var addBtn = document.getElementById("add-col-btn");
-  if (addBtn) {
+  if (addBtn && !isReport) {
     addBtn.addEventListener("click", function () {
       var colKey = (document.getElementById("add-col-key").value || "").trim();
       var label = (document.getElementById("add-col-label").value || "").trim();
