@@ -1,12 +1,15 @@
 /* Global table row height + per-section column resize / lock.
  * Fit-width from RTL start: table grows/shrinks with column widths.
- * Click clipped cells to slowly reveal full text. */
+ * Clipped cells: constant-speed seamless marquee while selected. */
 (function (global) {
   "use strict";
 
   var STORAGE_PREFIX = "erp.table.colwidths.";
   var MIN_COL = 40;
   var MAX_COL = 800;
+  /** Constant marquee speed (px/s) — independent of text length. */
+  var REVEAL_SPEED_PX_PER_SEC = 52;
+  var REVEAL_GAP_EM = 3;
   var activeReveal = null;
 
   function locksFromBody() {
@@ -48,18 +51,17 @@
   function saveWidths(table, widths) {
     try {
       localStorage.setItem(tableStorageKey(table), JSON.stringify(widths));
-    } catch (e) { /* ignore quota */ }
+    } catch (e) {}
   }
 
   function headCells(table) {
-    var headRow = table.tHead && table.tHead.rows[0];
-    if (!headRow) return [];
-    return Array.prototype.slice.call(headRow.cells);
+    if (!table.tHead || !table.tHead.rows.length) return [];
+    return Array.prototype.slice.call(table.tHead.rows[0].cells);
   }
 
   function measureCurrentWidths(table) {
-    return headCells(table).map(function (cell) {
-      return Math.max(MIN_COL, Math.round(cell.getBoundingClientRect().width));
+    return headCells(table).map(function (th) {
+      return Math.max(MIN_COL, Math.round(th.getBoundingClientRect().width));
     });
   }
 
@@ -110,15 +112,12 @@
     table.classList.remove("col-width-locked");
     table.classList.add("col-resize-enabled");
 
-    // Baseline: lock every column so resize changes table size, not redistribution.
     if (!loadWidths(table) || !table.style.width || table.style.width === "100%") {
       lockAllColumnWidths(table);
     }
 
     cells.forEach(function (th, idx) {
       if (th.querySelector(".col-resizer")) return;
-      // Sticky headers inside scroll viewports; sticky is also a positioning
-      // context so column-resize handles still work (same as relative).
       var inScroll = !!(th.closest && th.closest(".table-scroll, .table-scroll-wide"));
       if (inScroll) {
         th.style.position = "sticky";
@@ -129,7 +128,6 @@
       }
       var handle = document.createElement("span");
       handle.className = "col-resizer";
-      // Last column (visual left edge in RTL) also gets a handle.
       if (idx >= cells.length - 1) {
         handle.className = "col-resizer col-resizer-edge";
         handle.title = "تغییر عرض ستون (لبه چپ جدول)";
@@ -146,7 +144,7 @@
         var startW = widths[idx];
 
         function onMove(ev) {
-          var dx = startX - ev.clientX; // RTL: drag toward start increases width
+          var dx = startX - ev.clientX;
           var next = Math.max(MIN_COL, Math.min(MAX_COL, startW + dx));
           widths[idx] = Math.round(next);
           th.style.width = next + "px";
@@ -201,16 +199,76 @@
     return track;
   }
 
+  function teardownMarqueeDom(track) {
+    if (!track) return;
+    var inner = track.querySelector(":scope > .cell-reveal-inner");
+    if (!inner) {
+      track.style.transform = "";
+      track.style.transition = "";
+      track.style.width = "";
+      track.style.maxWidth = "";
+      track.style.whiteSpace = "";
+      track.classList.remove("is-revealing");
+      return;
+    }
+    var seg = inner.querySelector(".cell-reveal-seg");
+    track.style.transform = "";
+    track.style.transition = "";
+    track.style.width = "";
+    track.style.maxWidth = "";
+    track.style.whiteSpace = "";
+    track.classList.remove("is-revealing");
+    while (track.firstChild) track.removeChild(track.firstChild);
+    if (seg) {
+      while (seg.firstChild) track.appendChild(seg.firstChild);
+    }
+  }
+
+  function buildMarqueeDom(track) {
+    teardownMarqueeDom(track);
+    var frag = document.createDocumentFragment();
+    while (track.firstChild) frag.appendChild(track.firstChild);
+
+    var inner = document.createElement("span");
+    inner.className = "cell-reveal-inner";
+    var seg1 = document.createElement("span");
+    seg1.className = "cell-reveal-seg";
+    seg1.appendChild(frag);
+    var gap = document.createElement("span");
+    gap.className = "cell-reveal-gap";
+    gap.style.width = REVEAL_GAP_EM + "em";
+    gap.setAttribute("aria-hidden", "true");
+    var seg2 = seg1.cloneNode(true);
+    seg2.setAttribute("aria-hidden", "true");
+    inner.appendChild(seg1);
+    inner.appendChild(gap);
+    inner.appendChild(seg2);
+    track.appendChild(inner);
+    return { inner: inner, seg: seg1, gap: gap };
+  }
+
+  function selectionGuarded(cell) {
+    var table = cell && cell.closest("table");
+    if (!table) return false;
+    if (table.getAttribute("data-erp-nav") === "off") return false;
+    return (
+      table.classList.contains("js-table-nav") ||
+      table.getAttribute("data-table-nav-bound") === "1" ||
+      table.dataset.tableNavBound === "1"
+    );
+  }
+
+  function cellStillSelected(cell) {
+    if (!cell || !cell.isConnected) return false;
+    if (!selectionGuarded(cell)) return true;
+    return cell.classList.contains("is-cell-focus");
+  }
+
   function stopReveal() {
     if (!activeReveal) return;
-    var track = activeReveal.track;
-    var timer = activeReveal.timer;
-    if (timer) clearTimeout(timer);
-    if (track) {
-      track.style.transition = "transform 0.35s ease";
-      track.style.transform = "translate(0, 0)";
-      track.classList.remove("is-revealing");
-    }
+    if (activeReveal.raf) cancelAnimationFrame(activeReveal.raf);
+    if (activeReveal.timer) clearTimeout(activeReveal.timer);
+    teardownMarqueeDom(activeReveal.track);
     activeReveal = null;
   }
 
@@ -218,11 +276,14 @@
     if (!cell || (cell.tagName !== "TD" && cell.tagName !== "TH")) return;
     if (cellHasOwnControls(cell)) return;
 
+    if (activeReveal && activeReveal.cell === cell && activeReveal.running) {
+      return;
+    }
+
     var track = ensureRevealTrack(cell);
     if (!track) return;
 
-    // Measure true overflow: prefer single-line horizontal reveal (RTL),
-    // then vertical if row height still clips wrapped text.
+    // Measure horizontal overflow only — never wrap (row height must stay fixed).
     track.classList.add("is-revealing");
     track.style.whiteSpace = "nowrap";
     track.style.width = "max-content";
@@ -231,16 +292,8 @@
     track.style.transition = "none";
     void track.offsetWidth;
 
-    var overflowX = Math.max(0, Math.ceil(track.scrollWidth - cell.clientWidth + 4));
-    var overflowY = 0;
+    var overflowX = Math.max(0, Math.ceil(track.scrollWidth - cell.clientWidth + 2));
     if (overflowX <= 1) {
-      track.style.whiteSpace = "normal";
-      track.style.width = cell.clientWidth + "px";
-      void track.offsetWidth;
-      overflowY = Math.max(0, Math.ceil(track.scrollHeight - cell.clientHeight + 2));
-      track.style.width = "max-content";
-    }
-    if (overflowX <= 1 && overflowY <= 1) {
       track.classList.remove("is-revealing");
       track.style.whiteSpace = "";
       track.style.width = "";
@@ -249,39 +302,52 @@
     }
 
     stopReveal();
+    track = ensureRevealTrack(cell);
+    if (!track) return;
+
+    var parts = buildMarqueeDom(track);
     track.classList.add("is-revealing");
-    if (overflowX > 1) {
-      track.style.whiteSpace = "nowrap";
+    track.style.whiteSpace = "nowrap";
+    track.style.width = "max-content";
+    track.style.maxWidth = "none";
+    track.style.transition = "none";
+    void track.offsetWidth;
+
+    var loopWidth = Math.max(1, Math.ceil(parts.seg.offsetWidth + parts.gap.offsetWidth));
+    var startTs = null;
+    // RTL tables: positive X reveals clipped content on the left.
+    var dir = 1;
+
+    function frame(ts) {
+      if (!activeReveal || activeReveal.track !== track) return;
+      if (!cellStillSelected(cell)) {
+        stopReveal();
+        return;
+      }
+      if (startTs == null) startTs = ts;
+      var elapsed = (ts - startTs) / 1000;
+      var dist = (elapsed * REVEAL_SPEED_PX_PER_SEC) % loopWidth;
+      track.style.transform = "translate(" + dir * dist + "px, 0)";
+      activeReveal.raf = requestAnimationFrame(frame);
     }
 
-    // RTL: clipped text sits toward the left; move content right (+) to reveal.
-    var tx = overflowX > 1 ? overflowX : 0;
-    var ty = overflowY > 1 ? -overflowY : 0;
-    var distance = Math.abs(tx) + Math.abs(ty);
-    var duration = Math.max(1400, Math.min(6000, distance * 28));
+    activeReveal = {
+      track: track,
+      cell: cell,
+      raf: null,
+      timer: null,
+      running: true,
+      loopWidth: loopWidth,
+    };
+    activeReveal.raf = requestAnimationFrame(frame);
+  }
 
-    track.style.transition = "none";
-    track.style.transform = "translate(0, 0)";
-    void track.offsetWidth;
-    track.style.transition = "transform " + duration + "ms linear";
-    track.style.transform = "translate(" + tx + "px, " + ty + "px)";
-
-    var timer = setTimeout(function () {
-      track.style.transition = "transform 0.45s ease";
-      track.style.transform = "translate(0, 0)";
-      var resetTimer = setTimeout(function () {
-        track.classList.remove("is-revealing");
-        track.style.whiteSpace = "";
-        track.style.width = "";
-        track.style.maxWidth = "";
-        if (activeReveal && activeReveal.track === track) activeReveal = null;
-      }, 480);
-      if (activeReveal && activeReveal.track === track) {
-        activeReveal.timer = resetTimer;
-      }
-    }, duration + 280);
-
-    activeReveal = { track: track, timer: timer, cell: cell };
+  function onCellSelected(cell) {
+    if (!cell) {
+      stopReveal();
+      return;
+    }
+    playCellReveal(cell);
   }
 
   function bindReveal(table) {
@@ -322,7 +388,6 @@
     } else if (stored) {
       applyFixedWidths(table, stored);
     } else {
-      // First visit: measure natural widths then fit to content from RTL start.
       requestAnimationFrame(function () {
         lockAllColumnWidths(table);
       });
@@ -337,7 +402,6 @@
   }
 
   function enhanceAll() {
-    // Interactive column resize / fit-width only for reports.
     document
       .querySelectorAll(
         'table.table[data-table-section="reports"], [data-table-section="reports"] table.table'
@@ -363,5 +427,8 @@
     enhanceAll: enhanceAll,
     enhanceTable: enhanceTable,
     stopReveal: stopReveal,
+    playCellReveal: playCellReveal,
+    onCellSelected: onCellSelected,
+    REVEAL_SPEED_PX_PER_SEC: REVEAL_SPEED_PX_PER_SEC,
   };
 })(window);

@@ -168,6 +168,9 @@ body.admin-embed .admin-table-fit-width {
 body.admin-embed .admin-resizable-table th,
 body.admin-embed .admin-resizable-table td {
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  max-height: var(--table-row-height, 36px);
 }
 body.admin-embed .admin-resizable-table .cell-reveal-track {
   display: block;
@@ -179,8 +182,24 @@ body.admin-embed .admin-resizable-table .cell-reveal-track {
 }
 body.admin-embed .admin-resizable-table .cell-reveal-track.is-revealing {
   max-width: none;
+  width: max-content;
   overflow: visible;
   white-space: nowrap;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-inner {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  white-space: nowrap;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-seg {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-gap {
+  flex: 0 0 auto;
+  display: inline-block;
+  height: 1px;
 }
 body.admin-embed .admin-th-resizable {
   position: relative;
