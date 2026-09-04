@@ -95,11 +95,12 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="table_columns",
-                    title="سرستون‌های جداول سامانه",
+                    title="سرستون‌های جداول و عرض ستون گزارش",
                     admin_changelist="",
                     url_name="system_table_columns",
                     description=(
-                        "تغییر نام، نمایش/پنهان، افزودن ستون سفارشی و ربط به بخش‌های مختلف."
+                        "تغییر نام، نمایش/پنهان، افزودن ستون سفارشی، و برای منابع گزارش "
+                        "تنظیم «عرض ستون» پیش‌فرض (متن/عدد تا وقتی مقدار ندهید)."
                     ),
                     count_fn=lambda: SystemNamingKey.objects.filter(
                         category=SystemNamingKey.Category.COLUMN
@@ -108,13 +109,14 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="table_layout",
-                    title="ارتفاع ردیف و عرض ستون گزارش‌ها",
+                    title="ارتفاع ردیف جداول و عرض ستون گزارش‌ها",
                     admin_changelist="",
                     url_name="system_table_layout",
                     can_add=False,
                     description=(
-                        "ارتفاع ردیف برای گزارش‌ها و داده‌های سیستم، و قفل عرض ستون فقط برای گزارش‌ها. "
-                        "سایر بخش‌ها ارتفاع و عرض پیش‌فرض دارند."
+                        "ارتفاع یکنواخت ردیف برای همه جداول و صفحات سامانه، "
+                        "و قفل تغییر عرض ستون در گزارش‌ها. "
+                        "عرض پیش‌فرض ستون‌های منابع گزارش از «سرستون‌های جداول» تنظیم می‌شود."
                     ),
                     count_fn=_count(TableLayoutSettings),
                 ),
@@ -164,7 +166,7 @@ def build_system_groups() -> list[SystemGroup]:
         ),
         SystemGroup(
             key="weekly",
-            title="برنامه‌ریزی هفتگی",
+            title="برنامه‌ریزی توسط سیستم",
             items=[
                 SystemItem(
                     key="planning_process",
@@ -297,8 +299,9 @@ def build_system_groups() -> list[SystemGroup]:
                     admin_add="admin:catalog_flexibledataset_add",
                     url_query="destination_id__exact=product_data",
                     description=(
-                        "اسکیما و متادیتای تب‌های پویا (محصولات/BOM/مواد/مشخصات فنی/حواله): "
-                        "مقصد، سطح، ستون‌ها و کلیدها — نه میان‌بر به صفحه عملیاتی."
+                        "اسکیما و متادیتای تب‌های پویا: مشخصات کالاها، BOM قطعات، "
+                        "BOM مواد مصرفی، مشخصات مواد، مشخصات فنی دستگاه/قالب، موجودی، حواله‌ها — "
+                        "مقصد، سطح، ستون‌ها و کلیدها."
                     ),
                     count_fn=lambda: FlexibleDataset.objects.filter(
                         destination_id="product_data"
@@ -306,16 +309,15 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="vouchers_hub",
-                    title="ردیف‌های جدول پویا (حواله و سایر تب‌ها)",
+                    title="ردیف‌های جداول پویا (دیتای محصولات)",
                     admin_changelist="admin:catalog_flexiblerow_changelist",
                     admin_add="admin:catalog_flexiblerow_add",
                     description=(
-                        "ویرایش ردیف‌های JSON جداول پویا (شامل حواله‌ها) با کلید هویت — "
-                        "مدیریت داده در داده‌های سیستم."
+                        "ویرایش ردیف‌های JSON همه تب‌های دیتای محصولات "
+                        "(BOM، مواد، موجودی، حواله و …) با کلید هویت."
                     ),
                     count_fn=lambda: FlexibleRow.objects.filter(
                         dataset__destination_id="product_data",
-                        dataset__level_id="vouchers",
                     ).count(),
                 ),
                 SystemItem(
@@ -362,9 +364,13 @@ def build_system_groups() -> list[SystemGroup]:
                 ),
                 SystemItem(
                     key="bom",
-                    title="ساختار BOM",
+                    title="ساختار BOM (قطعات — مدل کلاسیک)",
                     admin_changelist="admin:catalog_productbomline_changelist",
                     admin_add="admin:catalog_productbomline_add",
+                    description=(
+                        "خطوط BOM کلاسیک محصول←قطعه. تب پویای «BOM قطعات/مواد» در دیتای محصولات "
+                        "جداگانه مدیریت می‌شود."
+                    ),
                     count_fn=_count(ProductBomLine),
                 ),
                 SystemItem(

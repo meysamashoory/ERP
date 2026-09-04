@@ -93,9 +93,6 @@
               <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده">کپی</button>
             </div>
           </div>
-          <div class="col-header-preview" id="col-header-preview" hidden>
-            <div class="col-header-preview-track" id="col-header-preview-track"></div>
-          </div>
           <div class="selected-cols" id="selected-cols"></div>
           <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
         </div>
@@ -120,7 +117,7 @@
 {{ columns_data|json_script:"columns-initial" }}
 {{ source_links_data|json_script:"links-initial" }}
 {{ column_keyability|json_script:"column-keyability" }}
-<script src="{% static 'js/report_builder_display.js' %}?v=1"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=2"></script>
 <script>
 (function () {
   if (window.ERPReportBuilderDisplay) {

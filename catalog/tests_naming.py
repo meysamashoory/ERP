@@ -158,7 +158,7 @@ class SystemNamingRegistryTests(TestCase):
         hub = self.client.get(reverse("system_data"))
         self.assertEqual(hub.status_code, 200)
         self.assertContains(hub, "کلیدهای نام‌گذاری سیستم")
-        self.assertContains(hub, "سرستون‌های جداول سامانه")
+        self.assertContains(hub, "سرستون‌های جداول و عرض ستون گزارش")
 
         page = self.client.get(reverse("system_naming_keys"), {"q": "data-col=unique_code"})
         self.assertEqual(page.status_code, 200)
@@ -275,3 +275,37 @@ class SystemNamingRegistryTests(TestCase):
         self.assertEqual(resp.json()["key"], key_a)
         self.assertEqual(SystemNamingKey.objects.get(key=key_a).label, "عنوان قالب سفارشی")
         self.assertEqual(SystemNamingKey.objects.get(key=key_b).label, "عنوان")
+
+
+class ReportColumnDefaultWidthUITests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+        cls.admin = User.objects.get(username="admin")
+
+    def test_report_table_shows_width_column(self):
+        sync_naming_registry()
+        self.client.login(username="admin", password="erp12345")
+        page = self.client.get(
+            reverse("system_table_columns"),
+            {"table": "report.fitting"},
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "عرض ستون")
+        self.assertContains(page, "default_width_px")
+
+        row = SystemNamingKey.objects.get(key="report.col.fitting.code")
+        save = self.client.post(
+            reverse("system_naming_key_save"),
+            data=json.dumps({
+                "id": row.pk,
+                "label": row.label,
+                "default_width_px": 180,
+                "is_active": True,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(save.status_code, 200)
+        self.assertTrue(save.json()["ok"])
+        row.refresh_from_db()
+        self.assertEqual(row.default_width_px, 180)

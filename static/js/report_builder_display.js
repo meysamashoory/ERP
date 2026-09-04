@@ -1,4 +1,4 @@
-/* Report builder: sources, levels, width, key columns, header resize preview. */
+/* Report builder: sources, levels, width, key columns. */
 (function (global) {
   "use strict";
 
@@ -49,11 +49,31 @@
       return true;
     }
 
+    function defaultWidthFor(source, key) {
+      var g = groups.find(function (x) { return x.id === source; });
+      if (g && g.default_widths && Object.prototype.hasOwnProperty.call(g.default_widths, key)) {
+        var fromMap = clampWidth(g.default_widths[key]);
+        if (fromMap) return fromMap;
+      }
+      if (g && Array.isArray(g.columns)) {
+        for (var i = 0; i < g.columns.length; i++) {
+          var pair = g.columns[i];
+          if (!pair || pair[0] !== key) continue;
+          if (pair.length > 2) {
+            var fromPair = clampWidth(pair[2]);
+            if (fromPair) return fromPair;
+          }
+          break;
+        }
+      }
+      return 160;
+    }
+
     selected = (selected || []).map(function (item) {
       if (typeof item === "string") {
         return {
           key: item, source: "fitting", level: 1, label: item, origLabel: item,
-          uid: newUid(), width: 0, is_key: false
+          uid: newUid(), width: defaultWidthFor("fitting", item), is_key: false
         };
       }
       item.origLabel = item.origLabel || item.label || item.key;
@@ -81,8 +101,6 @@
     var headingEdit = document.getElementById("heading-edit");
     var headingText = document.getElementById("heading-text");
     var confirmedOnce = mode === "edit";
-    var previewWrap = document.getElementById("col-header-preview");
-    var previewTrack = document.getElementById("col-header-preview-track");
     var trees = document.getElementById("source-trees");
     var list = document.getElementById("selected-cols");
     var pathEl = document.getElementById("col-path");
@@ -260,7 +278,7 @@
             if (cb.checked) {
               selected.push({
                 key: key, source: sid, level: 1, label: lab, origLabel: lab,
-                uid: newUid(), width: 120, is_key: false
+                uid: newUid(), width: defaultWidthFor(sid, key), is_key: false
               });
             } else {
               selected = selected.filter(function (c) { return !(c.key === key && c.source === sid); });
@@ -309,7 +327,7 @@
           label: (src.label || src.origLabel || src.key) + " (کپی)",
           origLabel: src.origLabel || src.label || src.key,
           uid: newUid(),
-          width: clampWidth(src.width || 0),
+          width: clampWidth(src.width || 0) || defaultWidthFor(src.source || "", src.key || ""),
           is_key: false
         };
         selected.splice(activeIdx + 1, 0, copy);
@@ -335,47 +353,11 @@
       pathEl.textContent = bits.join("  ←  ");
     }
 
-    function renderHeaderPreview() {
-      if (!previewWrap || !previewTrack) return;
-      if (!selected.length) {
-        previewWrap.hidden = true;
-        previewTrack.innerHTML = "";
-        return;
-      }
-      previewWrap.hidden = false;
-      previewTrack.innerHTML = "";
-      selected.forEach(function (c, idx) {
-        var cell = document.createElement("div");
-        cell.className = "col-header-preview-cell" + (idx === activeIdx ? " is-active" : "") + (c.is_key ? " is-key" : "");
-        var w = clampWidth(c.width) || 120;
-        cell.style.width = w + "px";
-        cell.style.minWidth = w + "px";
-        cell.style.flex = "0 0 " + w + "px";
-        cell.dataset.idx = String(idx);
-        var title = document.createElement("span");
-        title.className = "col-header-preview-label";
-        title.textContent = (c.label || c.key || "ستون") + (c.is_key ? " ★" : "");
-        cell.appendChild(title);
-        var handle = document.createElement("span");
-        handle.className = "col-header-resizer";
-        handle.title = "کشیدن برای تغییر عرض";
-        handle.dataset.idx = String(idx);
-        cell.appendChild(handle);
-        cell.addEventListener("click", function (e) {
-          if (e.target.closest(".col-header-resizer")) return;
-          activeIdx = idx;
-          renderSelected();
-        });
-        previewTrack.appendChild(cell);
-      });
-    }
-
     function renderSelected() {
       if (!list) return;
       list.innerHTML = "";
       if (!selected.length) {
         list.innerHTML = '<p class="muted">ستونی انتخاب نشده است.</p>';
-        renderHeaderPreview();
         updatePath();
         return;
       }
@@ -399,7 +381,6 @@
           '<button type="button" class="btn btn-xs btn-danger" data-rm="' + idx + '">×</button>';
         list.appendChild(row);
       });
-      renderHeaderPreview();
       updatePath();
     }
 
@@ -440,7 +421,6 @@
             return;
           }
           col.is_key = !!keyCb.checked;
-          renderHeaderPreview();
           updatePath();
           syncHidden();
         }
@@ -450,7 +430,6 @@
         if (inp) {
           var i = parseInt(inp.getAttribute("data-label"), 10);
           selected[i].label = inp.value;
-          renderHeaderPreview();
           syncHidden();
           return;
         }
@@ -458,46 +437,10 @@
         if (wInp) {
           var wi = parseInt(wInp.getAttribute("data-width"), 10);
           selected[wi].width = clampWidth(wInp.value);
-          renderHeaderPreview();
           syncHidden();
         }
       });
     }
-
-    var dragState = null;
-    if (previewTrack) {
-      previewTrack.addEventListener("mousedown", function (e) {
-        var handle = e.target.closest(".col-header-resizer");
-        if (!handle) return;
-        e.preventDefault();
-        var idx = parseInt(handle.dataset.idx, 10);
-        var col = selected[idx];
-        if (!col) return;
-        dragState = {
-          idx: idx,
-          startX: e.clientX,
-          startW: clampWidth(col.width) || 120
-        };
-        document.body.classList.add("is-col-resizing");
-      });
-    }
-    document.addEventListener("mousemove", function (e) {
-      if (!dragState) return;
-      var dx = dragState.startX - e.clientX;
-      var next = clampWidth(dragState.startW + dx) || 40;
-      selected[dragState.idx].width = next;
-      if (list) {
-        var wInp = list.querySelector('[data-width="' + dragState.idx + '"]');
-        if (wInp) wInp.value = String(next);
-      }
-      renderHeaderPreview();
-      syncHidden();
-    });
-    document.addEventListener("mouseup", function () {
-      if (!dragState) return;
-      dragState = null;
-      document.body.classList.remove("is-col-resizing");
-    });
 
     function updateLinkUi() {
       if (!linkBtn || !linkSummary) return;

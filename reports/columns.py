@@ -215,7 +215,8 @@ def get_column_groups() -> list[dict]:
         "columns": [(k, label) for k, label, _ in HISTORY_COLUMNS],
     })
     groups.extend(get_product_data_flex_groups())
-    return groups
+    naming_widths = naming_default_width_map()
+    return [enrich_column_group(g, naming_widths=naming_widths) for g in groups]
 
 
 DATA_ENTRY_COLUMNS = [
@@ -326,6 +327,121 @@ COLUMN_GROUPS = [
 ]
 
 # Prefer get_column_groups() at request time for history + transferred flex tabs.
+
+# Default report column widths by value kind (px). Overridden by SystemNamingKey.default_width_px.
+DEFAULT_WIDTH_BY_KIND = {
+    "text": 160,
+    "number": 96,
+    "date": 112,
+    "code": 120,
+    "select": 140,
+    "textarea": 220,
+}
+
+_DATE_KEY_FRAGMENTS = ("date", "_at", "start", "end")
+
+
+def column_width_kind(source: str, key: str) -> str:
+    """Classify a report column for default width selection."""
+    key = str(key or "").strip()
+    source = str(source or "").strip()
+    if not key:
+        return "text"
+    if is_data_entry_key(key, source):
+        ft = entry_field_type(key)
+        if ft == "textarea":
+            return "textarea"
+        if ft in {"product_select", "select"}:
+            return "select"
+        return "text"
+    low = key.lower()
+    if low in {"cycle", "last_cycle", "planned_cycle"}:
+        return "number"
+    if any(frag in low for frag in _IDENTITY_KEY_FRAGMENTS):
+        if any(frag in low for frag in ("code", "uid", "id", "sku", "barcode", "unique")):
+            return "code"
+        return "text"
+    if key in _NUMERIC_METRIC_KEYS or any(frag in low for frag in _NUMERIC_KEY_FRAGMENTS):
+        return "number"
+    if "date" in low or low.endswith("_at"):
+        return "date"
+    if low in {"type", "unit", "line", "status_label", "subgroup", "deviation_reason"}:
+        return "select"
+    # Flex / unknown: prefer text unless clearly numeric.
+    if is_flex_source(source):
+        try:
+            parsed = parse_flex_source(source)
+            if parsed:
+                for col_key, _label, _getter in _flex_column_tuples(parsed[0], parsed[1]):
+                    if col_key != key:
+                        continue
+                    # Flex schemas use string/number-ish labels; fall through.
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+    return "text"
+
+
+def type_default_column_width(source: str, key: str) -> int:
+    kind = column_width_kind(source, key)
+    return int(DEFAULT_WIDTH_BY_KIND.get(kind, DEFAULT_WIDTH_BY_KIND["text"]))
+
+
+def naming_default_width_map() -> dict[str, int]:
+    """Map ``report.col.<source>.<key>`` → configured default width (px)."""
+    out: dict[str, int] = {}
+    try:
+        from catalog.models import SystemNamingKey
+
+        for row in SystemNamingKey.objects.filter(
+            key__startswith="report.col.",
+            category=SystemNamingKey.Category.COLUMN,
+        ).only("key", "default_width_px"):
+            try:
+                w = int(row.default_width_px or 0)
+            except (TypeError, ValueError):
+                w = 0
+            if w > 0:
+                out[row.key] = max(40, min(800, w))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def resolve_default_column_width(
+    source: str,
+    key: str,
+    *,
+    naming_widths: dict[str, int] | None = None,
+) -> int:
+    """Configured source default, else type-based fallback."""
+    source = str(source or "").strip()
+    key = str(key or "").strip()
+    naming_key = f"report.col.{source}.{key}"
+    widths = naming_widths if naming_widths is not None else naming_default_width_map()
+    configured = int(widths.get(naming_key) or 0)
+    if configured > 0:
+        return max(40, min(800, configured))
+    return type_default_column_width(source, key)
+
+
+def enrich_column_group(group: dict, *, naming_widths: dict[str, int] | None = None) -> dict:
+    """Attach default_widths map and optional 3rd tuple element for the builder UI."""
+    sid = str(group.get("id") or "")
+    widths: dict[str, int] = {}
+    cols_out = []
+    for pair in group.get("columns") or []:
+        if not pair:
+            continue
+        key = str(pair[0])
+        label = pair[1] if len(pair) > 1 else key
+        width = resolve_default_column_width(sid, key, naming_widths=naming_widths)
+        widths[key] = width
+        cols_out.append((key, label, width))
+    enriched = dict(group)
+    enriched["columns"] = cols_out
+    enriched["default_widths"] = widths
+    return enriched
 
 
 def is_data_entry_key(key: str, source: str = "") -> bool:

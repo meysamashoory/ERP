@@ -366,9 +366,12 @@ def _harvest_reports() -> list[dict[str, Any]]:
     from reports.columns import COLUMNS_BY_SOURCE, get_column_groups
 
     out: list[dict[str, Any]] = []
-    for gi, group in enumerate(get_column_groups(), start=1):
+    groups = get_column_groups()
+    harvested_sources: set[str] = set()
+    for gi, group in enumerate(groups, start=1):
         gid = str(group.get("id") or "")
         glabel = str(group.get("label") or gid)
+        harvested_sources.add(gid)
         out.append(
             _spec(
                 key=f"report.source.{gid}",
@@ -379,7 +382,25 @@ def _harvest_reports() -> list[dict[str, Any]]:
                 order=gi,
             )
         )
+        for i, pair in enumerate(group.get("columns") or [], start=1):
+            if not pair:
+                continue
+            col_key, label = pair[0], pair[1]
+            out.append(
+                _spec(
+                    key=f"report.col.{gid}.{col_key}",
+                    label=str(label),
+                    address=f"گزارش‌ها ← منبع {gid} ← ستون «{label}»",
+                    category=SystemNamingKey.Category.COLUMN,
+                    section_key="saved_reports",
+                    table_key=f"report.{gid}",
+                    column_key=str(col_key),
+                    order=i,
+                )
+            )
     for source, cols in COLUMNS_BY_SOURCE.items():
+        if source in harvested_sources:
+            continue
         for i, tup in enumerate(cols, start=1):
             if len(tup) < 2:
                 continue
@@ -604,7 +625,9 @@ def sync_naming_registry(*, refresh_defaults: bool = False) -> dict[str, int]:
                 if getattr(row, attr) != new_val:
                     setattr(row, attr, new_val)
                     fields.append(attr)
-            if refresh_defaults or not row.default_label:
+            if refresh_defaults or not row.default_label or spec["key"].startswith(
+                ("system.group.", "system.section.")
+            ):
                 if row.default_label != spec["default_label"]:
                     # If label was still equal to old default, move it with the default
                     if row.label == row.default_label or not row.default_label:
@@ -635,6 +658,33 @@ def sync_naming_registry(*, refresh_defaults: bool = False) -> dict[str, int]:
         "deactivated": deactivated,
         "total": len(specs),
     }
+
+
+def refresh_system_hub_labels() -> int:
+    """Update system.group.* / system.section.* labels when still at their old default."""
+    from catalog.system_sections import build_system_groups
+
+    updated = 0
+    for group in build_system_groups():
+        pairs = [(f"system.group.{group.key}", group.title)]
+        pairs.extend(
+            (f"system.section.{item.key}", item.title) for item in group.items
+        )
+        for key, title in pairs:
+            row = SystemNamingKey.objects.filter(key=key, is_custom=False).first()
+            if row is None:
+                continue
+            if row.label == row.default_label or not row.default_label:
+                if row.label != title or row.default_label != title:
+                    row.label = title
+                    row.default_label = title
+                    row.save(update_fields=["label", "default_label", "updated_at"])
+                    updated += 1
+            elif row.default_label != title:
+                row.default_label = title
+                row.save(update_fields=["default_label", "updated_at"])
+                updated += 1
+    return updated
 
 
 def ensure_registry_seeded() -> dict[str, int] | None:
