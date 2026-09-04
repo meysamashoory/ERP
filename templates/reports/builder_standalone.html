@@ -1,0 +1,345 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</title>
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=1">
+</head>
+<body class="report-app">
+<form method="post"
+      id="report-builder-form"
+      class="builder-compact"
+      action="{% if report %}{% url 'report_edit' report.pk %}{% else %}{% url 'report_create' %}{% endif %}"
+      data-mode="{{ mode }}"
+      data-list-url="{{ list_url|default:'' }}">
+  {% csrf_token %}
+  {{ form.columns_json }}
+  <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
+  <input type="hidden" name="report_conditions_json" id="id_report_conditions_json" value="[]">
+  {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
+
+  <div class="rp-shell">
+    <div class="rp-titlebar">
+      <span class="rp-title" id="rp-window-title">{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</span>
+      <div class="rp-win-btns">
+        <button type="button" id="rp-minimize" title="کوچک‌سازی">—</button>
+        <button type="button" id="rp-maximize" title="بزرگ‌سازی">□</button>
+        <button type="button" class="rp-close" id="rp-close" title="بستن">×</button>
+      </div>
+    </div>
+
+    <div class="rp-toolbar">
+      <button type="submit" class="btn btn-sm" id="top-submit">ثبت گزارش</button>
+      <span class="sep"></span>
+      <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
+      <span class="spacer"></span>
+      <span class="muted" id="builder-status">{% if mode == 'edit' %}ویرایش گزارش{% else %}ایجاد گزارش{% endif %}</span>
+    </div>
+
+    <div class="rp-builder-body">
+      <div class="rp-meta-bar panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+        <div class="panel-body panel-body-compact">
+          <div class="form-grid form-grid-compact form-grid-2">
+            <div class="field">
+              <label>{{ form.title.label }}</label>
+              {{ form.title }}
+              {{ form.title.errors }}
+            </div>
+            <div class="field">
+              <label>{{ form.number.label }} (۱–۹۹۹)</label>
+              {{ form.number }}
+              {{ form.number.errors }}
+            </div>
+          </div>
+          <div class="form-grid form-grid-compact form-grid-2">
+            <div class="field">
+              <label>{{ form.description.label }}</label>
+              {{ form.description }}
+            </div>
+            <div class="field">
+              <label>{{ form.access_mode.label }}</label>
+              {{ form.access_mode }}
+              {{ form.access_mode.errors }}
+            </div>
+          </div>
+          {% if form.is_manager %}
+          <div class="field field-check">
+            <label class="chk">{{ form.is_standard }} {{ form.is_standard.label }}</label>
+          </div>
+          {% endif %}
+          {{ form.columns_json.errors }}
+          <div class="line-actions">
+            <button type="button" class="btn btn-sm" id="confirm-meta-btn">تایید اطلاعات</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="cancel-meta-btn" hidden>انصراف</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rp-builder-zones" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+        <div class="rp-builder-top">
+          {# RTL: first child is visual right = sources #}
+          <div class="rp-pane rp-pane-sources">
+            <div class="rp-pane-head">
+              <strong>منبع داده اصلی</strong>
+            </div>
+            <div class="rp-pane-body">
+              <div class="field">
+                <details class="source-menu" id="source-menu">
+                  <summary class="source-menu-summary">افزودن منبع ▾</summary>
+                  <div class="source-menu-list" id="source-menu-list"></div>
+                </details>
+              </div>
+              <div class="source-trees" id="source-trees"></div>
+              <div class="source-link-bar">
+                <button type="button" class="btn btn-sm btn-ghost" id="link-sources-btn" hidden>ربط منابع (نقطه اشتراک)</button>
+                <div class="source-links-summary muted" id="source-links-summary"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rp-pane rp-pane-display">
+            <div class="rp-pane-head selected-head">
+              <strong>نحوه نمایش</strong>
+              <div class="move-controls">
+                <button type="button" class="btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا" disabled>▲</button>
+                <button type="button" class="btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین" disabled>▼</button>
+                <button type="button" class="btn btn-sm btn-ghost" id="delete-col" title="حذف ستون انتخاب‌شده" disabled>حذف</button>
+                <button type="button" class="btn-calc" id="add-calc-col" title="افزودن ستون محاسبات">ƒx محاسبات</button>
+                <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده" disabled>کپی</button>
+              </div>
+            </div>
+            <div class="rp-pane-body">
+              <div class="display-table-wrap">
+                <table class="table table-compact display-cols-table" id="display-cols-table">
+                  <thead>
+                    <tr>
+                      <th>شرح منبع</th>
+                      <th style="width:64px">کد ستون</th>
+                      <th style="width:110px">سطح</th>
+                      <th style="width:64px">عرض</th>
+                      <th style="width:48px">کلید</th>
+                      <th style="width:110px">نوع نمایش</th>
+                      <th style="width:64px">محاسبات</th>
+                      <th style="width:44px">خصوصی</th>
+                    </tr>
+                  </thead>
+                  <tbody id="selected-cols"></tbody>
+                </table>
+              </div>
+              <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-conditions report-conditions-panel" id="report-conditions-panel">
+          <div class="conditions-head">
+            <strong>شرط‌ها</strong>
+            <div class="cond-tabs" role="tablist">
+              <button type="button" class="cond-tab is-active" id="cond-tab-public" role="tab" aria-selected="true" data-cond-scope="public">عمومی</button>
+              <button type="button" class="cond-tab" id="cond-tab-private" role="tab" aria-selected="false" data-cond-scope="private">خصوصی</button>
+            </div>
+            <span class="muted conditions-hint">اسکلت اولیه — اتصال کامل به منطق رادیورز در مرحله بعد تکمیل می‌شود.</span>
+            <button type="button" class="btn btn-sm btn-ghost" id="add-condition-btn">+ افزودن شرط</button>
+          </div>
+          <div id="conditions-list" class="conditions-list" data-active-scope="public">
+            <p class="muted" id="conditions-empty">هنوز شرطی تعریف نشده است.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<dialog id="source-link-dialog" class="dialog">
+  <div class="dialog-head"><h3>ربط منابع — نقطه اشتراک</h3></div>
+  <p class="muted" style="padding:8px 16px 0;margin:0">برای هر منبع، ستونی را انتخاب کنید که شناسه مشترک است (مثلاً کد کالا در هر منبع با نام متفاوت).</p>
+  <div id="link-fields" style="padding:12px 16px"></div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="save-links-btn">ذخیره ربط</button>
+    <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+  </div>
+</dialog>
+
+<dialog id="formula-dialog" class="dialog formula-dialog">
+  <div class="dialog-head"><h3>فرمول‌نویسی ستون محاسبات</h3></div>
+  <div class="formula-dialog-body">
+    <div class="formula-fn-panel">
+      <div class="muted" style="margin-bottom:6px;font-size:12px">دسته توابع — دوبار کلیک برای درج</div>
+      <div id="formula-fn-catalog" class="formula-fn-catalog"></div>
+    </div>
+    <div class="formula-editor-panel">
+      <label class="field">
+        <span>فرمول</span>
+        <div class="formula-editor-wrap">
+          <span class="formula-eq">=</span>
+          <textarea class="input formula-textarea" id="formula-textarea" rows="4" placeholder="مثلاً ROUND(A1+B1, 2)" dir="ltr"></textarea>
+        </div>
+      </label>
+      <div class="formula-col-picker">
+        <span class="muted" style="font-size:12px">درج کد ستون (کلیک یا تایپ ویرگول برای پیشنهاد):</span>
+        <div id="formula-col-chips" class="formula-col-chips"></div>
+      </div>
+      <p class="muted" id="formula-hint" style="font-size:12px">ارجاع ستون‌ها با کد مثل A1، B1 — جداکننده آرگومان‌ها ویرگول یا نقطه‌ویرگول.</p>
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="formula-save-btn">ثبت</button>
+    <button type="button" class="btn btn-ghost" id="formula-cancel-btn">انصراف</button>
+  </div>
+</dialog>
+
+<dialog id="condition-dialog" class="dialog condition-dialog">
+  <div class="dialog-head"><h3>شرط گزارش</h3></div>
+  <div class="condition-dialog-body">
+    <div class="condition-dialog-col condition-dialog-col-right">
+      <div class="field">
+        <label for="cond-logic">منطق</label>
+        <select class="input" id="cond-logic" name="cond_logic">
+          <option value="">—</option>
+          <option value="and">AND</option>
+          <option value="or">OR</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="cond-paren">پرانتز</label>
+        <select class="input" id="cond-paren" name="cond_paren">
+          <option value="">—</option>
+          <option value="(">(</option>
+          <option value=")">)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="cond-source">منبع</label>
+        <select class="input" id="cond-source" name="cond_source"></select>
+      </div>
+      <div class="field">
+        <label for="cond-operator">عملگر</label>
+        <select class="input" id="cond-operator" name="cond_operator"></select>
+      </div>
+    </div>
+    <div class="condition-dialog-col condition-dialog-col-left">
+      <div class="field">
+        <label for="cond-field">فیلد</label>
+        <select class="input" id="cond-field" name="cond_field"></select>
+      </div>
+      <div class="field">
+        <label for="cond-value-mode">حالت مقدار</label>
+        <select class="input" id="cond-value-mode" name="cond_value_mode">
+          <option value="value">مقدار</option>
+          <option value="parameter">پارامتر</option>
+        </select>
+      </div>
+      <div class="field" id="cond-value-wrap">
+        <label for="cond-value">مقدار</label>
+        <input class="input" id="cond-value" name="cond_value" type="text" autocomplete="off">
+        <select class="input" id="cond-param" name="cond_param" hidden></select>
+      </div>
+      <div class="field">
+        <label for="cond-value-offset">افست مقدار</label>
+        <input class="input" id="cond-value-offset" name="cond_value_offset" type="text" disabled autocomplete="off">
+      </div>
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="condition-save-btn">ثبت شرط</button>
+    <button type="button" class="btn btn-ghost" id="condition-cancel-btn" data-dialog-close>انصراف</button>
+  </div>
+</dialog>
+
+<div class="rp-toast" id="rp-toast"></div>
+
+{{ column_groups|json_script:"column-groups" }}
+{{ columns_data|json_script:"columns-initial" }}
+{{ source_links_data|json_script:"links-initial" }}
+{{ column_keyability|json_script:"column-keyability" }}
+{{ formula_catalog|json_script:"formula-catalog" }}
+{{ number_format_presets|json_script:"number-format-presets" }}
+{{ condition_ops|json_script:"condition-ops" }}
+{{ parameters_catalog|json_script:"parameters-catalog" }}
+{% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
+
+<script src="{% static 'js/report_builder_display.js' %}?v=5"></script>
+<script>
+(function () {
+  var formEl = document.getElementById("report-builder-form");
+  var listUrl = (formEl && formEl.getAttribute("data-list-url")) || "{{ list_url|default:'' }}";
+  if (!listUrl) listUrl = "{% url 'report_list' %}";
+
+  function toast(msg) {
+    var el = document.getElementById("rp-toast");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.add("show");
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove("show"); }, 2200);
+  }
+
+  var closeBtn = document.getElementById("rp-close");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", function () {
+      if (window.opener) {
+        try { window.close(); } catch (e) {}
+        if (!window.closed) window.location.href = listUrl;
+      } else {
+        window.location.href = listUrl;
+      }
+    });
+  }
+  var minBtn = document.getElementById("rp-minimize");
+  if (minBtn) {
+    minBtn.addEventListener("click", function () {
+      try { window.blur(); } catch (e) {}
+      toast("از نوار وظیفه مرورگر می‌توانید بازگردید");
+    });
+  }
+  var maxBtn = document.getElementById("rp-maximize");
+  if (maxBtn) {
+    maxBtn.addEventListener("click", function () {
+      try {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+      } catch (e) {
+        try { window.moveTo(0, 0); window.resizeTo(screen.availWidth, screen.availHeight); } catch (err) {}
+      }
+    });
+  }
+
+  document.querySelectorAll("[data-dialog-close]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var dlg = btn.closest("dialog");
+      if (dlg && dlg.close) dlg.close();
+    });
+  });
+
+  var addCondBtn = document.getElementById("add-condition-btn");
+  var condDialog = document.getElementById("condition-dialog");
+  if (addCondBtn && condDialog) {
+    addCondBtn.addEventListener("click", function () {
+      if (typeof condDialog.showModal === "function") condDialog.showModal();
+      else condDialog.setAttribute("open", "");
+    });
+  }
+
+  document.querySelectorAll(".cond-tab").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      document.querySelectorAll(".cond-tab").forEach(function (t) {
+        t.classList.toggle("is-active", t === tab);
+        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      });
+      var list = document.getElementById("conditions-list");
+      if (list) list.setAttribute("data-active-scope", tab.getAttribute("data-cond-scope") || "public");
+    });
+  });
+
+  if (window.ERPReportBuilderDisplay) {
+    window.ERPReportBuilderDisplay.init({
+      mode: "{{ mode }}",
+      hasErrors: {% if form.errors %}true{% else %}false{% endif %}
+    });
+  }
+})();
+</script>
+</body>
+</html>

@@ -108,6 +108,15 @@
     return false;
   }
   window.ERPOpenFormDesigner = openDesigner;
+  window.ERPOpenReportApp = function (url) {
+    var w = screen.availWidth || 1200;
+    var h = screen.availHeight || 800;
+    var feat = "popup=yes,width=" + w + ",height=" + h + ",left=0,top=0,resizable=yes,scrollbars=yes";
+    var win = window.open(url, "erp-report-app", feat);
+    if (!win) window.location.href = url;
+    else try { win.focus(); } catch (e) {}
+    return false;
+  };
   document.querySelectorAll("[data-designer-open]").forEach(function (a) {
     a.addEventListener("click", function (e) {
       e.preventDefault();
