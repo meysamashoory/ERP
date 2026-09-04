@@ -15,8 +15,7 @@
       data-table-width-locks="{{ table_width_locks_json|default:'{}'|escape }}"
       data-list-url="{{ list_url|default:'' }}"
       data-report-level="{{ level|default:1 }}"
-      data-can-go-back="{% if can_go_back %}1{% else %}0{% endif }"
-      data-back-url="{% if can_go_back %}?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}{% endif %}">
+      data-can-go-back="{% if can_go_back %}1{% else %}0{% endif %}">
 <div class="rp-shell" id="report-viewer-shell">
   <div class="rp-titlebar">
     <span class="rp-title" id="rp-window-title">{{ report.heading_label }}</span>
@@ -30,7 +29,7 @@
   <div class="rp-toolbar no-print">
     {% if report.is_standard %}<span class="type-label type-standard">استاندارد</span>{% endif %}
     {% if can_go_back %}
-    <a class="btn btn-sm btn-ghost" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
+    <a class="btn btn-sm btn-ghost" id="rp-back-link" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
     {% endif %}
     <a class="btn btn-sm btn-ghost" href="{{ list_url|default:'' }}" id="rp-list-link">لیست گزارش‌ها</a>
     {% if can_edit_meta %}
@@ -166,9 +165,9 @@
   }
 
   function goBackOneLevel() {
-    var backUrl = document.body.getAttribute("data-back-url") || "";
-    if (backUrl) {
-      window.location.href = backUrl;
+    var backLink = document.getElementById("rp-back-link");
+    if (backLink && backLink.getAttribute("href")) {
+      window.location.href = backLink.getAttribute("href");
       return true;
     }
     return false;
