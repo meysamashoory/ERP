@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% load planning_extras %}
+{% block title %}برنامه‌ریزی توسط سیستم{% endblock %}
+{% block heading %}برنامه‌ریزی توسط سیستم{% endblock %}
+{% block nav_production %}{% endblock %}
+{% block nav_systemic %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  {% if profile.can_create_plans %}
+  <button type="button" class="btn btn-sm" data-plan-create-open data-plan-mode="systemic">ساخت برنامه سیستمی</button>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% include "planning/_plan_create_dialog.html" %}
+
+<div class="intel-lead">
+  <p class="panel-hint">
+    تراز سفارش و پیش‌بینی در برابر موجودی و برنامهٔ باز، کسری مواد، بار ساعتی دستگاه،
+    و انحراف برنامه از واقعی — برای همین کارخانه (قالب، واحد، برنامه هفتگی) محاسبه می‌شود.
+  </p>
+</div>
+
+<div class="intel-kpis" role="group" aria-label="وضعیت برنامه‌ریزی">
+  <div class="intel-kpi">
+    <span class="intel-kpi-value">{{ kpis.open_orders }}</span>
+    <span class="intel-kpi-label">کالای دارای سفارش</span>
+  </div>
+  <div class="intel-kpi {% if kpis.net_shortage_skus %}is-alert{% endif %}">
+    <span class="intel-kpi-value">{{ kpis.net_shortage_qty }}</span>
+    <span class="intel-kpi-label">کسری خالص ({{ kpis.net_shortage_skus }} قلم)</span>
+  </div>
+  <div class="intel-kpi {% if kpis.material_gaps %}is-alert{% endif %}">
+    <span class="intel-kpi-value">{{ kpis.material_gaps }}</span>
+    <span class="intel-kpi-label">کسری ماده / BOM</span>
+  </div>
+  <div class="intel-kpi {% if kpis.overloaded_machines %}is-alert{% endif %}">
+    <span class="intel-kpi-value">{{ kpis.overloaded_machines }}</span>
+    <span class="intel-kpi-label">دستگاه اضافه‌بار</span>
+  </div>
+  <div class="intel-kpi {% if kpis.serious_exceptions %}is-alert{% endif %}">
+    <span class="intel-kpi-value">{{ kpis.serious_exceptions }}</span>
+    <span class="intel-kpi-label">پیام جدی</span>
+  </div>
+</div>
+<p class="muted intel-hours">ساعت بارگذاری‌شده {{ kpis.hours_loaded }} از {{ kpis.hours_available }} ({{ hours_per_machine|floatformat:0 }} ساعت در هفته برای هر دستگاه تزریق).</p>
+
+<div class="tabs product-data-tabs">
+  {% for t in tabs %}
+  <a class="tab {% if active_tab == t.id %}active{% endif %}"
+     href="{% url 'systemic_intelligence' %}?tab={{ t.id }}">{{ t.label }}</a>
+  {% endfor %}
+</div>
+
+<div class="panel panel-compact panel-list">
+  {% if active_tab == "balance" %}
+  <p class="panel-hint">تقاضا = سفارش + پیش‌بینی. پوشش = موجودی محصول + مقدار روی برنامه‌های باز (غیرتمام‌شده).</p>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>کد</th>
+          <th>نام</th>
+          <th>سفارش</th>
+          <th>پیش‌بینی</th>
+          <th>موجودی</th>
+          <th>برنامه باز</th>
+          <th>کسری</th>
+          <th>مازاد</th>
+          <th>وضعیت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in balance %}
+        <tr class="intel-row-{{ r.severity }}">
+          <td dir="ltr">{{ r.product_code }}</td>
+          <td>{{ r.product_name }}{% if r.backlog %} <span class="muted">(معوق)</span>{% endif %}</td>
+          <td class="num">{{ r.order_qty }}</td>
+          <td class="num">{{ r.forecast_qty }}</td>
+          <td class="num">{{ r.stock }}</td>
+          <td class="num">{{ r.open_plan_qty }}</td>
+          <td class="num">{{ r.net_gap }}</td>
+          <td class="num">{{ r.surplus }}</td>
+          <td>{% if r.status == "shortage" %}کسری{% elif r.status == "backlog" %}معوق{% elif r.status == "reorder" %}سفارش مجدد{% elif r.status == "surplus" %}مازاد{% else %}پوشش{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="muted">سفارش یا پیش‌بینی فعالی نیست. از بارگذاری اکسل منتقل کنید.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "materials" %}
+  <p class="panel-hint">برای کسری خالص (یا برنامه باز)، انفجار BOM و مواد مصرفی در برابر موجودی اجزاء.</p>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>کد جزء / ماده</th>
+          <th>نام</th>
+          <th>نیاز</th>
+          <th>موجود</th>
+          <th>کسری</th>
+          <th>والدها</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in materials %}
+        <tr class="intel-row-serious">
+          <td dir="ltr">{{ r.component_code }}</td>
+          <td>{{ r.component_name }}</td>
+          <td class="num">{{ r.need }}</td>
+          <td class="num">{{ r.have }}</td>
+          <td class="num">{{ r.gap }}</td>
+          <td class="muted">{{ r.parents|join:"، " }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="muted">کسری مواد برای تقاضای فعلی دیده نشد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "capacity" %}
+  <p class="panel-hint">ساعت برآوردی ردیف‌های برنامه باز روی هر دستگاه تزریق، در برابر {{ hours_per_machine|floatformat:0 }} ساعت در هفته.</p>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>دستگاه</th>
+          <th>واحد</th>
+          <th>ساعت برنامه</th>
+          <th>ظرفیت هفته</th>
+          <th>بار٪</th>
+          <th>قالب/ردیف</th>
+          <th>وضعیت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in capacity %}
+        <tr class="{% if r.status == 'overload' %}intel-row-serious{% elif r.status == 'tight' %}intel-row-watch{% endif %}">
+          <td>{{ r.machine_label }}</td>
+          <td class="num">{{ r.unit_number|default:"—" }}</td>
+          <td class="num">{{ r.hours }}</td>
+          <td class="num">{{ r.available }}</td>
+          <td class="num">{{ r.load_pct }}</td>
+          <td class="num">{{ r.item_count }}</td>
+          <td>{% if r.status == "overload" %}اضافه‌بار{% elif r.status == "tight" %}نزدیک ظرفیت{% elif r.status == "idle" %}آزاد{% else %}متعادل{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="muted">دستگاه تزریق فعالی نیست.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "variance" %}
+  <p class="panel-hint">سوابق تولید: مقدار، سیکل و ضایعات در برابر برنامه. آستانه انحراف مقدار {{ 10 }}٪ و سیکل {{ 15 }}٪.</p>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>شناسه</th>
+          <th>شماره برنامه</th>
+          <th>جنس</th>
+          <th>مقدار برنامه</th>
+          <th>مقدار واقعی</th>
+          <th>اختلاف</th>
+          <th>سیکل برنامه</th>
+          <th>آخرین سیکل</th>
+          <th>ضایعات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in variance %}
+        <tr class="{% if r.status != 'ok' %}intel-row-watch{% endif %}">
+          <td dir="ltr">{{ r.uid }}</td>
+          <td>{{ r.plan_number|default:"—" }}</td>
+          <td>{{ r.product_name }}</td>
+          <td class="num">{{ r.planned_qty|default:"—" }}</td>
+          <td class="num">{{ r.produced_qty|default:"—" }}</td>
+          <td class="num">{{ r.qty_gap|default:"—" }}</td>
+          <td class="num">{{ r.planned_cycle|default:"—" }}</td>
+          <td class="num">{{ r.last_cycle|default:"—" }}</td>
+          <td class="num">{{ r.scrap_qty|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="muted">سابقه دارای مقدار برنامه یافت نشد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "exceptions" %}
+  <p class="panel-hint">پیام‌هایی که برنامه‌ریز باید قبل از تأیید برنامه هفتگی ببیند — نه کپی لیست MRP، بلکه استثناهای همین سامانه.</p>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>کد</th>
+          <th>شدت</th>
+          <th>عنوان</th>
+          <th>شرح</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in exceptions %}
+        <tr class="intel-row-{{ r.severity }}">
+          <td dir="ltr">{{ r.code }}</td>
+          <td>{% if r.severity == "serious" %}جدی{% else %}قابل‌پیگیری{% endif %}</td>
+          <td>{{ r.title }}</td>
+          <td>{{ r.detail }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="muted">پیام استثنایی نیست.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "planning/_plan_create_dialog_script.html" %}
+{% endblock %}

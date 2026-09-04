@@ -1,0 +1,236 @@
+/* Django admin embedded inside ERP chrome — keep shell identical to the app */
+
+/* Isolate admin theme vars so :root from admin/base.css does not restyle the shell */
+body.admin-embed {
+  --erp-bg: #eef2f7;
+  --erp-ink: #0f172a;
+  --erp-sidebar: #0f172a;
+  --erp-brand: #4f46e5;
+  --erp-muted: #64748b;
+  --erp-line: #e2e8f0;
+
+  background: var(--erp-bg) !important;
+  color: var(--erp-ink) !important;
+  font-family: "Vazirmatn", Tahoma, "Segoe UI", system-ui, sans-serif !important;
+  font-size: 15px !important;
+  line-height: 1.7 !important;
+}
+
+/* Re-assert ERP shell against admin a:link / body / var leaks */
+body.admin-embed .layout {
+  background: var(--erp-bg) !important;
+}
+body.admin-embed .sidebar {
+  background: var(--erp-sidebar) !important;
+  color: #cbd5e1 !important;
+}
+body.admin-embed .sidebar .brand-name {
+  color: #fff !important;
+  white-space: pre-line !important;
+  line-height: 1.35 !important;
+}
+body.admin-embed .sidebar .brand-mark {
+  color: #818cf8 !important;
+}
+body.admin-embed .sidebar .sidebar-user {
+  color: #94a3b8 !important;
+}
+body.admin-embed .sidebar .nav-section-title {
+  color: #64748b !important;
+}
+body.admin-embed .sidebar a:link,
+body.admin-embed .sidebar a:visited,
+body.admin-embed .sidebar a {
+  color: #cbd5e1 !important;
+  text-decoration: none !important;
+  background: transparent;
+}
+body.admin-embed .sidebar a:hover,
+body.admin-embed .sidebar a:focus {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+  text-decoration: none !important;
+}
+body.admin-embed .sidebar a.active:link,
+body.admin-embed .sidebar a.active:visited,
+body.admin-embed .sidebar a.active {
+  background: var(--erp-brand) !important;
+  color: #fff !important;
+}
+body.admin-embed .sidebar .nav-logout-btn {
+  color: #cbd5e1 !important;
+  background: transparent !important;
+}
+body.admin-embed .sidebar .nav-logout-btn:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+body.admin-embed .main {
+  background: var(--erp-bg) !important;
+}
+body.admin-embed .topbar {
+  background: #fff !important;
+  border-bottom: 1px solid var(--erp-line) !important;
+  color: var(--erp-ink) !important;
+}
+body.admin-embed .topbar a:link,
+body.admin-embed .topbar a:visited {
+  color: var(--erp-brand) !important;
+}
+
+body.admin-embed #header,
+body.admin-embed #nav-sidebar,
+body.admin-embed .toggle-nav-sidebar {
+  display: none !important;
+}
+body.admin-embed #container {
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+.admin-embed-content {
+  overflow: auto;
+  padding: 8px 12px 16px !important;
+  background: transparent !important;
+}
+.admin-embed-crumbs {
+  margin: 0 0 10px;
+}
+.admin-embed-crumbs .breadcrumbs {
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 13px;
+  color: var(--erp-muted) !important;
+}
+.admin-embed-crumbs .breadcrumbs a:link,
+.admin-embed-crumbs .breadcrumbs a:visited {
+  color: var(--erp-brand) !important;
+}
+
+/* Admin content panel only — theme vars scoped here */
+body.admin-embed #content {
+  --body-fg: #0f172a;
+  --body-bg: #ffffff;
+  --body-quiet-color: #64748b;
+  --primary: #1e3a5f;
+  --secondary: #334155;
+  --link-fg: #4338ca;
+  --header-bg: #1e3a5f;
+  --hairline-color: #e2e8f0;
+  --border-color: #dbe3ee;
+  --darkened-bg: #f8fafc;
+  --selected-bg: #eef2ff;
+  --selected-row: #eef2ff;
+  --button-bg: #1e3a5f;
+  --default-button-bg: #1e3a5f;
+  --font-family-primary: "Vazirmatn", Tahoma, "Segoe UI", system-ui, sans-serif;
+
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  background: #fff !important;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  color: #0f172a;
+}
+body.admin-embed #content h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+  color: #0f172a !important;
+}
+body.admin-embed .module caption,
+body.admin-embed .module h2 {
+  background: #1e3a5f !important;
+  color: #fff !important;
+}
+body.admin-embed .button,
+body.admin-embed input[type="submit"],
+body.admin-embed input[type="button"],
+body.admin-embed .submit-row input {
+  border-radius: 8px;
+}
+body.admin-embed .object-tools {
+  margin-top: 0;
+}
+body.admin-embed #content a:link,
+body.admin-embed #content a:visited {
+  color: #4338ca;
+}
+
+/* Resizable / editable headers on admin tables */
+body.admin-embed .admin-resizable-table,
+body.admin-embed .admin-table-fit-width {
+  table-layout: fixed;
+  width: max-content;
+  max-width: none;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+}
+body.admin-embed .admin-resizable-table th,
+body.admin-embed .admin-resizable-table td {
+  overflow: hidden;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-track {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+  line-height: inherit;
+  will-change: transform;
+}
+body.admin-embed .admin-resizable-table .cell-reveal-track.is-revealing {
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+}
+body.admin-embed .admin-th-resizable {
+  position: relative;
+  overflow: hidden;
+}
+body.admin-embed .admin-th-label {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: text;
+}
+body.admin-embed .admin-th-input {
+  width: calc(100% - 10px);
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-weight: 700;
+  color: #0f172a;
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #93c5fd;
+}
+body.admin-embed .admin-col-resizer {
+  position: absolute;
+  top: 0;
+  left: -2px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 6;
+}
+body.admin-embed .admin-col-resizer:hover,
+body.admin-embed .admin-col-resizer:active {
+  background: rgba(37, 99, 235, 0.45);
+}
+body.admin-resizing-col,
+body.admin-resizing-col * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.admin-embed #result_list {
+  overflow: auto;
+}
+body.admin-embed .admin-table-hint {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: #64748b;
+}

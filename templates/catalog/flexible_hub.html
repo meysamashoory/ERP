@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}دیتای محصولات{% endblock %}
+{% block heading %}دیتای محصولات{% endblock %}
+{% block nav_data %}{% endblock %}
+{% block nav_product_data %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">انتقال از اکسل</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div
+  id="flexible-hub-root"
+  data-tab="{{ active_tab }}"
+  data-hub="product_data"
+  data-can-edit-permission="0"
+  data-can-edit="0"
+>
+  {{ columns|json_script:"flexible-columns" }}
+  {{ rows|json_script:"flexible-rows" }}
+  <div class="tabs product-data-tabs">
+    {% for t in tabs %}
+    <a
+      class="tab {% if active_tab == t.id %}active{% endif %}"
+      href="?tab={{ t.id }}"
+    >{{ t.label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="panel panel-compact panel-list">
+    {% if not has_schema %}
+    <p class="panel-hint">
+      در این بخش هنوز دیتایی تعریف نشده است.
+      <a href="{% url 'excel_list' %}">بارگذاری از اکسل</a>
+    </p>
+    {% else %}
+    <p class="panel-hint">
+      مشاهده دادهٔ منتقل‌شده — برای جابه‌جایی از کلیدهای جهت‌دار صفحه‌کلید استفاده کنید.
+    </p>
+    <div class="table-scroll">
+      <table class="table table-compact product-data-table view-mode js-table-nav" id="flexible-data-table" data-table-section="product_data">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/flexible_hub.js' %}?v=3"></script>
+{% endblock %}

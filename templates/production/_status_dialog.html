@@ -3,7 +3,7 @@
   <h3>تعیین وضعیت — {{ program.item.product.name }}</h3>
   <span class="badge status-{{ program.status }}">{{ program.get_status_display }}</span>
 </div>
-<p class="muted">{{ program.machine_label }} · کد {{ program.item.product.code }} · شناسه {{ program.item.uid }}</p>
+<p class="muted">{{ program.machine_label }} · کد {{ program.item.product.code }} · شناسه {{ program.resolved_uid }}</p>
 
 {% if phase == 'start' %}
 <form method="post" action="{% url 'program_status' program.pk %}">

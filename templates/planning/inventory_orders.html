@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% load planning_extras %}
+{% block title %}بررسی موجودی و سفارشات{% endblock %}
+{% block heading %}بررسی موجودی و سفارشات{% endblock %}
+{% block nav_production %}{% endblock %}
+{% block nav_inventory_orders %}active{% endblock %}
+
+{% block topbar_actions %}
+<div class="topbar-actions topbar-actions-pair">
+  <a class="btn btn-sm btn-ghost" href="{% url 'excel_list' %}">بارگذاری / انتقال اکسل</a>
+  {% if profile.can_create_plans %}
+  <button type="button" class="btn btn-sm" data-plan-create-open data-plan-mode="systemic">برنامه سیستمی</button>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% include "planning/_plan_create_dialog.html" %}
+<p class="muted" style="margin-top:0">
+  داده‌های این بخش از طریق «بارگذاری» و انتقال به مقصد
+  <strong>بررسی موجودی و سفارشات</strong> به‌روز می‌شوند.
+  پیش‌بینی فروش در تراز تقاضا و برنامه سیستمی به‌عنوان تقاضای تکمیل ظرفیت استفاده می‌شود.
+</p>
+
+<div class="tabs product-data-tabs">
+  {% for t in tabs %}
+  <a class="tab {% if active_tab == t.id %}active{% endif %}"
+     href="{% url 'inventory_orders' %}?tab={{ t.id }}">{{ t.label }}{% if t.coming_soon %} <span class="muted">(به‌زودی)</span>{% endif %}</a>
+  {% endfor %}
+</div>
+
+<div class="panel panel-compact panel-list">
+  {% if active_tab == "orders" %}
+  <div class="table-scroll">
+    <table class="table table-compact" id="io-orders-table">
+      <thead>
+        <tr>
+          <th>شماره سفارش</th>
+          <th>کد کالا</th>
+          <th>نام</th>
+          <th>مقدار</th>
+          <th>اولویت</th>
+          <th>معوق</th>
+          <th>تاریخ تحویل</th>
+          <th>مشتری</th>
+          <th>موجودی</th>
+          <th>سقف دپو</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.order_ref }}</td>
+          <td dir="ltr">{{ r.product_code }}</td>
+          <td>{{ r.product_name }}</td>
+          <td>{{ r.quantity }}</td>
+          <td>{{ r.priority }}</td>
+          <td>{% if r.is_backlog %}بله{% else %}—{% endif %}</td>
+          <td>{% if r.delivery_date %}{{ r.delivery_date|jdate }}{% else %}—{% endif %}</td>
+          <td>{{ r.customer_name }}</td>
+          <td>{% if r.stock != None %}{{ r.stock }}{% else %}—{% endif %}</td>
+          <td>{% if r.depot_ceiling != None %}{{ r.depot_ceiling }}{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="10" class="muted">سفارشی نیست. از بارگذاری اکسل منتقل کنید.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "stock" %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>کد کالا</th>
+          <th>نام</th>
+          <th>موجودی محصول</th>
+          <th>مونتاژ‌نشده</th>
+          <th>سقف دپو</th>
+          <th>سطح سفارش مجدد</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td dir="ltr">{{ r.code }}</td>
+          <td>{{ r.name }}</td>
+          <td>{{ r.stock_finished }}</td>
+          <td>{{ r.stock_unassembled }}</td>
+          <td>{{ r.depot_ceiling }}</td>
+          <td>{{ r.reorder_level }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="muted">محصولی ثبت نشده است.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "bom" %}
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>کد والد</th>
+          <th>نام والد</th>
+          <th>کد جزء</th>
+          <th>نام جزء</th>
+          <th>مقدار</th>
+          <th>واحد</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td dir="ltr">{{ r.parent_code }}</td>
+          <td>{{ r.parent_name }}</td>
+          <td dir="ltr">{{ r.component_code|default:"—" }}</td>
+          <td>{{ r.component_name }}</td>
+          <td>{{ r.quantity }}</td>
+          <td>{{ r.unit }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="muted">BOM خالی است. از اکسل منتقل کنید.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif active_tab == "forecast" %}
+  <p class="panel-hint">این داده‌ها ذخیره می‌شوند ولی فعلاً در برنامه‌ریزی سیستمی استفاده نمی‌شوند.</p>
+  <div class="table-scroll">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>کد کالا</th>
+          <th>نام</th>
+          <th>دوره</th>
+          <th>مقدار پیش‌بینی</th>
+          <th>توضیحات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td dir="ltr">{{ r.product_code }}</td>
+          <td>{{ r.product_name }}</td>
+          <td>{{ r.period_label }}</td>
+          <td>{{ r.quantity }}</td>
+          <td>{{ r.notes }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="muted">پیش‌بینی‌ای ثبت نشده است.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "planning/_plan_create_dialog_script.html" %}
+{% endblock %}
