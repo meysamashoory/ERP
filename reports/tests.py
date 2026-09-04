@@ -1123,3 +1123,29 @@ class ReportCalcFormulaTests(TestCase):
         self.assertContains(resp, "کد ستون")
         self.assertContains(resp, "نوع نمایش")
         self.assertContains(resp, "report-conditions-panel")
+
+
+class ReportUiPolishTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+
+    def test_login_title_is_single_line_phrase(self):
+        resp = self.client.get(reverse("login"))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn("سامانه برنامه ریزی و کنترل تولید", body)
+        self.assertNotIn("سامانه برنامه ریزی<br>", body)
+        self.assertNotIn("سامانه برنامه ریزی<br/>", body)
+
+    def test_app_css_drops_zebra_and_keeps_sticky_headers(self):
+        from pathlib import Path
+
+        css = Path("/workspace/static/css/app.css").read_text(encoding="utf-8")
+        js = Path("/workspace/static/js/table_layout.js").read_text(encoding="utf-8")
+        self.assertNotIn("tbody tr:nth-child(even)", css)
+        self.assertIn(".table-scroll thead th", css)
+        self.assertIn("position: sticky", css)
+        self.assertIn(".content:has(.panel-list)", css)
+        self.assertIn("white-space: nowrap", css)
+        self.assertIn('th.style.position = "sticky"', js)
