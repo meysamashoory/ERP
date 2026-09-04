@@ -38,7 +38,9 @@
     <tbody>
       {% for row in rows %}
       <tr class="list-row" data-report-id="{{ row.report.pk }}"
-          data-href="{% url 'report_detail' row.report.pk %}"
+          data-view-url="{% url 'report_detail' row.report.pk %}"
+          data-edit-url="{% url 'report_edit' row.report.pk %}"
+          data-drill-index="{{ forloop.counter0 }}"
           data-title="{{ row.report.title }}"
           data-number="{{ row.report.number }}"
           data-description="{{ row.report.description }}"
@@ -96,10 +98,11 @@
 
 <template id="tpl-create">
   <div class="dialog-head"><h3>ایجاد گزارش</h3></div>
-  <form method="post" action="{% url 'report_create' %}" data-action-form>
+  <form method="post" action="{% url 'report_create' %}" data-action-form id="create-report-form">
     {% csrf_token %}
     <input type="hidden" name="columns_json" value="[]">
     <input type="hidden" name="source_links_json" value="[]">
+    <input type="hidden" name="report_conditions_json" value='{"public":[],"private":{}}'>
     <div class="field"><label>عنوان گزارش</label><input class="input" name="title" required maxlength="200"></div>
     <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری" maxlength="300"></div>
@@ -175,6 +178,12 @@
   var dialog = document.getElementById("report-action-dialog");
   var body = dialog.querySelector("[data-dialog-body]");
 
+  function openReportApp(url) {
+    if (window.ERPOpenReportApp) return window.ERPOpenReportApp(url);
+    window.location.href = url;
+    return false;
+  }
+
   function openFromTemplate(tplId, setup) {
     var tpl = document.getElementById(tplId);
     body.innerHTML = "";
@@ -183,6 +192,18 @@
     if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
     if (window.enhance) window.enhance(body);
     if (window.ERPNormalizeNumbers) window.ERPNormalizeNumbers.init(body);
+
+    var createForm = body.querySelector("#create-report-form");
+    if (createForm) {
+      createForm.addEventListener("submit", function () {
+        // Submit create into the standalone report popup window.
+        var w = screen.availWidth || 1200;
+        var h = screen.availHeight || 800;
+        var feat = "popup=yes,width=" + w + ",height=" + h + ",left=0,top=0,resizable=yes,scrollbars=yes";
+        window.open("about:blank", "erp-report-app", feat);
+        createForm.setAttribute("target", "erp-report-app");
+      });
+    }
   }
 
   var createBtn = document.getElementById("btn-create-report");
@@ -192,6 +213,16 @@
     });
   }
 
+  // Open report viewer in standalone window on row activate (2nd click / Enter)
+  document.getElementById("report-list-table") &&
+  document.getElementById("report-list-table").addEventListener("erp-row-activate", function (e) {
+    var tr = e.target.closest("tr.list-row");
+    if (!tr) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openReportApp(tr.getAttribute("data-view-url"));
+  });
+
   document.querySelectorAll("[data-ops]").forEach(function (sel) {
     var apply = sel.parentElement.querySelector("[data-ops-apply]");
     sel.addEventListener("change", function () { apply.hidden = !sel.value; });
@@ -199,7 +230,10 @@
       var row = sel.closest("tr");
       var op = sel.value;
       var id = row.getAttribute("data-report-id");
-      if (op === "edit") { window.location = "/reports/" + id + "/edit/"; return; }
+      if (op === "edit") {
+        openReportApp(row.getAttribute("data-edit-url") || ("/reports/" + id + "/edit/"));
+        return;
+      }
       var tplId = op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete";
       openFromTemplate(tplId, function (root) {
         var form = root.querySelector("[data-action-form]");

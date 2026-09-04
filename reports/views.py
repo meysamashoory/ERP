@@ -53,12 +53,98 @@ from .forms import (
     SendOrCopyReportForm,
 )
 from .models import PrintForm, ReportAccessMode, SavedReport
+from .conditions import (
+    build_field_choices_catalog,
+    build_parameters_catalog,
+    collect_runtime_parameters,
+    flatten_active_conditions,
+    normalize_conditions,
+    ops_for_frontend,
+    PARAM_KEYS,
+    row_matches_conditions,
+    seed_default_parameters,
+    validate_conditions_blob,
+)
 
 User = get_user_model()
 
 
 def _now_jdt():
     return jdatetime.datetime.now()
+
+
+def _parse_conditions_post(request: HttpRequest) -> dict:
+    try:
+        raw = json.loads(request.POST.get("report_conditions_json") or "{}")
+    except json.JSONDecodeError:
+        raw = {}
+    return normalize_conditions(raw)
+
+
+def _builder_context(request: HttpRequest, form, report=None, mode="edit") -> dict:
+    from reports.formula import FORMULA_FUNCTION_CATALOG, NUMBER_FORMAT_PRESETS
+    from django.urls import reverse
+
+    try:
+        seed_default_parameters()
+    except Exception:
+        pass
+
+    columns_data = persist_column_uids(report) if report else []
+    return {
+        "form": form,
+        "column_groups": get_column_groups(),
+        "column_keyability": column_keyability_map(),
+        "columns_data": columns_data,
+        "source_links_data": list((report.source_links if report else None) or []),
+        "formula_catalog": FORMULA_FUNCTION_CATALOG,
+        "number_format_presets": NUMBER_FORMAT_PRESETS,
+        "condition_ops": ops_for_frontend(),
+        "parameters_catalog": build_parameters_catalog(),
+        "field_choices": build_field_choices_catalog(),
+        "param_capable_keys": sorted(PARAM_KEYS),
+        "report_conditions_data": normalize_conditions(report.conditions if report else {}),
+        "mode": mode,
+        "page_title": report.heading_label if report else "گزارش جدید",
+        "report": report,
+        "list_url": reverse("report_list"),
+    }
+
+
+def _enrich_payload_row(payload: dict, columns: list) -> dict:
+    """Add semantic field keys alongside storage uids for condition matching."""
+    from .columns import data_key, storage_key
+
+    row = dict(payload or {})
+    for col in columns or []:
+        if not isinstance(col, dict):
+            continue
+        sk = storage_key(col)
+        dk = data_key(col)
+        src = str(col.get("source") or "")
+        if sk in row:
+            if dk:
+                row.setdefault(dk, row[sk])
+            if src and dk:
+                row.setdefault(f"{src}:{dk}", row[sk])
+    return row
+
+
+def _apply_report_conditions(report, headers, rows, payloads, param_values: dict | None):
+    columns = list(report.columns or [])
+    uids = [str(c.get("uid") or "") for c in columns if isinstance(c, dict) and c.get("uid")]
+    conds = flatten_active_conditions(report.conditions, uids)
+    if not conds:
+        return headers, rows, payloads
+    kept_rows = []
+    kept_payloads = []
+    for i, payload in enumerate(payloads or []):
+        enriched = _enrich_payload_row(payload, columns)
+        if row_matches_conditions(enriched, conds, param_values):
+            kept_payloads.append(payload)
+            if i < len(rows):
+                kept_rows.append(rows[i])
+    return headers, kept_rows, kept_payloads
 
 
 def _designer_extra(user) -> dict:
@@ -195,6 +281,7 @@ def report_create(request: HttpRequest) -> HttpResponse:
             report.source_links = json.loads(request.POST.get("source_links_json") or "[]")
         except json.JSONDecodeError:
             report.source_links = []
+        report.conditions = _parse_conditions_post(request)
         report.save()
         messages.success(request, "گزارش ایجاد شد. ستون‌ها را انتخاب کنید.")
         return redirect("report_edit", pk=report.pk)
@@ -221,29 +308,24 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
                 obj.source_links = json.loads(request.POST.get("source_links_json") or "[]")
             except json.JSONDecodeError:
                 obj.source_links = []
+            conditions = _parse_conditions_post(request)
+            errs = validate_conditions_blob(conditions)
+            if errs:
+                for err in errs:
+                    messages.error(request, err)
+                ctx = _builder_context(request, form, report=report, mode="edit")
+                ctx["report_conditions_data"] = conditions
+                return render(request, "reports/builder_standalone.html", ctx)
+            obj.conditions = conditions
             obj.save()
             messages.success(request, "گزارش به‌روزرسانی شد.")
             return redirect("report_detail", pk=report.pk)
     else:
         form = SavedReportForm(instance=report, user=request.user)
-    from reports.formula import FORMULA_FUNCTION_CATALOG, NUMBER_FORMAT_PRESETS
-
-    columns_data = persist_column_uids(report)
     return render(
         request,
-        "reports/form.html",
-        {
-            "form": form,
-            "column_groups": get_column_groups(),
-            "column_keyability": column_keyability_map(),
-            "columns_data": columns_data,
-            "source_links_data": list(report.source_links or []),
-            "formula_catalog": FORMULA_FUNCTION_CATALOG,
-            "number_format_presets": NUMBER_FORMAT_PRESETS,
-            "mode": "edit",
-            "page_title": report.heading_label,
-            "report": report,
-        },
+        "reports/builder_standalone.html",
+        _builder_context(request, form, report=report, mode="edit"),
     )
 
 
@@ -363,6 +445,33 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
 
     persist_column_uids(report)
 
+    runtime_params = collect_runtime_parameters(report.conditions)
+    for p in runtime_params:
+        p["value"] = ""
+    param_values: dict = {}
+    need_params = bool(runtime_params)
+    if request.method == "POST" and request.POST.get("action") == "apply_params":
+        for p in runtime_params:
+            code = p["code"]
+            param_values[code] = (request.POST.get(f"param_{code}") or "").strip()
+            p["value"] = param_values[code]
+        missing = [p["label"] for p in runtime_params if not param_values.get(p["code"])]
+        if missing:
+            messages.error(request, "پارامترهای زیر را تکمیل کنید: " + "، ".join(missing))
+        else:
+            need_params = False
+            request.session[f"report_params_{report.pk}"] = param_values
+    elif f"report_params_{report.pk}" in request.session:
+        param_values = dict(request.session.get(f"report_params_{report.pk}") or {})
+        for p in runtime_params:
+            p["value"] = param_values.get(p["code"], "")
+        if runtime_params and all(param_values.get(p["code"]) for p in runtime_params):
+            need_params = False
+        elif not runtime_params:
+            need_params = False
+    else:
+        need_params = bool(runtime_params)
+
     headers, rows, payloads, deeper = run_report(
         report.data_source,
         report.columns or [],
@@ -371,8 +480,13 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         entry_data=report.entry_data or {},
     )
 
+    if not need_params:
+        headers, rows, payloads = _apply_report_conditions(
+            report, headers, rows, payloads, param_values
+        )
+
     export = request.GET.get("export")
-    if export in {"excel", "pdf"}:
+    if export in {"excel", "pdf"} and not need_params:
         # Export current level view
         if export == "excel":
             return export_excel(f"report_{report.number}", headers, rows, report.title)
@@ -415,15 +529,17 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     sheet_count = entry_sheet_count(report.entry_data)
     row_sheets = [int(p.get("_sheet") or 1) for p in payloads] if payloads else [1]
 
+    from django.urls import reverse
+
     return render(
         request,
-        "reports/detail.html",
+        "reports/viewer_standalone.html",
         {
             "report": report,
             "headers": headers,
             "header_cells": header_cells,
-            "rows": rows,
-            "payloads": payloads,
+            "rows": rows if not need_params else [],
+            "payloads": payloads if not need_params else [],
             "deeper": deeper,
             "level": level,
             "filters": filters,
@@ -432,7 +548,7 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "parent_query": parent_query,
             "can_go_back": level > 1 or bool(filters),
             "is_editable_report": is_editable_report,
-            "can_edit_entry": can_edit_entry,
+            "can_edit_entry": can_edit_entry and not need_params,
             "can_edit_meta": can_edit_meta,
             "entry_meta": entry_meta,
             "entry_meta_json": entry_meta,
@@ -440,6 +556,10 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "display_meta_json": display_meta,
             "entry_sheet_count": sheet_count,
             "entry_row_sheets": row_sheets,
+            "list_url": reverse("report_list"),
+            "need_params": need_params,
+            "runtime_params": runtime_params,
+            "param_values": param_values,
         },
     )
 
@@ -483,6 +603,7 @@ def report_send(request: HttpRequest, pk: int) -> HttpResponse:
         access_mode=getattr(report, "access_mode", ReportAccessMode.READONLY) or ReportAccessMode.READONLY,
         columns=list(report.columns or []),
         source_links=list(report.source_links or []),
+        conditions=normalize_conditions(report.conditions),
         entry_data=dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {},
         is_standard=False,
         created_by=request.user,
@@ -518,6 +639,7 @@ def report_copy(request: HttpRequest, pk: int) -> HttpResponse:
         access_mode=getattr(report, "access_mode", ReportAccessMode.READONLY) or ReportAccessMode.READONLY,
         columns=list(report.columns or []),
         source_links=list(report.source_links or []),
+        conditions=normalize_conditions(report.conditions),
         entry_data=dict(report.entry_data or {}) if isinstance(report.entry_data, dict) else {},
         is_standard=False,
         created_by=request.user,

@@ -1153,3 +1153,117 @@ class ReportUiPolishTests(TestCase):
         self.assertIn("cell-reveal-inner", js)
         self.assertIn("overflow: hidden", css)
         self.assertNotIn("distance * 28", js)
+
+
+class ReportConditionsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+        cls.expert = User.objects.get(username="expert")
+
+    def test_condition_validation_and_or_parens(self):
+        from reports.conditions import validate_conditions_blob, row_matches_conditions
+
+        good = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren": "(",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "parameter",
+                    "param_code": "date_today",
+                    "value": "",
+                },
+                {
+                    "logic": "or",
+                    "paren": "",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "14051102",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren": ")",
+                    "source": "fitting",
+                    "field": "code",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "ABC",
+                    "param_code": "",
+                },
+            ],
+            "private": {},
+        }
+        self.assertEqual(validate_conditions_blob(good), [])
+        rows = good["public"]
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "14051102", "code": "Z"}, rows, {"date_today": "14050101"}
+            )
+        )
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "14050101", "code": "Z"}, rows, {"date_today": "14050101"}
+            )
+        )
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "x", "code": "ABC"}, rows, {"date_today": "y"}
+            )
+        )
+        self.assertFalse(
+            row_matches_conditions(
+                {"date": "x", "code": "Z"}, rows, {"date_today": "y"}
+            )
+        )
+
+    def test_builder_and_viewer_use_standalone_templates(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="Standalone",
+            number=777,
+            data_source="fitting",
+            columns=[{"key": "date", "source": "fitting", "level": 1, "label": "تاریخ", "uid": "c1"}],
+            conditions={
+                "public": [
+                    {
+                        "logic": "",
+                        "paren": "",
+                        "source": "fitting",
+                        "field": "date",
+                        "op": "=",
+                        "value_mode": "parameter",
+                        "param_code": "date_today",
+                        "value": "",
+                    }
+                ],
+                "private": {},
+            },
+        )
+        edit = self.client.get(reverse("report_edit", args=[report.pk]))
+        self.assertEqual(edit.status_code, 200)
+        self.assertContains(edit, "rp-shell")
+        self.assertContains(edit, "cond-tab-public")
+        self.assertContains(edit, "condition-dialog")
+        self.assertContains(edit, "delete-col")
+        self.assertContains(edit, "خصوصی")
+
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "report-param-dialog")
+        self.assertContains(detail, "date_today")
+        self.assertTrue(detail.context["need_params"])
+
+        applied = self.client.post(
+            reverse("report_detail", args=[report.pk]),
+            {"action": "apply_params", "param_date_today": "14051102"},
+        )
+        self.assertEqual(applied.status_code, 200)
+        self.assertFalse(applied.context["need_params"])

@@ -407,6 +407,10 @@
         'table.table[data-table-section="reports"], [data-table-section="reports"] table.table'
       )
       .forEach(enhanceTable);
+    // Marquee reveal for all scrollable data tables (height stays locked via CSS).
+    document
+      .querySelectorAll(".table-scroll table.table, .table-scroll-wide table.table")
+      .forEach(bindReveal);
   }
 
   function boot() {

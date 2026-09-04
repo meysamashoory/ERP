@@ -490,7 +490,7 @@ textarea.input, textarea {
   text-align: center;
   font-size: 11px;
 }
-.key-cell, .fx-cell, .private-cell { text-align: center; }
+.key-cell, .fx-cell, .private-cell, .priv-cell { text-align: center; }
 .btn-fx {
   border: 1px solid #86efac;
   background: #ecfdf5;
@@ -504,23 +504,44 @@ textarea.input, textarea {
 }
 .btn-fx:hover { background: #bbf7d0; }
 .sel-format { min-width: 90px; }
-.badge-private {
+.badge-private,
+.rb-private-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 4px;
+  padding: 0 5px;
   border-radius: 4px;
-  background: #fce7f3;
+  background: #fdf2f8;
   color: #9d174d;
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   border: 1px solid #f9a8d4;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 .badge-private[hidden],
 .private-cell .badge-private:empty { display: none; }
+.btn-move:disabled,
+#delete-col:disabled,
+#copy-col:disabled,
+#move-up:disabled,
+#move-down:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.conditions-table { width: 100%; margin: 0; table-layout: fixed; }
+.conditions-table th,
+.conditions-table td {
+  padding: 4px 6px !important;
+  font-size: 12px;
+}
+.condition-dialog .form-error {
+  color: var(--rp-danger);
+  margin: 0 16px 8px;
+  font-size: 13px;
+}
 
 /* ——— Conditions panel ——— */
 .rp-conditions {

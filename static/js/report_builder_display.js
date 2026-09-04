@@ -73,7 +73,35 @@
 
     var selected = readJson("columns-initial", []);
     var sourceLinks = readJson("links-initial", []);
-    var conditions = [];
+    var conditionOps = readJson("condition-ops", [
+      { value: "=", label: "مساوی" },
+      { value: "<>", label: "مخالف" },
+      { value: ">", label: "بزرگ‌تر" },
+      { value: ">=", label: "بزرگ‌تر یا مساوی" },
+      { value: "<", label: "کوچک‌تر" },
+      { value: "<=", label: "کوچک‌تر یا مساوی" },
+      { value: "contains", label: "شامل" }
+    ]);
+    var parametersCatalog = readJson("parameters-catalog", {});
+    var fieldChoicesCatalog = readJson("field-choices", {});
+    var paramCapableKeys = readJson("param-capable-keys", []);
+    var paramKeySet = {};
+    (paramCapableKeys || []).forEach(function (k) { paramKeySet[k] = true; });
+
+    function normalizeConditionsBlob(raw) {
+      var out = { public: [], private: {} };
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+      if (Array.isArray(raw.public)) out.public = raw.public.slice();
+      if (raw.private && typeof raw.private === "object") {
+        Object.keys(raw.private).forEach(function (k) {
+          if (Array.isArray(raw.private[k])) out.private[k] = raw.private[k].slice();
+        });
+      }
+      return out;
+    }
+    var conditionsBlob = normalizeConditionsBlob(readJson("conditions-initial", {}));
+    var condScope = "public";
+    var condEditIdx = -1;
 
     function canBeKey(source, key) {
       if (source === "_calc") return false;
@@ -213,7 +241,24 @@
     }
 
     function syncHeading() {
-      if (headingText) headingText.textContent = formatHeading() || "—";
+      var text = formatHeading() || "—";
+      if (headingText) headingText.textContent = text;
+      var winTitle = document.getElementById("rp-window-title");
+      if (winTitle) winTitle.textContent = text;
+      try { document.title = text; } catch (e) {}
+    }
+
+    function syncConditionsHidden() {
+      if (!conditionsHidden) return;
+      var cleaned = {};
+      Object.keys(conditionsBlob.private || {}).forEach(function (k) {
+        var arr = conditionsBlob.private[k] || [];
+        if (arr.length) cleaned[k] = arr;
+      });
+      conditionsHidden.value = JSON.stringify({
+        public: conditionsBlob.public || [],
+        private: cleaned
+      });
     }
 
     function syncHidden() {
@@ -235,7 +280,28 @@
         };
       }));
       if (linksHidden) linksHidden.value = JSON.stringify(sourceLinks);
-      if (conditionsHidden) conditionsHidden.value = JSON.stringify(conditions);
+      syncConditionsHidden();
+    }
+
+    function privateCountFor(uid) {
+      var arr = (conditionsBlob.private || {})[uid];
+      return arr && arr.length ? arr.length : 0;
+    }
+
+    function currentCondList() {
+      if (condScope === "public") return conditionsBlob.public || [];
+      if (activeIdx < 0 || !selected[activeIdx]) return null;
+      var uid = selected[activeIdx].uid;
+      if (!conditionsBlob.private[uid]) conditionsBlob.private[uid] = [];
+      return conditionsBlob.private[uid];
+    }
+
+    function setCurrentCondList(arr) {
+      if (condScope === "public") conditionsBlob.public = arr;
+      else if (activeIdx >= 0 && selected[activeIdx]) {
+        conditionsBlob.private[selected[activeIdx].uid] = arr;
+      }
+      syncConditionsHidden();
     }
 
     function groupLabel(sid) {
@@ -420,9 +486,33 @@
     var moveUp = document.getElementById("move-up");
     var moveDown = document.getElementById("move-down");
     var copyCol = document.getElementById("copy-col");
+    var deleteColBtn = document.getElementById("delete-col");
     var addCalcBtn = document.getElementById("add-calc-col");
+
+    function updateMoveControls() {
+      var has = activeIdx >= 0 && !!selected[activeIdx];
+      [moveUp, moveDown, copyCol, deleteColBtn].forEach(function (b) {
+        if (b) b.disabled = !has;
+      });
+    }
+
     if (moveUp) moveUp.addEventListener("click", function () { moveActive(-1); });
     if (moveDown) moveDown.addEventListener("click", function () { moveActive(1); });
+    if (deleteColBtn) {
+      deleteColBtn.addEventListener("click", function () {
+        if (activeIdx < 0 || !selected[activeIdx]) return;
+        var removed = selected[activeIdx];
+        selected.splice(activeIdx, 1);
+        if (removed && conditionsBlob.private[removed.uid]) {
+          delete conditionsBlob.private[removed.uid];
+        }
+        if (activeIdx >= selected.length) activeIdx = selected.length - 1;
+        renderTrees();
+        renderSelected();
+        renderConditions();
+        syncHidden();
+      });
+    }
     if (copyCol) {
       copyCol.addEventListener("click", function () {
         if (activeIdx < 0 || !selected[activeIdx]) {
@@ -522,7 +612,9 @@
       list.innerHTML = "";
       if (!selected.length) {
         list.innerHTML = '<tr><td colspan="8" class="muted empty">ستونی انتخاب نشده است.</td></tr>';
+        activeIdx = -1;
         updatePath();
+        updateMoveControls();
         return;
       }
       selected.forEach(function (c, idx) {
@@ -536,6 +628,10 @@
         var fxCell = c.kind === "calc"
           ? '<button type="button" class="btn-fx" data-fx="' + idx + '" title="ویرایش فرمول">ƒx</button>'
           : '<span class="muted">—</span>';
+        var privN = privateCountFor(c.uid);
+        var privCell = privN
+          ? '<span class="rb-private-badge" title="دارای شرط خصوصی">P</span>'
+          : '<span class="muted">—</span>';
         tr.innerHTML =
           '<td><input class="input sel-rename" data-label="' + idx + '" value="' +
             String(c.label || "").replace(/"/g, "&quot;") + '"></td>' +
@@ -548,10 +644,11 @@
             '" value="' + String(c.number_format || "General").replace(/"/g, "&quot;") + '">' +
             '<datalist id="fmt-presets-' + idx + '">' + formatOptionsHtml(c.number_format) + "</datalist></td>" +
           '<td class="fx-cell">' + fxCell + "</td>" +
-          '<td><button type="button" class="btn btn-xs btn-danger" data-rm="' + idx + '">×</button></td>';
+          '<td class="priv-cell">' + privCell + "</td>";
         list.appendChild(tr);
       });
       updatePath();
+      updateMoveControls();
     }
 
     if (list) {
@@ -561,22 +658,12 @@
           openFormulaDialog(parseInt(fx.getAttribute("data-fx"), 10));
           return;
         }
-        var rm = e.target.closest("[data-rm]");
-        if (rm) {
-          var i = parseInt(rm.getAttribute("data-rm"), 10);
-          selected.splice(i, 1);
-          if (activeIdx === i) activeIdx = -1;
-          else if (activeIdx > i) activeIdx -= 1;
-          renderTrees();
-          renderSelected();
-          syncHidden();
-          return;
-        }
         if (e.target.closest("select") || e.target.closest("input") || e.target.closest("button")) return;
         var row = e.target.closest(".display-col-row");
         if (!row) return;
         activeIdx = parseInt(row.dataset.idx, 10);
         renderSelected();
+        if (condScope === "private") renderConditions();
       });
       list.addEventListener("dblclick", function (e) {
         var fx = e.target.closest("[data-fx], .fx-cell");
@@ -812,76 +899,411 @@
       });
     });
 
+    function opLabel(v) {
+      var hit = conditionOps.find(function (o) { return o.value === v; });
+      return hit ? hit.label : v;
+    }
+
+    function fieldSupportsParam(fieldKey) {
+      return !!paramKeySet[fieldKey];
+    }
+
+    function fillCondSources(sel, selectedSource) {
+      if (!sel) return;
+      var html = '<option value="">— منبع —</option>';
+      groups.forEach(function (g) {
+        if (!sourceAllowedForAccess(g.id)) return;
+        html += '<option value="' + g.id + '"' + (g.id === selectedSource ? " selected" : "") + ">" +
+          g.label + "</option>";
+      });
+      sel.innerHTML = html;
+    }
+
+    function fillCondFields(sel, sourceId, selectedField) {
+      if (!sel) return;
+      var g = groups.find(function (x) { return x.id === sourceId; });
+      var html = '<option value="">— فیلد —</option>';
+      if (g && g.columns) {
+        g.columns.forEach(function (pair) {
+          var k = pair[0];
+          var lab = pair[1];
+          html += '<option value="' + k + '"' + (k === selectedField ? " selected" : "") + ">" +
+            lab + "</option>";
+        });
+      }
+      sel.innerHTML = html;
+    }
+
+    function fillCondOps(sel, selectedOp) {
+      if (!sel) return;
+      sel.innerHTML = conditionOps.map(function (o) {
+        return '<option value="' + o.value + '"' + (o.value === selectedOp ? " selected" : "") + ">" +
+          o.label + "</option>";
+      }).join("");
+    }
+
+    function refreshCondValueModeOptions() {
+      var modeSel = document.getElementById("cond-value-mode");
+      var fieldSel = document.getElementById("cond-field");
+      if (!modeSel) return;
+      var fieldKey = fieldSel ? fieldSel.value : "";
+      var allow = fieldSupportsParam(fieldKey);
+      var cur = modeSel.value || "value";
+      modeSel.innerHTML = '<option value="value">value</option>' +
+        (allow ? '<option value="parameter">parameter</option>' : "");
+      modeSel.value = allow && cur === "parameter" ? "parameter" : "value";
+      refreshCondValueWidgets();
+    }
+
+    function refreshCondValueWidgets() {
+      var modeSel = document.getElementById("cond-value-mode");
+      var fieldSel = document.getElementById("cond-field");
+      var valueEl = document.getElementById("cond-value");
+      var paramEl = document.getElementById("cond-param");
+      var offsetEl = document.getElementById("cond-value-offset");
+      var mode = modeSel ? modeSel.value : "value";
+      var fieldKey = fieldSel ? fieldSel.value : "";
+      var choices = fieldChoicesCatalog[fieldKey] || null;
+      var params = parametersCatalog[fieldKey] || [];
+      var allowParam = fieldSupportsParam(fieldKey);
+
+      if (paramEl) {
+        if (mode === "parameter") {
+          paramEl.hidden = false;
+          paramEl.innerHTML = '<option value="">— پارامتر —</option>' +
+            params.map(function (p) {
+              return '<option value="' + p.code + '">' + p.label + "</option>";
+            }).join("");
+        } else {
+          paramEl.hidden = true;
+        }
+      }
+
+      if (valueEl) {
+        if (mode === "parameter") {
+          valueEl.hidden = true;
+        } else {
+          valueEl.hidden = false;
+          // Rebuild as select or keep input
+          var wrap = document.getElementById("cond-value-wrap");
+          var useSelect = false;
+          var options = [];
+          if (choices && choices.length) {
+            useSelect = true;
+            options = choices;
+          } else if (allowParam && params.length) {
+            // value mode + param-capable: show params as selectable presets
+            useSelect = true;
+            options = params.map(function (p) {
+              return { value: "__param__:" + p.code, label: p.label + " (پارامتر)" };
+            });
+          }
+          if (useSelect) {
+            if (valueEl.tagName !== "SELECT") {
+              var sel = document.createElement("select");
+              sel.className = "input";
+              sel.id = "cond-value";
+              sel.name = "cond_value";
+              valueEl.parentNode.replaceChild(sel, valueEl);
+              valueEl = sel;
+            }
+            valueEl.innerHTML = '<option value="">— مقدار —</option>' +
+              options.map(function (c) {
+                return '<option value="' + String(c.value).replace(/"/g, "&quot;") + '">' +
+                  c.label + "</option>";
+              }).join("");
+          } else {
+            if (valueEl.tagName !== "INPUT") {
+              var inp = document.createElement("input");
+              inp.className = "input";
+              inp.id = "cond-value";
+              inp.name = "cond_value";
+              inp.type = "text";
+              inp.autocomplete = "off";
+              valueEl.parentNode.replaceChild(inp, valueEl);
+              valueEl = inp;
+            }
+          }
+          if (wrap) {
+            var lab = wrap.querySelector("label");
+            if (lab) lab.setAttribute("for", "cond-value");
+          }
+        }
+      }
+
+      if (offsetEl) {
+        var valNow = document.getElementById("cond-value");
+        var picked = valNow ? String(valNow.value || "") : "";
+        var enableOffset = mode === "value" && allowParam && picked.indexOf("__param__:") === 0;
+        offsetEl.disabled = !enableOffset;
+        if (!enableOffset) offsetEl.value = "";
+      }
+    }
+
+    function validateCondDraft(draft, list, editIdx) {
+      if (!draft.source) return "منبع را انتخاب کنید.";
+      if (!draft.field) return "فیلد را انتخاب کنید.";
+      if (!draft.op) return "عملگر را انتخاب کنید.";
+      if (editIdx <= 0 && (editIdx === 0 || (editIdx < 0 && !list.length))) {
+        if (draft.logic) return "شرط اول نباید AND/OR داشته باشد.";
+      } else if (editIdx !== 0) {
+        var isFirst = editIdx < 0 ? !list.length : editIdx === 0;
+        if (!isFirst && !draft.logic) return "برای شرط‌های بعدی AND یا OR را مشخص کنید.";
+      }
+      if (draft.value_mode === "parameter") {
+        if (!fieldSupportsParam(draft.field)) return "این فیلد از پارامتر پشتیبانی نمی‌کند.";
+        if (!draft.param_code) return "پارامتر را انتخاب کنید.";
+      } else {
+        if (draft.param_code) {
+          if (!String(draft.value_offset || "").trim()) {
+            return "برای قفل مقدار با پارامتر، عدد/مقدار افست را وارد کنید.";
+          }
+        } else if (!String(draft.value || "").trim() && draft.op !== "empty" && draft.op !== "not_empty") {
+          return "مقدار شرط را وارد کنید.";
+        }
+      }
+      var open = 0;
+      list.forEach(function (c, i) {
+        if (i === editIdx) return;
+        if (c.paren === "(") open += 1;
+        if (c.paren === ")") open -= 1;
+      });
+      if (draft.paren === "(") open += 1;
+      if (draft.paren === ")") open -= 1;
+      if (open < 0) return "پرانتز بسته بدون پرانتز باز مجاز نیست.";
+      return "";
+    }
+
+    function openConditionDialog(editIdx) {
+      var dialog = document.getElementById("condition-dialog");
+      if (!dialog) return;
+      if (condScope === "private" && (activeIdx < 0 || !selected[activeIdx])) {
+        alert("برای شرط خصوصی ابتدا یک ستون را در نحوه نمایش انتخاب کنید.");
+        return;
+      }
+      condEditIdx = typeof editIdx === "number" ? editIdx : -1;
+      var errEl = document.getElementById("cond-dlg-error");
+      if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+      var titleEl = dialog.querySelector(".dialog-head h3");
+      if (titleEl) titleEl.textContent = condEditIdx >= 0 ? "ویرایش شرط" : "شرط گزارش";
+
+      var base = {
+        logic: "", paren: "", source: "", field: "", op: "=",
+        value_mode: "value", value: "", param_code: "", value_offset: ""
+      };
+      var list = currentCondList() || [];
+      if (condEditIdx >= 0 && list[condEditIdx]) {
+        base = Object.assign(base, list[condEditIdx]);
+      }
+
+      fillCondSources(document.getElementById("cond-source"), base.source);
+      fillCondFields(document.getElementById("cond-field"), base.source, base.field);
+      fillCondOps(document.getElementById("cond-operator"), base.op || "=");
+      var logicEl = document.getElementById("cond-logic");
+      var parenEl = document.getElementById("cond-paren");
+      if (logicEl) logicEl.value = base.logic || "";
+      if (parenEl) parenEl.value = base.paren || "";
+      refreshCondValueModeOptions();
+      var modeEl = document.getElementById("cond-value-mode");
+      if (modeEl) {
+        modeEl.value = base.value_mode === "parameter" ? "parameter" : "value";
+      }
+      refreshCondValueWidgets();
+      if (base.value_mode === "parameter") {
+        var pEl = document.getElementById("cond-param");
+        if (pEl) pEl.value = base.param_code || "";
+      } else {
+        var vEl = document.getElementById("cond-value");
+        if (vEl) {
+          if (base.param_code) vEl.value = "__param__:" + base.param_code;
+          else vEl.value = base.value || "";
+        }
+        refreshCondValueWidgets();
+        var off = document.getElementById("cond-value-offset");
+        if (off) off.value = base.value_offset || "";
+      }
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    }
+
+    function saveConditionDialog() {
+      var list = currentCondList();
+      if (!list) {
+        alert("برای شرط خصوصی ابتدا یک ستون را انتخاب کنید.");
+        return;
+      }
+      var modeEl = document.getElementById("cond-value-mode");
+      var mode = modeEl ? modeEl.value : "value";
+      var draft = {
+        logic: (document.getElementById("cond-logic") || {}).value || "",
+        paren: (document.getElementById("cond-paren") || {}).value || "",
+        source: (document.getElementById("cond-source") || {}).value || "",
+        field: (document.getElementById("cond-field") || {}).value || "",
+        op: (document.getElementById("cond-operator") || {}).value || "=",
+        value_mode: mode,
+        value: "",
+        param_code: "",
+        value_offset: ""
+      };
+      if (mode === "parameter") {
+        draft.param_code = (document.getElementById("cond-param") || {}).value || "";
+      } else {
+        var raw = (document.getElementById("cond-value") || {}).value || "";
+        if (String(raw).indexOf("__param__:") === 0) {
+          draft.param_code = String(raw).slice("__param__:".length);
+          draft.value_offset = (document.getElementById("cond-value-offset") || {}).value || "";
+          draft.value = draft.value_offset;
+        } else {
+          draft.value = String(raw).trim();
+        }
+      }
+      var err = validateCondDraft(draft, list.slice(), condEditIdx);
+      var errEl = document.getElementById("cond-dlg-error");
+      if (err) {
+        if (errEl) { errEl.hidden = false; errEl.textContent = err; }
+        else alert(err);
+        return;
+      }
+      if (condEditIdx >= 0) list[condEditIdx] = draft;
+      else list.push(draft);
+      setCurrentCondList(list);
+      var dialog = document.getElementById("condition-dialog");
+      if (dialog) {
+        if (typeof dialog.close === "function") dialog.close();
+        else dialog.removeAttribute("open");
+      }
+      renderConditions();
+      renderSelected();
+    }
+
     function renderConditions() {
       var box = document.getElementById("conditions-list");
       var empty = document.getElementById("conditions-empty");
+      var table = document.getElementById("conditions-table");
+      var tbody = document.getElementById("conditions-tbody");
       if (!box) return;
-      box.querySelectorAll(".condition-row").forEach(function (n) { n.remove(); });
-      if (!conditions.length) {
-        if (empty) empty.hidden = false;
+
+      if (tbody) tbody.innerHTML = "";
+      else box.querySelectorAll(".condition-row").forEach(function (n) { n.remove(); });
+
+      if (condScope === "private" && (activeIdx < 0 || !selected[activeIdx])) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = "برای شرط خصوصی ابتدا یک ستون را انتخاب کنید.";
+        }
+        if (table) table.hidden = true;
+        return;
+      }
+
+      var list = currentCondList() || [];
+      if (!list.length) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = condScope === "private"
+            ? "شرط خصوصی برای این ستون ثبت نشده است."
+            : "هنوز شرطی تعریف نشده است.";
+        }
+        if (table) table.hidden = true;
+        syncConditionsHidden();
         return;
       }
       if (empty) empty.hidden = true;
-      conditions.forEach(function (cond, idx) {
-        var row = document.createElement("div");
-        row.className = "condition-row";
-        row.innerHTML =
-          '<select class="input cond-field" data-ci="' + idx + '">' +
-          selected.map(function (c) {
-            return '<option value="' + (c.col_code || c.uid) + '"' +
-              ((cond.field === (c.col_code || c.uid)) ? " selected" : "") + ">" +
-              String(c.col_code || "").toUpperCase() + " — " + (c.label || c.key) + "</option>";
-          }).join("") +
-          "</select>" +
-          '<select class="input cond-op" data-ci="' + idx + '">' +
-          ["=", "<>", ">", ">=", "<", "<=", "شامل"].map(function (op) {
-            return '<option value="' + op + '"' + (cond.op === op ? " selected" : "") + ">" + op + "</option>";
-          }).join("") +
-          "</select>" +
-          '<input class="input cond-val" data-ci="' + idx + '" value="' +
-            String(cond.value || "").replace(/"/g, "&quot;") + '" placeholder="مقدار">' +
-          '<button type="button" class="btn btn-xs btn-ghost" data-cond-rm="' + idx + '">حذف</button>';
-        box.appendChild(row);
+      if (table) table.hidden = false;
+
+      list.forEach(function (cond, idx) {
+        var valShow = cond.value_mode === "parameter"
+          ? ("پارامتر: " + (cond.param_code || "—"))
+          : (cond.param_code
+            ? ((cond.param_code || "") + " → " + (cond.value_offset || cond.value || ""))
+            : (cond.value || ""));
+        var html =
+          "<td>" + (cond.logic ? String(cond.logic).toUpperCase() : "—") + "</td>" +
+          "<td dir=\"ltr\">" + (cond.paren || "—") + "</td>" +
+          "<td>" + groupLabel(cond.source) + "</td>" +
+          "<td>" + labelOf(cond.source, cond.field) + "</td>" +
+          "<td>" + opLabel(cond.op) + "</td>" +
+          "<td>" + String(valShow) + "</td>" +
+          '<td class="cond-row-actions">' +
+            '<button type="button" class="btn btn-xs btn-ghost" data-cond-edit="' + idx + '">ویرایش</button> ' +
+            '<button type="button" class="btn btn-xs btn-ghost" data-cond-rm="' + idx + '">حذف</button>' +
+          "</td>";
+        if (tbody) {
+          var tr = document.createElement("tr");
+          tr.className = "condition-row";
+          tr.innerHTML = html;
+          tbody.appendChild(tr);
+        } else {
+          var row = document.createElement("div");
+          row.className = "condition-row";
+          row.innerHTML = html;
+          box.appendChild(row);
+        }
       });
+      syncConditionsHidden();
     }
+
+    document.querySelectorAll(".cond-tab").forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        document.querySelectorAll(".cond-tab").forEach(function (t) {
+          t.classList.toggle("is-active", t === tab);
+          t.setAttribute("aria-selected", t === tab ? "true" : "false");
+        });
+        condScope = tab.getAttribute("data-cond-scope") || "public";
+        var listEl = document.getElementById("conditions-list");
+        if (listEl) listEl.setAttribute("data-active-scope", condScope);
+        renderConditions();
+      });
+    });
 
     var addCondBtn = document.getElementById("add-condition-btn");
     if (addCondBtn) {
       addCondBtn.addEventListener("click", function () {
-        var first = selected[0];
-        conditions.push({
-          field: first ? (first.col_code || first.uid) : "",
-          op: "=",
-          value: ""
-        });
-        renderConditions();
-        syncHidden();
+        openConditionDialog(-1);
       });
     }
+    var condSaveBtn = document.getElementById("condition-save-btn");
+    if (condSaveBtn) condSaveBtn.addEventListener("click", saveConditionDialog);
+    var condCancelBtn = document.getElementById("condition-cancel-btn");
+    if (condCancelBtn) {
+      condCancelBtn.addEventListener("click", function () {
+        var dialog = document.getElementById("condition-dialog");
+        if (dialog) {
+          if (typeof dialog.close === "function") dialog.close();
+          else dialog.removeAttribute("open");
+        }
+      });
+    }
+    var condSource = document.getElementById("cond-source");
+    if (condSource) {
+      condSource.addEventListener("change", function () {
+        fillCondFields(document.getElementById("cond-field"), condSource.value, "");
+        refreshCondValueModeOptions();
+      });
+    }
+    var condField = document.getElementById("cond-field");
+    if (condField) condField.addEventListener("change", refreshCondValueModeOptions);
+    var condMode = document.getElementById("cond-value-mode");
+    if (condMode) condMode.addEventListener("change", refreshCondValueWidgets);
+    document.addEventListener("change", function (e) {
+      if (e.target && e.target.id === "cond-value") refreshCondValueWidgets();
+    });
+
     var condBox = document.getElementById("conditions-list");
     if (condBox) {
       condBox.addEventListener("click", function (e) {
+        var edit = e.target.closest("[data-cond-edit]");
+        if (edit) {
+          openConditionDialog(parseInt(edit.getAttribute("data-cond-edit"), 10));
+          return;
+        }
         var rm = e.target.closest("[data-cond-rm]");
         if (!rm) return;
-        conditions.splice(parseInt(rm.getAttribute("data-cond-rm"), 10), 1);
+        var list = currentCondList();
+        if (!list) return;
+        list.splice(parseInt(rm.getAttribute("data-cond-rm"), 10), 1);
+        setCurrentCondList(list);
         renderConditions();
-        syncHidden();
-      });
-      condBox.addEventListener("change", function (e) {
-        var t = e.target;
-        var ci = parseInt(t.getAttribute("data-ci"), 10);
-        if (isNaN(ci) || !conditions[ci]) return;
-        if (t.classList.contains("cond-field")) conditions[ci].field = t.value;
-        if (t.classList.contains("cond-op")) conditions[ci].op = t.value;
-        syncHidden();
-      });
-      condBox.addEventListener("input", function (e) {
-        var t = e.target;
-        if (!t.classList.contains("cond-val")) return;
-        var ci = parseInt(t.getAttribute("data-ci"), 10);
-        if (isNaN(ci) || !conditions[ci]) return;
-        conditions[ci].value = t.value;
-        syncHidden();
+        renderSelected();
       });
     }
 

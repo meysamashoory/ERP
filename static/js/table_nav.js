@@ -77,6 +77,7 @@
     if (window.ERPTableLayout && typeof window.ERPTableLayout.onCellSelected === "function") {
       window.ERPTableLayout.onCellSelected(cell);
     }
+  }
 
   function bindTable(table) {
     if (!table || table.dataset.tableNavBound === "1") return;

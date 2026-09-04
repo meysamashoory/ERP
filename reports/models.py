@@ -50,6 +50,9 @@ class SavedReport(models.Model):
     columns = models.JSONField("ستون‌ها", default=list)
     # Join keys across sources: [{"keys": {"fitting": "code", "file": "file_col_1"}}]
     source_links = models.JSONField("ربط منابع", default=list, blank=True)
+    # Report filter conditions:
+    # {"public":[...], "private":{"<column_uid>":[...]}}
+    conditions = models.JSONField("شرط‌ها", default=dict, blank=True)
     # Manual values for «ثبت داده» columns:
     # {"cells": {"sig": {"data_titles": "...", ...}}, "values": {...}}
     entry_data = models.JSONField("داده ثبت‌شده", default=dict, blank=True)
@@ -204,3 +207,38 @@ class PrintForm(models.Model):
     @property
     def purpose_label(self) -> str:
         return dict(self.PURPOSE_CHOICES).get(self.purpose, "")
+
+
+class ReportParameterDef(models.Model):
+    """Named parameters usable in report conditions (system-data definitions)."""
+
+    KIND_DATE = "date"
+    KIND_CODE = "code"
+    KIND_NUMBER = "number"
+    KIND_CHOICES = [
+        (KIND_DATE, "تاریخ"),
+        (KIND_CODE, "کد"),
+        (KIND_NUMBER, "عدد"),
+    ]
+
+    code = models.SlugField("کد پارامتر", max_length=60, unique=True)
+    label = models.CharField("عنوان", max_length=120)
+    kind = models.CharField("نوع", max_length=20, choices=KIND_CHOICES, default=KIND_DATE)
+    # Optional fixed sample/default shown in builder dropdowns
+    sample_value = models.CharField("نمونه مقدار", max_length=120, blank=True, default="")
+    applies_to_keys = models.JSONField(
+        "کلیدهای ستون مرتبط",
+        default=list,
+        blank=True,
+        help_text='مثال: ["date", "document_date", "code"]',
+    )
+    is_active = models.BooleanField("فعال", default=True)
+    order = models.PositiveSmallIntegerField("ترتیب", default=0)
+
+    class Meta:
+        ordering = ["order", "code"]
+        verbose_name = "پارامتر گزارش"
+        verbose_name_plural = "پارامترهای گزارش"
+
+    def __str__(self) -> str:
+        return f"{self.label} ({self.code})"

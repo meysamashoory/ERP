@@ -140,11 +140,24 @@
               <button type="button" class="cond-tab is-active" id="cond-tab-public" role="tab" aria-selected="true" data-cond-scope="public">عمومی</button>
               <button type="button" class="cond-tab" id="cond-tab-private" role="tab" aria-selected="false" data-cond-scope="private">خصوصی</button>
             </div>
-            <span class="muted conditions-hint">اسکلت اولیه — اتصال کامل به منطق رادیورز در مرحله بعد تکمیل می‌شود.</span>
             <button type="button" class="btn btn-sm btn-ghost" id="add-condition-btn">+ افزودن شرط</button>
           </div>
           <div id="conditions-list" class="conditions-list" data-active-scope="public">
             <p class="muted" id="conditions-empty">هنوز شرطی تعریف نشده است.</p>
+            <table class="table table-compact conditions-table" id="conditions-table" hidden>
+              <thead>
+                <tr>
+                  <th style="width:56px">منطق</th>
+                  <th style="width:44px">()</th>
+                  <th>منبع</th>
+                  <th>فیلد</th>
+                  <th style="width:100px">عملگر</th>
+                  <th>مقدار</th>
+                  <th style="width:120px"></th>
+                </tr>
+              </thead>
+              <tbody id="conditions-tbody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -192,10 +205,11 @@
 
 <dialog id="condition-dialog" class="dialog condition-dialog">
   <div class="dialog-head"><h3>شرط گزارش</h3></div>
+  <p class="form-error" id="cond-dlg-error" hidden></p>
   <div class="condition-dialog-body">
     <div class="condition-dialog-col condition-dialog-col-right">
       <div class="field">
-        <label for="cond-logic">منطق</label>
+        <label for="cond-logic">منطق (AND / OR)</label>
         <select class="input" id="cond-logic" name="cond_logic">
           <option value="">—</option>
           <option value="and">AND</option>
@@ -211,24 +225,24 @@
         </select>
       </div>
       <div class="field">
-        <label for="cond-source">منبع</label>
+        <label for="cond-source">منبع اصلی</label>
         <select class="input" id="cond-source" name="cond_source"></select>
       </div>
       <div class="field">
-        <label for="cond-operator">عملگر</label>
+        <label for="cond-operator">عبارت مقایسه</label>
         <select class="input" id="cond-operator" name="cond_operator"></select>
       </div>
     </div>
     <div class="condition-dialog-col condition-dialog-col-left">
       <div class="field">
-        <label for="cond-field">فیلد</label>
+        <label for="cond-field">زیرشاخه منبع</label>
         <select class="input" id="cond-field" name="cond_field"></select>
       </div>
       <div class="field">
-        <label for="cond-value-mode">حالت مقدار</label>
+        <label for="cond-value-mode">value / parameter</label>
         <select class="input" id="cond-value-mode" name="cond_value_mode">
-          <option value="value">مقدار</option>
-          <option value="parameter">پارامتر</option>
+          <option value="value">value</option>
+          <option value="parameter">parameter</option>
         </select>
       </div>
       <div class="field" id="cond-value-wrap">
@@ -237,8 +251,8 @@
         <select class="input" id="cond-param" name="cond_param" hidden></select>
       </div>
       <div class="field">
-        <label for="cond-value-offset">افست مقدار</label>
-        <input class="input" id="cond-value-offset" name="cond_value_offset" type="text" disabled autocomplete="off">
+        <label for="cond-value-offset">مقدار ثابت / افست</label>
+        <input class="input" id="cond-value-offset" name="cond_value_offset" type="text" disabled autocomplete="off" placeholder="مثلاً 14051102">
       </div>
     </div>
   </div>
@@ -258,9 +272,11 @@
 {{ number_format_presets|json_script:"number-format-presets" }}
 {{ condition_ops|json_script:"condition-ops" }}
 {{ parameters_catalog|json_script:"parameters-catalog" }}
+{{ field_choices|json_script:"field-choices" }}
+{{ param_capable_keys|json_script:"param-capable-keys" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=5"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=6"></script>
 <script>
 (function () {
   var formEl = document.getElementById("report-builder-form");
@@ -310,26 +326,6 @@
     btn.addEventListener("click", function () {
       var dlg = btn.closest("dialog");
       if (dlg && dlg.close) dlg.close();
-    });
-  });
-
-  var addCondBtn = document.getElementById("add-condition-btn");
-  var condDialog = document.getElementById("condition-dialog");
-  if (addCondBtn && condDialog) {
-    addCondBtn.addEventListener("click", function () {
-      if (typeof condDialog.showModal === "function") condDialog.showModal();
-      else condDialog.setAttribute("open", "");
-    });
-  }
-
-  document.querySelectorAll(".cond-tab").forEach(function (tab) {
-    tab.addEventListener("click", function () {
-      document.querySelectorAll(".cond-tab").forEach(function (t) {
-        t.classList.toggle("is-active", t === tab);
-        t.setAttribute("aria-selected", t === tab ? "true" : "false");
-      });
-      var list = document.getElementById("conditions-list");
-      if (list) list.setAttribute("data-active-scope", tab.getAttribute("data-cond-scope") || "public");
     });
   });
 

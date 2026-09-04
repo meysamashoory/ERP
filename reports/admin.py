@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import PrintForm, SavedReport
+from .models import PrintForm, ReportParameterDef, SavedReport
 
 
 @admin.register(SavedReport)
@@ -9,6 +9,13 @@ class SavedReportAdmin(admin.ModelAdmin):
     list_filter = ("is_standard", "data_source")
     search_fields = ("number", "title", "owner__username")
     filter_horizontal = ("viewers",)
+
+
+@admin.register(ReportParameterDef)
+class ReportParameterDefAdmin(admin.ModelAdmin):
+    list_display = ("code", "label", "kind", "order", "is_active")
+    list_filter = ("kind", "is_active")
+    search_fields = ("code", "label")
 
 
 @admin.register(PrintForm)

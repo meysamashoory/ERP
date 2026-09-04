@@ -30,6 +30,9 @@
     <a class="btn btn-sm btn-ghost" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
     {% endif %}
     <a class="btn btn-sm btn-ghost" href="{{ list_url|default:'' }}" id="rp-list-link">لیست گزارش‌ها</a>
+    {% if can_edit_meta %}
+    <a class="btn btn-sm btn-ghost" href="{% url 'report_edit' report.pk %}" id="rp-edit-link">ویرایش</a>
+    {% endif %}
     {% if can_edit_entry %}
     <button type="button" class="btn btn-sm" id="report-edit-toggle">اصلاح گزارش</button>
     {% endif %}
@@ -106,13 +109,28 @@
   </div>
 </div>
 
-<dialog id="report-param-dialog" class="dialog">
+<dialog id="report-param-dialog" class="dialog" {% if need_params %}open{% endif %}>
   <div class="dialog-head"><h3>پارامترهای گزارش</h3></div>
-  <div class="param-fields" id="report-param-fields"></div>
-  <div class="form-actions">
-    <button type="button" class="btn" id="report-param-ok">ادامه</button>
-    <button type="button" class="btn btn-ghost" id="report-param-cancel" data-dialog-close>انصراف</button>
-  </div>
+  <form method="post" id="report-param-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="apply_params">
+    <div class="param-fields" id="report-param-fields">
+      {% for p in runtime_params %}
+      <div class="field">
+        <label for="param_{{ p.code }}">{{ p.label }}</label>
+        <input class="input" id="param_{{ p.code }}" name="param_{{ p.code }}" type="text"
+               value="{{ p.value|default:'' }}"
+               placeholder="{{ p.sample_value|default:'مثلاً 14051102' }}" autocomplete="off" required>
+      </div>
+      {% empty %}
+      <p class="muted">پارامتری تعریف نشده است.</p>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn" id="report-param-ok">ادامه</button>
+      <button type="button" class="btn btn-ghost" id="report-param-cancel" data-dialog-close>انصراف</button>
+    </div>
+  </form>
 </dialog>
 
 <div class="rp-toast" id="rp-toast"></div>
@@ -122,11 +140,11 @@
 {{ entry_meta_json|json_script:"entry-meta" }}
 {{ entry_row_sheets|json_script:"entry-row-sheets" }}
 {{ display_meta_json|json_script:"report-display-meta" }}
-{% if runtime_parameters %}{{ runtime_parameters|json_script:"runtime-parameters" }}{% else %}<script id="runtime-parameters" type="application/json">[]</script>{% endif %}
+{% if runtime_params %}{{ runtime_params|json_script:"runtime-parameters" }}{% else %}<script id="runtime-parameters" type="application/json">[]</script>{% endif %}
 
 <script src="{% static 'js/number_normalize.js' %}?v=1"></script>
-<script src="{% static 'js/table_nav.js' %}?v=5"></script>
-<script src="{% static 'js/table_layout.js' %}?v=7"></script>
+<script src="{% static 'js/table_nav.js' %}?v=6"></script>
+<script src="{% static 'js/table_layout.js' %}?v=8"></script>
 <script>
 (function () {
   var listUrl = document.body.getAttribute("data-list-url") || "";
@@ -186,36 +204,10 @@
   var printBtn = document.querySelector("[data-print-report]");
   if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
 
-  /* Parameter prompt (filled when runtime parameters exist) */
-  var runtimeParams = [];
-  try {
-    runtimeParams = JSON.parse(document.getElementById("runtime-parameters").textContent || "[]") || [];
-  } catch (e) { runtimeParams = []; }
+  var needParams = {% if need_params %}true{% else %}false{% endif %};
   var paramDialog = document.getElementById("report-param-dialog");
-  var paramFields = document.getElementById("report-param-fields");
-  if (runtimeParams.length && paramDialog && paramFields) {
-    paramFields.innerHTML = "";
-    runtimeParams.forEach(function (p) {
-      var wrap = document.createElement("div");
-      wrap.className = "field";
-      var lab = document.createElement("label");
-      lab.textContent = p.label || p.code || "پارامتر";
-      var inp = document.createElement("input");
-      inp.className = "input";
-      inp.name = "param_" + (p.code || "");
-      inp.dataset.paramCode = p.code || "";
-      inp.value = p.sample_value || p.value || "";
-      wrap.appendChild(lab);
-      wrap.appendChild(inp);
-      paramFields.appendChild(wrap);
-    });
-    if (typeof paramDialog.showModal === "function") paramDialog.showModal();
-  }
-  var paramOk = document.getElementById("report-param-ok");
-  if (paramOk && paramDialog) {
-    paramOk.addEventListener("click", function () {
-      paramDialog.close();
-    });
+  if (needParams && paramDialog && typeof paramDialog.showModal === "function") {
+    try { if (!paramDialog.open) paramDialog.showModal(); } catch (e) {}
   }
 
   var table = document.getElementById("report-data-table");
