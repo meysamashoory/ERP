@@ -156,7 +156,7 @@
         </div>
       </label>
       <div class="formula-col-picker">
-        <span class="muted" style="font-size:12px">درج کد ستون:</span>
+        <span class="muted" style="font-size:12px">درج کد ستون (کلیک یا تایپ ویرگول برای پیشنهاد):</span>
         <div id="formula-col-chips" class="formula-col-chips"></div>
       </div>
       <p class="muted" id="formula-hint" style="font-size:12px">ارجاع ستون‌ها با کد مثل A1، B1 — جداکننده آرگومان‌ها ویرگول یا نقطه‌ویرگول.</p>
@@ -176,7 +176,7 @@
 {{ column_keyability|json_script:"column-keyability" }}
 {{ formula_catalog|json_script:"formula-catalog" }}
 {{ number_format_presets|json_script:"number-format-presets" }}
-<script src="{% static 'js/report_builder_display.js' %}?v=3"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=4"></script>
 <script>
 (function () {
   if (window.ERPReportBuilderDisplay) {

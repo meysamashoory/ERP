@@ -42,10 +42,19 @@
     return n - 1;
   }
 
+  var PERSIAN_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+  function toPersianDigits(n) {
+    return String(n).replace(/\d/g, function (d) { return PERSIAN_DIGITS[parseInt(d, 10)]; });
+  }
+
   var LEVEL_OPTIONS = (function () {
     var opts = [];
-    for (var i = 1; i <= 9; i++) opts.push({ value: String(i), label: "سطح " + i });
-    for (var u = 2; u <= 8; u++) opts.push({ value: "upto_" + u, label: "تا سطح " + u });
+    for (var i = 1; i <= 9; i++) {
+      opts.push({ value: String(i), label: "سطح " + toPersianDigits(i) });
+    }
+    for (var u = 2; u <= 8; u++) {
+      opts.push({ value: "upto_" + u, label: "تا سطح " + toPersianDigits(u) });
+    }
     opts.push({ value: "all", label: "همه سطوح" });
     return opts;
   })();
@@ -650,18 +659,29 @@
       var chips = document.getElementById("formula-col-chips");
       if (!chips) return;
       chips.innerHTML = "";
+      var count = 0;
       selected.forEach(function (c, idx) {
         if (idx === formulaEditIdx) return;
+        var code = String(c.col_code || "").toUpperCase();
+        if (!code) return;
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "formula-chip";
-        btn.textContent = String(c.col_code || "").toUpperCase() + " · " + (c.label || c.key);
+        btn.textContent = code + " · " + (c.label || c.key);
         btn.title = groupLabel(c.source);
         btn.addEventListener("click", function () {
-          insertFormulaSnippet(String(c.col_code || "").toUpperCase());
+          insertFormulaSnippet(code);
         });
         chips.appendChild(btn);
+        count += 1;
       });
+      if (!count) {
+        var hint = document.createElement("span");
+        hint.className = "muted";
+        hint.style.fontSize = "12px";
+        hint.textContent = "ابتدا ستون‌های منبع را اضافه کنید تا کد آن‌ها اینجا قابل انتخاب باشد.";
+        chips.appendChild(hint);
+      }
     }
 
     function insertFormulaSnippet(text) {

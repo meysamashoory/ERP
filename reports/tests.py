@@ -1075,6 +1075,35 @@ class ReportCalcFormulaTests(TestCase):
         self.assertEqual(hit[1], 300)
         self.assertEqual(str(hit[2]), "600")
 
+    def test_upto_level_aggregates_numeric(self):
+        from reports.columns import normalize_columns, run_report
+
+        cols = normalize_columns([
+            {
+                "key": "code", "source": "product", "level_mode": "1",
+                "label": "کد", "is_key": True, "uid": "k1",
+            },
+            {
+                "key": "stock_finished", "source": "product", "level_mode": "upto_2",
+                "label": "موجودی", "uid": "k2",
+            },
+            {
+                "key": "product", "source": "product", "level_mode": "2",
+                "label": "نام", "uid": "k3",
+            },
+        ])
+        headers1, rows1, _, deeper1 = run_report("product", cols, level=1)
+        self.assertTrue(deeper1)
+        self.assertIn("موجودی", headers1)
+        self.assertNotIn("نام", headers1)
+        hit = next((r for r in rows1 if r[0] == "F-1100"), None)
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 300)
+
+        headers2, rows2, _, deeper2 = run_report("product", cols, level=2)
+        self.assertFalse(deeper2)
+        self.assertIn("نام", headers2)
+
     def test_builder_page_has_calc_controls(self):
         from django.contrib.auth import get_user_model
         from django.urls import reverse
