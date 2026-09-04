@@ -635,12 +635,78 @@ def clamp_column_width(raw) -> int:
     return max(40, min(800, width))
 
 
+# Level modes: exact 1-9, upto_2..upto_8, all. Legacy int level maps to exact.
+LEVEL_MODE_CHOICES: list[tuple[str, str]] = (
+    [("1", "سطح ۱")]
+    + [(str(i), f"سطح {i}") for i in range(2, 10)]
+    + [(f"upto_{i}", f"تا سطح {i}") for i in range(2, 9)]
+    + [("all", "همه سطوح")]
+)
+
+
+def normalize_level_mode(raw, legacy_level=1) -> str:
+    text = str(raw or "").strip().lower()
+    if text in {c[0] for c in LEVEL_MODE_CHOICES}:
+        return text
+    try:
+        lv = int(legacy_level if raw in (None, "") else raw)
+    except (TypeError, ValueError):
+        lv = 1
+    lv = max(1, min(9, lv))
+    return str(lv)
+
+
+def level_mode_max(mode: str) -> int:
+    mode = normalize_level_mode(mode)
+    if mode == "all":
+        return 9
+    if mode.startswith("upto_"):
+        try:
+            return max(1, min(9, int(mode.split("_", 1)[1])))
+        except (TypeError, ValueError):
+            return 1
+    try:
+        return max(1, min(9, int(mode)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def column_visible_at_level(spec: dict, level: int) -> bool:
+    mode = normalize_level_mode(spec.get("level_mode"), spec.get("level") or 1)
+    level = max(1, min(9, int(level or 1)))
+    if mode == "all":
+        return True
+    if mode.startswith("upto_"):
+        return level <= level_mode_max(mode)
+    return level_mode_max(mode) == level
+
+
+def column_is_aggregatable(spec: dict) -> bool:
+    """Numeric / calc columns roll up with SUM at parent levels."""
+    if str(spec.get("kind") or "field") == "calc":
+        return True
+    source = str(spec.get("source") or "")
+    key = str(spec.get("key") or "")
+    if source == "_calc":
+        return True
+    return not column_can_be_key(source, key)
+
+
 def validate_report_level_keys(columns) -> list[str]:
     """Return Persian error messages when multi-level reports lack keys."""
     specs = normalize_columns(columns)
     if not specs:
         return []
-    levels = sorted({int(s.get("level") or 1) for s in specs})
+    # Distinct exact levels that appear (upto/all count as spanning).
+    levels: set[int] = set()
+    for s in specs:
+        mode = normalize_level_mode(s.get("level_mode"), s.get("level") or 1)
+        if mode == "all":
+            levels.update(range(1, 10))
+        elif mode.startswith("upto_"):
+            levels.update(range(1, level_mode_max(mode) + 1))
+        else:
+            levels.add(level_mode_max(mode))
     errors: list[str] = []
     # Single-level reports do not require keys.
     if len(levels) <= 1:
@@ -650,9 +716,12 @@ def validate_report_level_keys(columns) -> list[str]:
             ):
                 label = spec.get("label") or spec.get("key")
                 errors.append(f"ستون «{label}» مقدار عددی است و نمی‌تواند کلید باشد.")
+            if spec.get("kind") == "calc" and spec.get("is_key"):
+                label = spec.get("label") or spec.get("key")
+                errors.append(f"ستون محاسباتی «{label}» نمی‌تواند کلید باشد.")
         return errors
-    for level in levels:
-        level_cols = [s for s in specs if int(s.get("level") or 1) == level]
+    for level in sorted(levels):
+        level_cols = [s for s in specs if column_visible_at_level(s, level)]
         key_cols = [s for s in level_cols if s.get("is_key")]
         if not key_cols:
             errors.append(
@@ -660,10 +729,12 @@ def validate_report_level_keys(columns) -> list[str]:
             )
             continue
         for spec in key_cols:
-            if not column_can_be_key(spec.get("source") or "", spec.get("key") or ""):
+            if spec.get("kind") == "calc" or not column_can_be_key(
+                spec.get("source") or "", spec.get("key") or ""
+            ):
                 label = spec.get("label") or spec.get("key")
                 errors.append(
-                    f"سطح {level}: ستون «{label}» مقدار عددی است و نمی‌تواند کلید باشد."
+                    f"سطح {level}: ستون «{label}» مقدار عددی/محاسباتی است و نمی‌تواند کلید باشد."
                 )
     return errors
 
@@ -676,6 +747,8 @@ def normalize_columns(raw) -> list[dict]:
     Missing uids are assigned deterministically from position+key so values
     survive reloads before the report is re-saved.
     """
+    from reports.formula import assign_missing_col_codes
+
     out = []
     if not raw:
         return out
@@ -691,26 +764,38 @@ def normalize_columns(raw) -> list[dict]:
                 "key": key,
                 "source": "",
                 "level": 1,
+                "level_mode": "1",
                 "label": key,
                 "uid": uid,
                 "width": 0,
                 "is_key": False,
+                "kind": "field",
+                "col_code": "",
+                "number_format": "General",
+                "formula": "",
             })
             continue
         if not isinstance(item, dict):
             continue
+        kind = str(item.get("kind") or "field").strip().lower()
+        if kind not in {"field", "calc"}:
+            kind = "field"
         key = str(item.get("key") or "").strip()
-        if not key:
-            continue
-        try:
-            level = int(item.get("level") or 1)
-        except (TypeError, ValueError):
-            level = 1
-        level = max(1, min(10, level))
-        source = str(item.get("source") or "").strip()
+        if kind == "calc":
+            key = key or "calc"
+            source = "_calc"
+        else:
+            if not key:
+                continue
+            source = str(item.get("source") or "").strip()
+        level_mode = normalize_level_mode(item.get("level_mode"), item.get("level") or 1)
+        level = level_mode_max(level_mode)
         label = str(item.get("label") or key)[:120]
         if not label:
-            label = column_label_map(source).get(key, key) if source else key
+            if kind == "calc":
+                label = "محاسبات"
+            else:
+                label = column_label_map(source).get(key, key) if source else key
         uid = str(item.get("uid") or "").strip()
         if not uid:
             uid = f"col{index}_{key}"
@@ -719,33 +804,43 @@ def normalize_columns(raw) -> list[dict]:
         seen_uids.add(uid)
         width = clamp_column_width(item.get("width"))
         is_key = bool(item.get("is_key"))
-        if is_key and not column_can_be_key(source, key):
+        if kind == "calc" or (is_key and not column_can_be_key(source, key)):
             is_key = False
+        number_format = str(item.get("number_format") or "General").strip()[:40] or "General"
+        formula = str(item.get("formula") or "").strip()[:500]
+        if kind == "calc" and formula and not formula.startswith("="):
+            formula = "=" + formula
+        col_code = str(item.get("col_code") or "").strip().lower()[:8]
         out.append({
             "key": key,
             "source": source,
             "level": level,
+            "level_mode": level_mode,
             "label": label,
             "uid": uid,
             "width": width,
             "is_key": is_key,
+            "kind": kind,
+            "col_code": col_code,
+            "number_format": number_format,
+            "formula": formula if kind == "calc" else "",
         })
-    return out
+    return assign_missing_col_codes(out)
 
 
 def level_display_meta(columns, level: int = 1) -> list[dict]:
     """Width / key metadata for columns shown at a report level."""
     specs = normalize_columns(columns)
-    level = max(1, min(10, int(level or 1)))
-    level_specs = [s for s in specs if int(s.get("level") or 1) == level]
+    level = max(1, min(9, int(level or 1)))
+    level_specs = [s for s in specs if column_visible_at_level(s, level)]
     if not level_specs:
-        available = sorted({int(s.get("level") or 1) for s in specs})
+        available = sorted({level_mode_max(s.get("level_mode") or "1") for s in specs})
         pick = None
         for lv in available:
             if lv <= level:
                 pick = lv
         if pick is not None:
-            level_specs = [s for s in specs if int(s.get("level") or 1) == pick]
+            level_specs = [s for s in specs if column_visible_at_level(s, pick)]
     return [
         {
             "key": storage_key(s),
@@ -753,6 +848,10 @@ def level_display_meta(columns, level: int = 1) -> list[dict]:
             "label": s.get("label") or s.get("key") or "",
             "width": int(s.get("width") or 0),
             "is_key": bool(s.get("is_key")),
+            "col_code": s.get("col_code") or "",
+            "number_format": s.get("number_format") or "General",
+            "kind": s.get("kind") or "field",
+            "formula": s.get("formula") or "",
         }
         for s in level_specs
     ]
@@ -844,6 +943,16 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
     resolved = []
     for spec in column_specs:
+        if str(spec.get("kind") or "field") == "calc" or spec.get("source") == "_calc":
+            resolved.append({
+                **spec,
+                "kind": "calc",
+                "source": "_calc",
+                "label": spec.get("label") or "محاسبات",
+                "getter": None,
+                "is_key": False,
+            })
+            continue
         key = spec["key"]
         src = spec.get("source") or ""
         if key not in by_key and src and src != data_source:
@@ -868,6 +977,57 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
                 "getter": _dict_get(key),
             })
     return resolved
+
+
+def _apply_formulas(rows: list[dict], specs: list[dict]) -> None:
+    """Evaluate calc columns in-place using col_code references."""
+    from reports.formula import evaluate_formula, normalize_col_code
+
+    calc_specs = [s for s in specs if str(s.get("kind") or "") == "calc"]
+    if not calc_specs:
+        return
+    code_to_key = {
+        normalize_col_code(s.get("col_code") or ""): storage_key(s)
+        for s in specs
+        if s.get("col_code")
+    }
+    for row in rows:
+        values_by_code = {
+            normalize_col_code(s.get("col_code") or ""): row.get(storage_key(s), "")
+            for s in specs
+            if s.get("col_code") and str(s.get("kind") or "field") != "calc"
+        }
+        for spec in calc_specs:
+            sk = storage_key(spec)
+            result = evaluate_formula(
+                spec.get("formula") or "",
+                values_by_code,
+                row_list=rows,
+                code_to_key=code_to_key,
+            )
+            row[sk] = result
+            code = normalize_col_code(spec.get("col_code") or "")
+            if code:
+                values_by_code[code] = result
+
+
+def _aggregate_group(rows: list[dict], level_cols: list[dict]) -> dict:
+    """First-wins for identity/text; SUM for aggregatable numeric/calc columns."""
+    from reports.formula import to_number
+
+    if not rows:
+        return {}
+    base = dict(rows[0])
+    for spec in level_cols:
+        sk = storage_key(spec)
+        if not column_is_aggregatable(spec):
+            continue
+        total = 0.0
+        for r in rows:
+            total += to_number(r.get(sk, 0))
+        # Keep int when whole
+        base[sk] = int(total) if float(total).is_integer() else total
+    return base
 
 
 def _lookup_entry_values(entry_data: dict | None, signature: str) -> dict:
@@ -1050,37 +1210,47 @@ def run_report(
 ) -> tuple[list[str], list[list], list[dict], bool]:
     """Return headers, display rows, row filter payloads, and whether drill-down exists.
 
-    Display columns are those with ``level == current level``.
-    If deeper levels exist, rows are unique combinations of the current level.
+    Display columns are those visible at ``level`` (exact / upto / all).
+    When deeper levels exist, rows are unique by key columns and numeric/calc
+    columns are summed (Excel-like roll-up for «تا سطح N»).
     """
+    from collections import OrderedDict
+
+    from reports.formula import format_excel_number
+
     specs = normalize_columns(columns)
-    # Fill missing labels from catalog
     for spec in specs:
         if not spec.get("label") or spec["label"] == spec["key"]:
             src = spec.get("source") or data_source
-            spec["label"] = column_label_map(src).get(spec["key"], spec["key"])
+            if spec.get("kind") == "calc":
+                spec["label"] = spec.get("label") or "محاسبات"
+            else:
+                spec["label"] = column_label_map(src).get(spec["key"], spec["key"])
         if not spec.get("source"):
-            if is_data_entry_key(spec["key"]):
+            if spec.get("kind") == "calc":
+                spec["source"] = "_calc"
+            elif is_data_entry_key(spec["key"]):
                 spec["source"] = "data_entry"
             else:
                 spec["source"] = data_source
 
     if not specs:
-        # Default all columns of source at level 1
         specs = [
-            {"key": k, "source": data_source, "level": 1, "label": label}
+            {"key": k, "source": data_source, "level": 1, "level_mode": "1", "label": label,
+             "kind": "field", "col_code": "", "number_format": "General", "formula": ""}
             for k, label, _ in _columns_for_source(data_source)
         ]
+        specs = normalize_columns(specs)
 
     resolved = _resolve_specs(data_source, specs)
     if not resolved:
         return [], [], [], False
 
-    level = max(1, min(10, int(level or 1)))
+    level = max(1, min(9, int(level or 1)))
     filters = filters or {}
     all_records = _build_records(data_source, resolved, entry_data=entry_data)
+    _apply_formulas(all_records, resolved)
 
-    # Apply parent filters
     filtered = []
     for row in all_records:
         ok = True
@@ -1091,10 +1261,9 @@ def run_report(
         if ok:
             filtered.append(row)
 
-    level_cols = [s for s in resolved if s["level"] == level]
+    level_cols = [s for s in resolved if column_visible_at_level(s, level)]
     if not level_cols:
-        # Fall back to deepest available ≤ level, or all
-        available_levels = sorted({s["level"] for s in resolved})
+        available_levels = sorted({level_mode_max(s.get("level_mode") or "1") for s in resolved})
         pick = None
         for lv in available_levels:
             if lv <= level:
@@ -1103,14 +1272,25 @@ def run_report(
             level_cols = resolved
             level = available_levels[0] if available_levels else 1
         else:
-            level_cols = [s for s in resolved if s["level"] == pick]
+            level_cols = [s for s in resolved if column_visible_at_level(s, pick)]
             level = pick
 
-    deeper = any(s["level"] > level for s in resolved)
+    deeper = any(level_mode_max(s.get("level_mode") or "1") > level for s in resolved)
+    # Also deeper if any column uses upto/all spanning past current and other exact levels exist
+    if not deeper:
+        for s in resolved:
+            mode = normalize_level_mode(s.get("level_mode"), s.get("level") or 1)
+            if mode.startswith("upto_") or mode == "all":
+                if level_mode_max(mode) > level:
+                    deeper = True
+                    break
+            elif level_mode_max(mode) > level:
+                deeper = True
+                break
+
     headers = [s["label"] for s in level_cols]
     keys = [storage_key(s) for s in level_cols]
     key_specs = [s for s in level_cols if s.get("is_key")]
-    # Drill / uniqueness identity: marked keys when present, else all level cols.
     identity_keys = [storage_key(s) for s in key_specs] if key_specs else list(keys)
     entry_keys_level = {
         storage_key(s)
@@ -1119,39 +1299,59 @@ def run_report(
     }
     non_entry_level = [k for k in keys if k not in entry_keys_level]
 
+    # Group by identity for roll-up when deeper
+    groups: OrderedDict[tuple, list[dict]] = OrderedDict()
+    for row in filtered:
+        identity_values = tuple(str(row.get(k, "")) for k in identity_keys)
+        groups.setdefault(identity_values, []).append(row)
+
     display_rows: list[list] = []
     payloads: list[dict] = []
-    seen = set()
-    for row_i, row in enumerate(filtered):
-        identity_values = tuple(str(row.get(k, "")) for k in identity_keys)
+    row_i = 0
+    for identity_values, group_rows in groups.items():
         if deeper:
-            if identity_values in seen:
-                continue
-            seen.add(identity_values)
-        display_rows.append([row.get(k, "") for k in keys])
-        payload = {k: row.get(k, "") for k in keys}
-        # Also expose semantic keys when unique (forms bound before uid).
-        key_counts: dict[str, int] = {}
-        for spec in level_cols:
-            dk = data_key(spec)
-            key_counts[dk] = key_counts.get(dk, 0) + 1
-        for spec in level_cols:
-            dk = data_key(spec)
-            sk = storage_key(spec)
-            if dk and key_counts.get(dk, 0) == 1 and dk not in payload:
-                payload[dk] = row.get(sk, "")
-        drill_keys = {k: row.get(k, "") for k in identity_keys}
-        payload["_drill_keys"] = drill_keys
-        if data_source == "data_entry" and not non_entry_level:
-            payload["_entry_sig"] = f"__row_{row_i}__"
-            payload["_row_index"] = row_i
+            row = _aggregate_group(group_rows, level_cols)
+            work_rows = [row]
         else:
-            payload["_entry_sig"] = row_signature(row, non_entry_level)
-        try:
-            payload["_sheet"] = int(row.get("_sheet") or 1)
-        except (TypeError, ValueError):
-            payload["_sheet"] = 1
-        payloads.append(payload)
+            work_rows = group_rows
+        for row in work_rows:
+            cells = []
+            for spec in level_cols:
+                sk = storage_key(spec)
+                raw = row.get(sk, "")
+                fmt = spec.get("number_format") or "General"
+                if (
+                    str(spec.get("kind") or "") == "calc"
+                    or column_is_aggregatable(spec)
+                    or (fmt and fmt.lower() != "general")
+                ):
+                    cells.append(format_excel_number(raw, fmt) if fmt.lower() != "general" else raw)
+                else:
+                    cells.append(raw if fmt.lower() == "general" else format_excel_number(raw, fmt))
+            display_rows.append(cells)
+            payload = {k: row.get(k, "") for k in keys}
+            key_counts: dict[str, int] = {}
+            for spec in level_cols:
+                dk = data_key(spec)
+                key_counts[dk] = key_counts.get(dk, 0) + 1
+            for spec in level_cols:
+                dk = data_key(spec)
+                sk = storage_key(spec)
+                if dk and key_counts.get(dk, 0) == 1 and dk not in payload:
+                    payload[dk] = row.get(sk, "")
+            drill_keys = {k: row.get(k, "") for k in identity_keys}
+            payload["_drill_keys"] = drill_keys
+            if data_source == "data_entry" and not non_entry_level:
+                payload["_entry_sig"] = f"__row_{row_i}__"
+                payload["_row_index"] = row_i
+            else:
+                payload["_entry_sig"] = row_signature(row, non_entry_level)
+            try:
+                payload["_sheet"] = int(row.get("_sheet") or 1)
+            except (TypeError, ValueError):
+                payload["_sheet"] = 1
+            payloads.append(payload)
+            row_i += 1
 
     return headers, display_rows, payloads, deeper
 
@@ -1172,9 +1372,9 @@ def level_entry_meta(columns, level: int = 1) -> list[dict]:
     semantic type used for field widgets/options.
     """
     specs = normalize_columns(columns)
-    level = max(1, min(10, int(level or 1)))
+    level = max(1, min(9, int(level or 1)))
     options_cache: dict[str, list[dict]] = {}
-    level_specs = [s for s in specs if int(s.get("level") or 1) == level]
+    level_specs = [s for s in specs if column_visible_at_level(s, level)]
     out = []
     for idx, spec in enumerate(level_specs):
         dk = data_key(spec)

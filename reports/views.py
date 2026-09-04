@@ -226,6 +226,8 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
             return redirect("report_detail", pk=report.pk)
     else:
         form = SavedReportForm(instance=report, user=request.user)
+    from reports.formula import FORMULA_FUNCTION_CATALOG, NUMBER_FORMAT_PRESETS
+
     columns_data = persist_column_uids(report)
     return render(
         request,
@@ -236,6 +238,8 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
             "column_keyability": column_keyability_map(),
             "columns_data": columns_data,
             "source_links_data": list(report.source_links or []),
+            "formula_catalog": FORMULA_FUNCTION_CATALOG,
+            "number_format_presets": NUMBER_FORMAT_PRESETS,
             "mode": "edit",
             "page_title": report.heading_label,
             "report": report,
