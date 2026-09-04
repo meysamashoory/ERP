@@ -2187,6 +2187,147 @@ table.js-table-nav tbody tr.is-row-selected:hover { cursor: pointer; }
   border-color: #a5b4fc;
   color: #3730a3;
 }
+.btn-calc {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+.btn-calc:hover { background: #a7f3d0; }
+.display-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  max-height: min(58vh, 560px);
+}
+.display-cols-table { margin: 0; }
+.display-cols-table th {
+  position: sticky; top: 0; z-index: 1;
+  white-space: nowrap;
+}
+.display-col-row.is-active td { background: #eef2ff; }
+.display-col-row.is-calc td { background: #f0fdf4; }
+.display-col-row.is-calc.is-active td { background: #dcfce7; }
+.col-code-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  color: #1e3a5f;
+  text-align: center;
+}
+.key-cell { text-align: center; }
+.fx-cell { text-align: center; }
+.btn-fx {
+  border: 1px solid #86efac;
+  background: #ecfdf5;
+  color: #047857;
+  border-radius: 8px;
+  font-weight: 800;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.btn-fx:hover { background: #bbf7d0; }
+.sel-format { min-width: 110px; font-size: 12px; height: 32px !important; }
+.report-conditions-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+.conditions-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.conditions-hint { font-size: 12px; }
+.conditions-list { display: flex; flex-direction: column; gap: 8px; }
+.condition-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+}
+.formula-dialog { width: min(920px, 96vw); max-width: 96vw; }
+.formula-dialog-body {
+  display: grid;
+  grid-template-columns: 0.9fr 1.4fr;
+  gap: 14px;
+  padding: 4px 2px 10px;
+}
+@media (max-width: 720px) {
+  .formula-dialog-body { grid-template-columns: 1fr; }
+}
+.formula-fn-catalog {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.formula-fn-group > summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-weight: 700;
+  background: #f1f5f9;
+  border-bottom: 1px solid var(--line);
+}
+.formula-fn-list { padding: 6px; }
+.formula-fn-item {
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.formula-fn-item:hover { background: #e0f2fe; }
+.formula-editor-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.formula-eq {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  font-weight: 800;
+  color: #334155;
+}
+.formula-textarea {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  min-height: 110px;
+  resize: vertical;
+}
+.formula-col-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.formula-chip {
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.formula-chip:hover { background: #dbeafe; }
+.formula-col-picker.is-pulse {
+  outline: 2px solid #34d399;
+  border-radius: 10px;
+  transition: outline-color 0.2s;
+}
 .panel-head-row {
   display: flex;
   align-items: center;
@@ -2327,9 +2468,15 @@ input[type=number].spin {
 .drill-row.is-row-selected:hover { background: #dbeafe !important; }
 
 .col-builder {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-height: 360px;
+  display: grid; grid-template-columns: minmax(200px, 0.85fr) minmax(420px, 1.6fr); gap: 14px; min-height: 360px;
 }
-@media (max-width: 900px) { .col-builder { grid-template-columns: 1fr; } }
+.col-builder-calc {
+  grid-template-columns: minmax(180px, 0.7fr) minmax(480px, 1.9fr);
+}
+@media (max-width: 900px) {
+  .col-builder,
+  .col-builder-calc { grid-template-columns: 1fr; }
+}
 .col-builder-right, .col-builder-left {
   border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #f8fafc;
 }

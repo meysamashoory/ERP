@@ -1030,3 +1030,67 @@ class ReportDefaultColumnWidthTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, "col-header-preview")
         self.assertContains(resp, "نحوه نمایش")
+
+
+class ReportCalcFormulaTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+
+        call_command("seed_demo")
+
+    def test_formula_round_and_sum(self):
+        from reports.formula import evaluate_formula, format_excel_number
+
+        self.assertEqual(evaluate_formula("=ROUND(10/3, 2)", {}), 3.33)
+        self.assertEqual(evaluate_formula("=SUM(A1,B1)", {"a1": 4, "b1": 6}), 10)
+        self.assertEqual(format_excel_number(1234.56, "#,##0.00"), "1,234.56")
+
+    def test_calc_column_in_run_report(self):
+        from reports.columns import normalize_columns, run_report
+
+        cols = normalize_columns([
+            {
+                "key": "code", "source": "product", "level_mode": "1",
+                "label": "کد", "is_key": True, "uid": "k1",
+            },
+            {
+                "key": "stock_finished", "source": "product", "level_mode": "1",
+                "label": "موجودی", "uid": "k2",
+            },
+            {
+                "key": "calc", "source": "_calc", "kind": "calc", "level_mode": "1",
+                "label": "دوبرابر", "uid": "k3", "formula": "=B1*2",
+                "number_format": "#,##0",
+            },
+        ])
+        self.assertEqual(cols[0]["col_code"], "a1")
+        self.assertEqual(cols[2]["kind"], "calc")
+        headers, rows, _payloads, deeper = run_report("product", cols, level=1)
+        self.assertIn("دوبرابر", headers)
+        self.assertFalse(deeper)
+        # seed_demo sets F-1100.stock_finished = 300 on a fresh DB
+        hit = next((r for r in rows if r[0] == "F-1100"), None)
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit[1], 300)
+        self.assertEqual(str(hit[2]), "600")
+
+    def test_builder_page_has_calc_controls(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from reports.models import SavedReport
+
+        User = get_user_model()
+        expert = User.objects.get(username="expert")
+        report = SavedReport.objects.create(
+            owner=expert, created_by=expert, title="محاسبات", number=601,
+            data_source="product", columns=[],
+        )
+        self.client.login(username="expert", password="erp12345")
+        resp = self.client.get(reverse("report_edit", args=[report.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "add-calc-col")
+        self.assertContains(resp, "formula-dialog")
+        self.assertContains(resp, "کد ستون")
+        self.assertContains(resp, "نوع نمایش")
+        self.assertContains(resp, "report-conditions-panel")

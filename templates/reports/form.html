@@ -27,6 +27,7 @@
   {% csrf_token %}
   {{ form.columns_json }}
   <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
+  <input type="hidden" name="report_conditions_json" id="id_report_conditions_json" value="[]">
   {% if form.is_manager %}{% else %}{{ form.is_standard }}{% endif %}
 
   <div class="panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
@@ -69,7 +70,7 @@
 
   <div class="panel panel-compact" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
     <div class="panel-body panel-body-compact">
-      <div class="col-builder col-builder-compact">
+      <div class="col-builder col-builder-compact col-builder-calc">
         <div class="col-builder-right">
           <div class="field">
             <label>منبع داده اصلی</label>
@@ -90,11 +91,39 @@
             <div class="move-controls">
               <button type="button" class="btn btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا">▲</button>
               <button type="button" class="btn btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین">▼</button>
+              <button type="button" class="btn btn-sm btn-calc" id="add-calc-col" title="افزودن ستون محاسبات">ƒx محاسبات</button>
               <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده">کپی</button>
             </div>
           </div>
-          <div class="selected-cols" id="selected-cols"></div>
+          <div class="display-table-wrap">
+            <table class="table table-compact display-cols-table" id="display-cols-table">
+              <thead>
+                <tr>
+                  <th>شرح منبع</th>
+                  <th style="width:72px">کد ستون</th>
+                  <th style="width:130px">سطح</th>
+                  <th style="width:72px">عرض</th>
+                  <th style="width:56px">کلید</th>
+                  <th style="width:130px">نوع نمایش</th>
+                  <th style="width:70px">محاسبات</th>
+                  <th style="width:44px"></th>
+                </tr>
+              </thead>
+              <tbody id="selected-cols"></tbody>
+            </table>
+          </div>
           <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
+        </div>
+      </div>
+
+      <div class="report-conditions-panel" id="report-conditions-panel">
+        <div class="conditions-head">
+          <strong>شرط‌ها</strong>
+          <span class="muted conditions-hint">اسکلت اولیه — اتصال کامل به منطق رادیورز در مرحله بعد تکمیل می‌شود.</span>
+          <button type="button" class="btn btn-sm btn-ghost" id="add-condition-btn">+ افزودن شرط</button>
+        </div>
+        <div id="conditions-list" class="conditions-list">
+          <p class="muted" id="conditions-empty">هنوز شرطی تعریف نشده است.</p>
         </div>
       </div>
     </div>
@@ -110,6 +139,34 @@
     <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
   </div>
 </dialog>
+
+<dialog id="formula-dialog" class="dialog formula-dialog">
+  <div class="dialog-head"><h3>فرمول‌نویسی ستون محاسبات</h3></div>
+  <div class="formula-dialog-body">
+    <div class="formula-fn-panel">
+      <div class="muted" style="margin-bottom:6px;font-size:12px">دسته توابع — دوبار کلیک برای درج</div>
+      <div id="formula-fn-catalog" class="formula-fn-catalog"></div>
+    </div>
+    <div class="formula-editor-panel">
+      <label class="field">
+        <span>فرمول</span>
+        <div class="formula-editor-wrap">
+          <span class="formula-eq">=</span>
+          <textarea class="input formula-textarea" id="formula-textarea" rows="4" placeholder="مثلاً ROUND(A1+B1, 2)" dir="ltr"></textarea>
+        </div>
+      </label>
+      <div class="formula-col-picker">
+        <span class="muted" style="font-size:12px">درج کد ستون:</span>
+        <div id="formula-col-chips" class="formula-col-chips"></div>
+      </div>
+      <p class="muted" id="formula-hint" style="font-size:12px">ارجاع ستون‌ها با کد مثل A1، B1 — جداکننده آرگومان‌ها ویرگول یا نقطه‌ویرگول.</p>
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="button" class="btn" id="formula-save-btn">ثبت</button>
+    <button type="button" class="btn btn-ghost" id="formula-cancel-btn">انصراف</button>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
@@ -117,7 +174,9 @@
 {{ columns_data|json_script:"columns-initial" }}
 {{ source_links_data|json_script:"links-initial" }}
 {{ column_keyability|json_script:"column-keyability" }}
-<script src="{% static 'js/report_builder_display.js' %}?v=2"></script>
+{{ formula_catalog|json_script:"formula-catalog" }}
+{{ number_format_presets|json_script:"number-format-presets" }}
+<script src="{% static 'js/report_builder_display.js' %}?v=3"></script>
 <script>
 (function () {
   if (window.ERPReportBuilderDisplay) {
