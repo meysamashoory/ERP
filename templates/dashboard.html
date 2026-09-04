@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}داشبورد · سامانه برنامه ریزی و کنترل تولید{% endblock %}
 {% block heading %}داشبورد عملیات{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
@@ -72,6 +73,72 @@
     <span class="dash-mini-label">پیش‌نویس</span>
     <span class="dash-mini-value num">{{ pending_plans }}</span>
   </article>
+</section>
+
+{# ────── Analytical charts (Power-BI style controls) ────── #}
+<section class="dash-analytics" id="dash-analytics" data-charts='{{ dashboard_charts_json|escape }}'>
+  <div class="dash-analytics-toolbar">
+    <div class="dash-analytics-title">
+      <h2>تحلیل فروش و روند</h2>
+      <p class="muted">
+        {% if dashboard_charts.sales_source == "vouchers" %}
+        مبنای مقدار: حواله‌های دیتای محصولات
+        {% else %}
+        مبنای مقدار: حجم تولید (تا زمان بارگذاری فروش/حواله کامل)
+        {% endif %}
+      </p>
+    </div>
+    <div class="dash-analytics-controls">
+      <label class="dash-ctl">
+        <span>نوع نمودار</span>
+        <select id="dash-chart-type">
+          <option value="bar">میله‌ای</option>
+          <option value="line">خطی</option>
+          <option value="doughnut">حلقه‌ای</option>
+        </select>
+      </label>
+      <label class="dash-ctl">
+        <span>بازه</span>
+        <select id="dash-chart-scope">
+          <option value="years">سالانه</option>
+          <option value="seasons">فصلی</option>
+          <option value="top">پرفروش‌ترین</option>
+          <option value="low">کم‌فروش‌ترین</option>
+        </select>
+      </label>
+      <button type="button" class="btn btn-sm btn-ghost" id="dash-chart-reset">بازنشانی</button>
+    </div>
+  </div>
+
+  <div class="dash-analytics-grid">
+    <article class="panel dash-chart-panel dash-chart-main">
+      <div class="panel-head">
+        <h2 id="dash-main-title">روند سالانه</h2>
+        <div class="dash-compare" id="dash-compare">
+          {% with c=dashboard_charts.compare %}
+          <span class="muted">{{ c.label_a }} → {{ c.label_b }}</span>
+          {% if c.pct != None %}
+          <strong class="num {% if c.pct < 0 %}text-danger{% elif c.pct > 0 %}text-ok{% endif %}">
+            {% if c.pct > 0 %}+{% endif %}{{ c.pct }}%
+          </strong>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+          {% endwith %}
+        </div>
+      </div>
+      <div class="panel-body dash-canvas-wrap">
+        <canvas id="dash-main-chart" height="140"></canvas>
+      </div>
+    </article>
+
+    <article class="panel dash-chart-panel">
+      <div class="panel-head"><h2>توزیع فصلی (سال‌های اخیر)</h2></div>
+      <div class="panel-body dash-canvas-wrap">
+        <canvas id="dash-season-chart" height="140"></canvas>
+      </div>
+    </article>
+  </div>
 </section>
 
 {# ────── Charts Row ────── #}
@@ -175,4 +242,9 @@
     {% else %}<p class="empty" style="padding:20px">هنوز تولیدی ثبت نشده است.</p>{% endif %}
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'vendor/chart.js/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/dashboard_charts.js' %}?v=1"></script>
 {% endblock %}

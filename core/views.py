@@ -76,6 +76,8 @@ def _parse_jdate(value: str):
 
 @login_required
 def dashboard(request):
+    from .dashboard_analytics import build_dashboard_charts, charts_json
+
     fitting_qs = ProductionDayEntry.objects.all()
     pipe_qs = PipeProduction.objects.all()
 
@@ -131,9 +133,10 @@ def dashboard(request):
     active_programs = ProductionProgram.objects.filter(
         status__in=["producing", "setup", "temp_stop"]
     ).count()
-    total_machines = Machine.objects.count() if "Machine" in dir() else 0
+    total_machines = 0
     try:
         from catalog.models import Machine as MachineModel
+
         total_machines = MachineModel.objects.count()
     except Exception:
         pass
@@ -142,7 +145,6 @@ def dashboard(request):
     ).values("item__machine").distinct().count()
 
     # Top 5 products by production volume
-    from django.db.models import F
     top_products = (
         fitting_qs.values(
             name=F("program__item__product__name"),
@@ -162,14 +164,7 @@ def dashboard(request):
         for row in top_products
     ]
 
-    # Deviation trend: per-unit deviation
-    from collections import defaultdict
-    deviation_by_unit: dict[str, list[int]] = defaultdict(list)
-    for entry in fitting_qs.values(
-        unit=F("program__item__machine__unit__number")
-    ).annotate(dev=Sum(F("produced_quantity") - F("planned_quantity"))):
-        label = f"واحد {entry['unit']}"
-        deviation_by_unit[label].append(entry["dev"] or 0)
+    charts = build_dashboard_charts()
 
     context = {
         "fitting_produced": fitting_produced,
@@ -194,6 +189,8 @@ def dashboard(request):
         "recent_fittings": fitting_qs.select_related(
             "program__item__product", "program__item__machine__unit"
         )[:8],
+        "dashboard_charts": charts,
+        "dashboard_charts_json": charts_json(charts),
     }
     return render(request, "dashboard.html", context)
 

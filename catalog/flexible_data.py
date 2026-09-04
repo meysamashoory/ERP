@@ -14,18 +14,32 @@ from catalog.models import FlexibleDataset, FlexibleRow, SystemNamingKey
 # Product-data tabs (raw by default — no columns until Excel bootstrap).
 LEVEL_PRODUCTS = "products"
 LEVEL_BOM = "bom"
+LEVEL_BOM_MATERIALS = "bom_materials"
 LEVEL_CONSUMABLES = "consumables"
 LEVEL_SPECS = "specs"
-
+LEVEL_INVENTORY = "inventory"
 LEVEL_VOUCHERS = "vouchers"
 
 DEFAULT_PRODUCT_TABS: list[dict[str, str]] = [
-    {"id": LEVEL_PRODUCTS, "label": "محصولات"},
-    {"id": LEVEL_BOM, "label": "BOM"},
-    {"id": LEVEL_CONSUMABLES, "label": "مواد مصرفی"},
-    {"id": LEVEL_SPECS, "label": "مشخصات فنی"},
+    {"id": LEVEL_PRODUCTS, "label": "مشخصات کالاها"},
+    {"id": LEVEL_BOM, "label": "BOM قطعات مصرفی"},
+    {"id": LEVEL_BOM_MATERIALS, "label": "BOM مواد مصرفی"},
+    {"id": LEVEL_CONSUMABLES, "label": "مشخصات مواد مصرفی"},
+    {"id": LEVEL_SPECS, "label": "مشخصات فنی دستگاه/قالب"},
+    {"id": LEVEL_INVENTORY, "label": "موجودی محصول"},
     {"id": LEVEL_VOUCHERS, "label": "حواله‌ها"},
 ]
+
+# Previous default labels — used to refresh uncustomized naming keys.
+LEGACY_PRODUCT_TAB_LABELS = {
+    LEVEL_PRODUCTS: {"محصولات", "مشخصات کالاها"},
+    LEVEL_BOM: {"BOM", "BOM قطعات مصرفی", "ساختار BOM"},
+    LEVEL_BOM_MATERIALS: {"BOM مواد مصرفی"},
+    LEVEL_CONSUMABLES: {"مواد مصرفی", "مشخصات مواد مصرفی"},
+    LEVEL_SPECS: {"مشخصات فنی", "مشخصات فنی دستگاه/قالب"},
+    LEVEL_INVENTORY: {"موجودی محصول"},
+    LEVEL_VOUCHERS: {"حواله‌ها", "لیست حواله‌ها"},
+}
 
 OBSOLETE_PRODUCT_LEVELS = {
     "product_info",
@@ -409,11 +423,39 @@ def keyed_update_rows(
     return transferred, deleted, skipped
 
 
+def sync_default_product_tab_labels() -> None:
+    """Refresh uncustomized naming-key labels when default tab titles change."""
+    prefix = "transfer.level.product_data."
+    defaults = {t["id"]: t["label"] for t in DEFAULT_PRODUCT_TABS}
+    rows = SystemNamingKey.objects.filter(key__startswith=prefix)
+    for r in rows:
+        level_id = r.key[len(prefix) :].strip()
+        if level_id not in defaults:
+            continue
+        new_label = defaults[level_id]
+        legacy = LEGACY_PRODUCT_TAB_LABELS.get(level_id, set())
+        updates: list[str] = []
+        if (r.default_label or "") != new_label:
+            r.default_label = new_label
+            updates.append("default_label")
+        # Only rewrite label if it still matches a known stock/legacy title.
+        if (r.label or "") in legacy or (r.label or "") == (r.default_label or ""):
+            if (r.label or "") != new_label:
+                r.label = new_label
+                updates.append("label")
+        if updates:
+            updates.append("updated_at")
+            r.save(update_fields=updates)
+
+
 def list_tab_levels(
     destination_id: str,
     defaults: list[dict[str, str]],
 ) -> list[dict[str, Any]]:
     """Active levels/tabs for a dynamic destination (defaults + custom naming keys)."""
+    if destination_id == "product_data":
+        sync_default_product_tab_labels()
+
     prefix = f"transfer.level.{destination_id}."
     by_id: dict[str, dict[str, Any]] = {}
     for d in defaults:

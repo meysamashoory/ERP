@@ -97,7 +97,7 @@ class SystemDataNoShortcutsTests(TestCase):
     def test_flexible_dataset_admin_loads(self):
         resp = self.client.get(reverse("admin:catalog_flexibledataset_changelist"))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "بازگشت به داده‌های سیستم")
+        self.assertContains(resp, "بازگشت به مدیریت داده‌های سامانه")
 
     def test_section_redirect_uses_admin_not_app(self):
         resp = self.client.get(reverse("system_section", args=["pipe_calc"]))

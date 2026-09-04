@@ -672,6 +672,42 @@ tr.is-conflict-row > td {
 .dash-badge-ok { background: #dcfce7; color: #15803d; }
 .dash-full-panel { margin-bottom: 20px; }
 
+/* Power-BI-like analytics toolbar + canvases */
+.dash-analytics { margin-bottom: 22px; }
+.dash-analytics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px 20px;
+  margin-bottom: 14px;
+}
+.dash-analytics-title h2 { margin: 0 0 4px; font-size: 17px; }
+.dash-analytics-title .muted { margin: 0; font-size: 12px; }
+.dash-analytics-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.dash-ctl { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.dash-ctl select {
+  min-width: 140px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 0 10px;
+  font-size: 13px;
+  color: inherit;
+}
+.dash-analytics-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 980px) {
+  .dash-analytics-grid { grid-template-columns: 1fr; }
+}
+.dash-chart-main .panel-head { gap: 12px; }
+.dash-compare { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.dash-canvas-wrap { position: relative; height: 260px; }
+
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } .sidebar { width: 200px; } }

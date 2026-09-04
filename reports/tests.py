@@ -666,7 +666,8 @@ class PrintFormFlowTests(TestCase):
         self.assertContains(resp, "برنامه‌های تولید")
         self.assertContains(resp, "ثبت و کنترل تولید")
         self.assertContains(resp, "سوابق تولید")
-        self.assertContains(resp, "بارگذاری")
+        self.assertContains(resp, "بارگذاری فایل")
+        self.assertContains(resp, "مدیریت داده‌های سامانه")
         self.assertContains(resp, "کاربری سامانه")
         # Create actions moved off the sidebar onto list page tops
         self.assertNotContains(resp, "ایجاد گزارش")

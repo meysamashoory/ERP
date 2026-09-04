@@ -7,7 +7,7 @@
   <title>{% block title %}سامانه برنامه ریزی و کنترل تولید{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/tom-select/tom-select.min.css' %}?v=9">
   <link rel="stylesheet" href="{% static 'vendor/jalalidatepicker/jalalidatepicker.min.css' %}?v=9">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=64">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=65">
   <style>
     :root { --table-row-height: {{ table_row_height_px|default:36 }}px; }
   </style>
@@ -32,9 +32,10 @@
       <div class="nav-section {% block nav_production %}{% endblock %}">
         <div class="nav-section-title">برنامه‌های تولید</div>
         <a href="{% url 'plan_list' %}" class="{% block nav_planning %}{% endblock %}">برنامه‌ریزی هفتگی</a>
-        <a href="{% url 'systemic_intelligence' %}" class="{% block nav_systemic %}{% endblock %}">هوش برنامه‌ریزی سیستمی</a>
+        <a href="{% url 'systemic_intelligence' %}" class="{% block nav_systemic %}{% endblock %}">برنامه‌ریزی توسط سیستم</a>
         <a href="{% url 'program_list' %}" class="{% block nav_programs %}{% endblock %}">ثبت و کنترل تولید</a>
         <a href="{% url 'production_history' %}" class="{% block nav_history %}{% endblock %}">سوابق تولید</a>
+        <a href="{% url 'pipe_calc' %}" class="{% block nav_pipe_calc %}{% endblock %}">محاسبات زمان تولید</a>
       </div>
 
       <div class="nav-section {% block nav_reports %}{% endblock %}">
@@ -45,10 +46,9 @@
 
       <div class="nav-section {% block nav_data %}{% endblock %}">
         <div class="nav-section-title">مدیریت داده‌ها</div>
-        <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">بارگذاری</a>
+        <a href="{% url 'excel_list' %}" class="{% block nav_excel %}{% endblock %}">بارگذاری فایل</a>
         <a href="{% url 'product_data' %}" class="{% block nav_product_data %}{% endblock %}">دیتای محصولات</a>
-        <a href="{% url 'pipe_calc' %}" class="{% block nav_pipe_calc %}{% endblock %}">محاسبات زمان تولید</a>
-        <a href="{% url 'system_data' %}" class="{% block nav_system_data %}{% endblock %}">داده‌های سیستم</a>
+        <a href="{% url 'system_data' %}" class="{% block nav_system_data %}{% endblock %}">مدیریت داده‌های سامانه</a>
       </div>
 
       <div class="nav-section {% block nav_account %}{% endblock %}">

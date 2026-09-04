@@ -183,7 +183,7 @@ class InventoryOrdersSystemicTests(TestCase):
         self.client.login(username="admin", password="erp12345")
         page = self.client.get(reverse("systemic_intelligence"))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "هوش برنامه‌ریزی سیستمی")
+        self.assertContains(page, "برنامه‌ریزی توسط سیستم")
         self.assertContains(page, "تراز تقاضا و تأمین")
         page2 = self.client.get(reverse("systemic_intelligence"), {"tab": "exceptions"})
         self.assertEqual(page2.status_code, 200)

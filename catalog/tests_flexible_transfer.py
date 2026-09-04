@@ -47,8 +47,10 @@ class FlexibleTransferTests(TestCase):
         ids = [lv["id"] for lv in products["levels"]]
         self.assertIn("products", ids)
         self.assertIn("bom", ids)
+        self.assertIn("bom_materials", ids)
         self.assertIn("consumables", ids)
         self.assertIn("specs", ids)
+        self.assertIn("inventory", ids)
         self.assertIn("vouchers", ids)
         for lv in products["levels"]:
             if lv["id"] == "vouchers" and lv.get("has_rows"):
@@ -59,11 +61,15 @@ class FlexibleTransferTests(TestCase):
         self.client.login(username="admin", password="erp12345")
         page = self.client.get(reverse("product_data"))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "محصولات")
-        self.assertContains(page, "BOM")
-        self.assertContains(page, "مواد مصرفی")
-        self.assertContains(page, "مشخصات فنی")
+        self.assertContains(page, "مشخصات کالاها")
+        self.assertContains(page, "BOM قطعات مصرفی")
+        self.assertContains(page, "BOM مواد مصرفی")
+        self.assertContains(page, "مشخصات مواد مصرفی")
+        self.assertContains(page, "مشخصات فنی دستگاه/قالب")
+        self.assertContains(page, "موجودی محصول")
         self.assertContains(page, "حواله‌ها")
+        self.assertContains(page, "در این بخش هنوز دیتایی تعریف نشده است")
+        self.assertContains(page, "بارگذاری از اکسل")
 
     def test_vouchers_tab_shows_data_after_transfer(self):
         self.client.login(username="admin", password="erp12345")
