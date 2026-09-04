@@ -117,7 +117,14 @@
 
     cells.forEach(function (th, idx) {
       if (th.querySelector(".col-resizer")) return;
-      if (!th.style.position || th.style.position === "static") {
+      // Sticky headers inside scroll viewports; sticky is also a positioning
+      // context so column-resize handles still work (same as relative).
+      var inScroll = !!(th.closest && th.closest(".table-scroll, .table-scroll-wide"));
+      if (inScroll) {
+        th.style.position = "sticky";
+        th.style.top = "0";
+        if (!th.style.zIndex) th.style.zIndex = "6";
+      } else if (!th.style.position || th.style.position === "static") {
         th.style.position = "relative";
       }
       var handle = document.createElement("span");
