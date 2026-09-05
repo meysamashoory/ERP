@@ -55,6 +55,45 @@
     return false;
   }
 
+  function scrollCellIntoView(cell) {
+    if (!cell) return;
+    var scroller = cell.closest(".table-scroll, .table-scroll-wide, .table-wrap");
+    if (!scroller) {
+      try {
+        cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      } catch (e) {}
+      return;
+    }
+    var cellRect = cell.getBoundingClientRect();
+    var scRect = scroller.getBoundingClientRect();
+    var thead = scroller.querySelector("thead");
+    var headH = 0;
+    if (thead) {
+      var headRect = thead.getBoundingClientRect();
+      headH = Math.max(0, Math.min(headRect.height, headRect.bottom - scRect.top));
+    }
+    var pad = 2;
+    var topLimit = scRect.top + headH + pad;
+    var bottomLimit = scRect.bottom - pad;
+    if (cellRect.top < topLimit) {
+      scroller.scrollTop -= topLimit - cellRect.top;
+    } else if (cellRect.bottom > bottomLimit) {
+      scroller.scrollTop += cellRect.bottom - bottomLimit;
+    }
+    var leftLimit = scRect.left + pad;
+    var rightLimit = scRect.right - pad;
+    var overflowX = 0;
+    if (cellRect.left < leftLimit) overflowX = cellRect.left - leftLimit;
+    else if (cellRect.right > rightLimit) overflowX = cellRect.right - rightLimit;
+    if (overflowX) {
+      var rtl = false;
+      try {
+        rtl = getComputedStyle(scroller).direction === "rtl";
+      } catch (err) {}
+      scroller.scrollLeft += rtl ? -overflowX : overflowX;
+    }
+  }
+
   function paint(table, selRow, selCol) {
     table.querySelectorAll("tbody tr.is-row-selected").forEach(function (tr) {
       tr.classList.remove("is-row-selected");
@@ -71,9 +110,7 @@
     var ci = Math.max(0, Math.min(selCol, cells.length - 1));
     var cell = cells[ci];
     cell.classList.add("is-cell-focus");
-    try {
-      cell.scrollIntoView({ block: "nearest", inline: "nearest" });
-    } catch (e) {}
+    scrollCellIntoView(cell);
     if (window.ERPTableLayout && typeof window.ERPTableLayout.onCellSelected === "function") {
       window.ERPTableLayout.onCellSelected(cell);
     }

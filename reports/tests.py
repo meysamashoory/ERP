@@ -62,7 +62,7 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "100- گزارش تست")
         self.assertContains(detail, "(توضیح نمونه)")
-        self.assertContains(detail, "ویرایش")
+        self.assertNotContains(detail, 'id="rp-edit-link"')
         self.assertContains(detail, "خروجی")
         self.assertContains(detail, "موقعیت:")
         self.assertNotContains(detail, "قابل اصلاح")
@@ -1339,6 +1339,91 @@ class ReportConditionsTests(TestCase):
             )
         )
 
+    def test_condition_exclusive_and_nested_parens(self):
+        from reports.conditions import (
+            paren_close_of,
+            paren_open_of,
+            row_matches_conditions,
+            validate_conditions_blob,
+        )
+
+        both = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren_open": "(",
+                    "paren_close": ")",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "14051102",
+                    "param_code": "",
+                }
+            ],
+            "private": {},
+        }
+        errs = validate_conditions_blob(both)
+        self.assertTrue(any("فقط پرانتز" in err for err in errs))
+
+        nested = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren_open": "((",
+                    "paren_close": "",
+                    "source": "fitting",
+                    "field": "a",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "1",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren_open": "(",
+                    "paren_close": "",
+                    "source": "fitting",
+                    "field": "b",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "2",
+                    "param_code": "",
+                },
+                {
+                    "logic": "and",
+                    "paren_open": "",
+                    "paren_close": ")",
+                    "source": "fitting",
+                    "field": "c",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "3",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren_open": "",
+                    "paren_close": "))",
+                    "source": "fitting",
+                    "field": "d",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "4",
+                    "param_code": "",
+                },
+            ],
+            "private": {},
+        }
+        self.assertEqual(validate_conditions_blob(nested), [])
+        self.assertEqual(paren_open_of(nested["public"][0]), "((")
+        self.assertEqual(paren_close_of(nested["public"][3]), "))")
+        rows = nested["public"]
+        self.assertTrue(row_matches_conditions({"a": "1", "b": "x", "c": "x", "d": "x"}, rows))
+        self.assertTrue(row_matches_conditions({"a": "x", "b": "2", "c": "3", "d": "x"}, rows))
+        self.assertTrue(row_matches_conditions({"a": "x", "b": "x", "c": "x", "d": "4"}, rows))
+        self.assertFalse(row_matches_conditions({"a": "x", "b": "2", "c": "x", "d": "x"}, rows))
+
     def test_run_report_empty_columns_returns_no_system_rows(self):
         from reports.columns import run_report
 
@@ -1378,6 +1463,8 @@ class ReportConditionsTests(TestCase):
         self.assertContains(edit, "rp-shell")
         self.assertContains(edit, "cond-tab-public")
         self.assertContains(edit, "condition-dialog")
+        self.assertContains(edit, 'value="(("')
+        self.assertContains(edit, 'value="))"')
         self.assertContains(edit, "delete-col")
         self.assertContains(edit, "خصوصی")
 

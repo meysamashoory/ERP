@@ -242,7 +242,7 @@ textarea.input, textarea {
   font-size: 13px;
 }
 .table th, .table td {
-  border: 1px solid #94a3b8;
+  border: 1px solid #cbd5e1;
   padding: 0 8px;
   text-align: right;
   vertical-align: middle;
@@ -783,6 +783,18 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
   border-bottom: 1px solid var(--rp-line);
   vertical-align: middle;
 }
+.conditions-table .rb-paren-cell,
+#cond-paren-open,
+#cond-paren-close {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: center;
+}
+.conditions-table .rb-paren-glyph {
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
 .conditions-table .cond-row-actions {
   white-space: nowrap;
   text-align: left;
@@ -933,7 +945,7 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
   border-top: none;
   border-radius: 0 0 10px 10px;
   background: #fff;
-  direction: ltr;
+  direction: rtl;
 }
 .rp-viewer-body .table-scroll > .table {
   margin: 0;
@@ -1000,10 +1012,21 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
 .menu-panel a:hover, .menu-panel button:hover { background: #f1f5f9; }
 
 .table-nav-cells tbody tr.data-row.is-row-selected { background: #dbeafe; }
-.table-nav-cells tbody tr.data-row.is-row-selected td.is-cell-focus {
-  outline: 2px solid #2563eb;
-  outline-offset: -2px;
-  background: #bfdbfe;
+.rp-viewer-body .table:focus,
+.rp-viewer-body .table:focus-visible,
+.rp-viewer-body table.js-table-nav:focus,
+.rp-viewer-body table.js-table-nav:focus-visible,
+.rp-viewer-body .table-nav-cells:focus,
+.rp-viewer-body .table-nav-cells:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.rp-viewer-body .table-nav-cells tbody tr.data-row.is-row-selected td.is-cell-focus,
+.rp-viewer-body table.js-table-nav tbody tr.is-row-selected > td.is-cell-focus,
+.rp-viewer-body table.js-table-nav tbody tr.is-row-selected > th.is-cell-focus {
+  outline: none;
+  box-shadow: none;
+  background: transparent;
 }
 .drill-row { cursor: default; }
 .drill-row.is-row-selected,
@@ -1139,7 +1162,7 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
 .props-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .rp-viewer-body .table th,
 .rp-viewer-body .table td {
-  border: 1px solid #475569;
+  border: 1px solid #e2e8f0;
   height: var(--table-row-height, 36px);
   max-height: var(--table-row-height, 36px);
   overflow: hidden;

@@ -151,12 +151,17 @@ def field_value_choices(source: str, field_key: str) -> list[dict] | None:
 
 
 
+PAREN_OPEN_CHOICES = ("", "(", "((")
+PAREN_CLOSE_CHOICES = ("", ")", "))")
+
+
 def paren_open_of(row: dict) -> str:
     """Open parenthesis marker; supports legacy single `paren` field."""
     if not isinstance(row, dict):
         return ""
     if "paren_open" in row or "paren_close" in row:
-        return "(" if str(row.get("paren_open") or "") == "(" else ""
+        raw = str(row.get("paren_open") or "").strip()
+        return raw if raw in ("(", "((") else ""
     return "(" if str(row.get("paren") or "") == "(" else ""
 
 
@@ -165,8 +170,17 @@ def paren_close_of(row: dict) -> str:
     if not isinstance(row, dict):
         return ""
     if "paren_open" in row or "paren_close" in row:
-        return ")" if str(row.get("paren_close") or "") == ")" else ""
+        raw = str(row.get("paren_close") or "").strip()
+        return raw if raw in (")", "))") else ""
     return ")" if str(row.get("paren") or "") == ")" else ""
+
+
+def paren_open_weight(marker: str) -> int:
+    return 2 if marker == "((" else (1 if marker == "(" else 0)
+
+
+def paren_close_weight(marker: str) -> int:
+    return 2 if marker == "))" else (1 if marker == ")" else 0)
 
 
 def validate_condition_row(row: dict, *, is_first: bool) -> str | None:
@@ -179,8 +193,10 @@ def validate_condition_row(row: dict, *, is_first: bool) -> str | None:
     mode = str(row.get("value_mode") or "value").lower()
     if logic not in ("", "and", "or"):
         return "مقدار AND/OR نامعتبر است."
-    if p_open not in ("", "(") or p_close not in ("", ")"):
+    if p_open not in PAREN_OPEN_CHOICES or p_close not in PAREN_CLOSE_CHOICES:
         return "پرانتز نامعتبر است."
+    if p_open and p_close:
+        return "در یک شرط فقط پرانتز باز یا پرانتز بسته مجاز است."
     if is_first and logic:
         return "اولین شرط نباید AND/OR داشته باشد."
     if not is_first and not logic:
@@ -218,13 +234,11 @@ def validate_conditions_blob(raw) -> list[str]:
             err = validate_condition_row(row, is_first=(i == 0))
             if err:
                 errors.append(f"{label} ردیف {i + 1}: {err}")
-            if paren_open_of(row) == "(":
-                open_parens += 1
-            if paren_close_of(row) == ")":
-                open_parens -= 1
-                if open_parens < 0:
-                    errors.append(f"{label}: پرانتز بسته بدون باز.")
-                    open_parens = 0
+            open_parens += paren_open_weight(paren_open_of(row))
+            open_parens -= paren_close_weight(paren_close_of(row))
+            if open_parens < 0:
+                errors.append(f"{label}: پرانتز بسته بدون باز.")
+                open_parens = 0
         if open_parens:
             errors.append(f"{label}: پرانتز باز بدون بسته.")
 
@@ -310,7 +324,7 @@ def row_matches_conditions(row: dict, conditions: list[dict], param_values: dict
             while ops and ops[-1] != "(" and _prec(ops[-1]) >= _prec(logic):
                 apply_op()
             ops.append(logic)
-        if paren_open_of(cond) == "(":
+        for _ in range(paren_open_weight(paren_open_of(cond))):
             ops.append("(")
 
         field = str(cond.get("field") or "")
@@ -325,7 +339,7 @@ def row_matches_conditions(row: dict, conditions: list[dict], param_values: dict
         right = resolve_condition_value(cond, param_values)
         values.append(_cmp(left, str(cond.get("op") or "="), right))
 
-        if paren_close_of(cond) == ")":
+        for _ in range(paren_close_weight(paren_close_of(cond))):
             while ops and ops[-1] != "(":
                 apply_op()
             if ops and ops[-1] == "(":

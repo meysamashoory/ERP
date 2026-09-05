@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ report.heading_label }}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=6">
   <style>
     :root { --table-row-height: {{ table_row_height_px|default:36 }}px; }
   </style>
@@ -32,9 +32,6 @@
     <a class="btn btn-sm btn-ghost" id="rp-back-link" href="?level={{ parent_level }}{% if parent_query %}&{{ parent_query }}{% endif %}">← بازگشت</a>
     {% endif %}
     <a class="btn btn-sm btn-ghost" href="{{ list_url|default:'' }}" id="rp-list-link">لیست گزارش‌ها</a>
-    {% if can_edit_meta %}
-    <a class="btn btn-sm btn-ghost" href="{% url 'report_edit' report.pk %}" id="rp-edit-link">ویرایش</a>
-    {% endif %}
     {% if can_edit_entry %}
     <button type="button" class="btn btn-sm" id="report-edit-toggle">اصلاح گزارش</button>
     {% endif %}
@@ -160,8 +157,8 @@
 {% if runtime_params %}{{ runtime_params|json_script:"runtime-parameters" }}{% else %}<script id="runtime-parameters" type="application/json">[]</script>{% endif %}
 
 <script src="{% static 'js/number_normalize.js' %}?v=1"></script>
-<script src="{% static 'js/table_nav.js' %}?v=6"></script>
-<script src="{% static 'js/table_layout.js' %}?v=8"></script>
+<script src="{% static 'js/table_nav.js' %}?v=7"></script>
+<script src="{% static 'js/table_layout.js' %}?v=9"></script>
 <script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {
