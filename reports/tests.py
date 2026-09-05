@@ -108,6 +108,7 @@ class ReportFlowTests(TestCase):
         self.assertIn("history", ids)
         self.assertIn("data_entry", ids)
         self.assertTrue(all(not str(i).startswith("excel_table_") for i in ids))
+        self.assertTrue(all("report" not in str(i) for i in ids))
 
         headers, rows, _p, _d = run_report(
             "history",
@@ -115,6 +116,54 @@ class ReportFlowTests(TestCase):
         )
         self.assertEqual(headers, ["شماره برنامه"])
         self.assertIsInstance(rows, list)
+
+    def test_report_sources_follow_menu_names_and_headers(self):
+        from reports.app_sources import SOURCE_WEEKLY
+        from reports.columns import get_column_groups, run_report
+
+        groups = get_column_groups()
+        ids = [g["id"] for g in groups]
+        labels = [g["label"] for g in groups]
+        self.assertEqual(ids[0], SOURCE_WEEKLY)
+        self.assertEqual(labels[0], "برنامه‌ریزی هفتگی")
+        weekly = groups[0]
+        weekly_keys = {c[0] for c in weekly["columns"]}
+        self.assertIn("change_uid", weekly_keys)
+        self.assertIn("mold_number", weekly_keys)
+        self.assertIn("program_number", weekly_keys)
+        self.assertIn("mold_count", weekly_keys)
+
+        self.assertIn("systemic__balance", ids)
+        self.assertIn("برنامه‌ریزی توسط سیستم (تراز تقاضا و تأمین)", labels)
+        self.assertIn("برنامه‌ریزی توسط سیستم (کسری مواد)", labels)
+        self.assertIn("ثبت و کنترل تولید (دستگاه تزریق)", labels)
+        self.assertIn("ثبت و کنترل تولید (خط لوله)", labels)
+        self.assertTrue(any(lab.startswith("دیتای محصولات (") and lab.endswith(")") for lab in labels))
+        self.assertNotIn("دیتای محصولات — مشخصات کالاها", labels)
+        self.assertTrue(all(not str(i).startswith("excel_table_") for i in ids))
+        self.assertTrue(all("saved_report" not in str(i) and i != "reports" for i in ids))
+
+        headers, rows, _p, _d = run_report(
+            SOURCE_WEEKLY,
+            [
+                {"key": "program_number", "source": SOURCE_WEEKLY, "level": 1, "label": "شماره برنامه"},
+                {"key": "change_uid", "source": SOURCE_WEEKLY, "level": 1, "label": "شناسه تعویض"},
+                {"key": "mold_number", "source": SOURCE_WEEKLY, "level": 1, "label": "شماره قالب"},
+            ],
+        )
+        self.assertEqual(headers, ["شماره برنامه", "شناسه تعویض", "شماره قالب"])
+        self.assertTrue(rows)
+        self.assertTrue(any(r[0] for r in rows))
+
+        bal_headers, bal_rows, _bp, _bd = run_report(
+            "systemic__balance",
+            [
+                {"key": "product_code", "source": "systemic__balance", "level": 1, "label": "کد"},
+                {"key": "status", "source": "systemic__balance", "level": 1, "label": "وضعیت"},
+            ],
+        )
+        self.assertEqual(bal_headers, ["کد", "وضعیت"])
+        self.assertIsInstance(bal_rows, list)
 
     def test_builder_filters_sources_by_access_mode_in_script(self):
         """Readonly hides data_entry; editable keeps only data_entry (client filter)."""
