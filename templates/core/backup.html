@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}پشتیبان‌گیری و بازیابی{% endblock %}
+{% block heading %}پشتیبان‌گیری و بازیابی{% endblock %}
+{% block nav_backup %}active{% endblock %}
+
+{% block content %}
+<p class="muted backup-lead">
+  پشتیبان کامل یا تفکیکی روی مسیر سرور ذخیره می‌شود. بازیابی هم از همان آدرس
+  (پرونده zip یا پوشه استخراج‌شده) انجام می‌گیرد. فقط مدیر برنامه‌ریزی به این صفحه دسترسی دارد.
+</p>
+
+<div class="grid-2 backup-grid">
+  <div class="panel">
+    <div class="panel-head"><h2>تهیه پشتیبان</h2></div>
+    <div class="panel-body">
+      <form method="post" id="backup-form">
+        {% csrf_token %}
+        <label class="chk backup-full">
+          <input type="checkbox" name="full" value="1" id="backup-full" checked>
+          پشتیبان کامل (همه بخش‌ها)
+        </label>
+        <div class="backup-sections" id="backup-sections">
+          {% for s in sections %}
+          <label class="chk">
+            <input type="checkbox" name="sections" value="{{ s.key }}" class="backup-section" checked>
+            <span>
+              <strong>{{ s.label }}</strong>
+              <small class="muted">{{ s.hint }}</small>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="field">
+          <label for="dest_path">آدرس ذخیره روی سرور</label>
+          <input class="input path-input" type="text" name="dest_path" id="dest_path"
+                 dir="ltr" value="{{ default_path }}" required
+                 placeholder="D:\Backups  یا  /var/backups/erp">
+          <p class="field-hint">پوشه مقصد یا مسیر کامل پرونده zip. اگر پوشه باشد، نام پرونده به‌صورت خودکار ساخته می‌شود.</p>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="submit" name="action" value="backup">ذخیره در آدرس</button>
+          <button class="btn btn-ghost" type="submit" name="action" value="backup_download">ذخیره و دانلود</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>بازیابی از آدرس</h2></div>
+    <div class="panel-body">
+      <form method="post" enctype="multipart/form-data" id="restore-form">
+        {% csrf_token %}
+        <div class="field">
+          <label for="source_path">آدرس پشتیبان روی سرور</label>
+          <input class="input path-input" type="text" name="source_path" id="source_path"
+                 dir="ltr" value="{{ last_source }}"
+                 placeholder="D:\Backups\erp-backup-20260905.zip">
+          <p class="field-hint">مسیر پرونده zip یا پوشه‌ای که manifest.json داخل آن است.</p>
+        </div>
+        <div class="field">
+          <label for="archive_file">یا بارگذاری پرونده zip</label>
+          <input class="input" type="file" name="archive_file" id="archive_file" accept=".zip">
+        </div>
+        <div class="backup-sections">
+          <p class="muted">بخش‌هایی که باید از این پشتیبان برگردند (خالی = همه بخش‌های موجود در پرونده):</p>
+          {% for s in sections %}
+          <label class="chk">
+            <input type="checkbox" name="sections" value="{{ s.key }}">
+            <span>
+              <strong>{{ s.label }}</strong>
+              {% if s.replace %}<small class="muted">جایگزین می‌شود</small>
+              {% else %}<small class="muted">ادغام می‌شود</small>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <label class="chk backup-confirm">
+          <input type="checkbox" name="confirm_restore" value="1" required>
+          می‌دانم بخش‌های انتخاب‌شده با نسخه پشتیبان جایگزین می‌شوند.
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="submit" name="action" value="inspect" formnovalidate>خواندن مشخصات</button>
+          <button class="btn" type="submit" name="action" value="restore">بازیابی از آدرس</button>
+        </div>
+      </form>
+      {% if inspect_info %}
+      <div class="backup-inspect">
+        <h3>مشخصات پشتیبان</h3>
+        <p>منبع: <code dir="ltr">{{ inspect_info.source }}</code></p>
+        <p>تاریخ: {{ inspect_info.created_at }}</p>
+        <p>ایجادکننده: {{ inspect_info.created_by|default:"—" }}</p>
+        <p>بخش‌ها: {{ inspect_info.section_labels }}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var full = document.getElementById("backup-full");
+  var boxes = document.querySelectorAll("#backup-sections .backup-section");
+  function sync() {
+    var on = !!(full && full.checked);
+    boxes.forEach(function (box) {
+      box.checked = on || box.checked;
+      if (on) box.checked = true;
+      box.disabled = on;
+    });
+  }
+  if (full) {
+    full.addEventListener("change", sync);
+    sync();
+  }
+})();
+</script>
+{% endblock %}

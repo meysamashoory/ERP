@@ -1,9 +1,12 @@
 """Dashboard, reporting and export views."""
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.db.models import F, Sum
-from django.http import JsonResponse
-from django.shortcuts import render
+from django.http import FileResponse, JsonResponse
+from django.shortcuts import redirect, render
+from django.views.decorators.http import require_http_methods
 
 from catalog.models import Machine, Product, ProductionUnit, StoppageReason
 from planning.models import WeeklyPlan
@@ -303,3 +306,139 @@ def reports(request):
         "total_produced": sum((r.produced_quantity for r in qs), 0),
     }
     return render(request, "reports.html", context)
+
+
+def _require_backup_manager(request):
+    from accounts.permissions import get_profile
+
+    profile = get_profile(request.user)
+    if not profile or not profile.can_backup:
+        raise PermissionDenied("فقط مدیر برنامه‌ریزی می‌تواند پشتیبان بگیرد یا بازیابی کند.")
+    return profile
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def backup_center(request):
+    """Manager-only sectional backup / restore with a server path."""
+    from .backup import (
+        available_sections,
+        create_backup,
+        default_backup_dir,
+        read_manifest,
+        restore_backup,
+    )
+
+    _require_backup_manager(request)
+    sections = available_sections()
+    default_path = str(default_backup_dir())
+    inspect_info = None
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        selected = request.POST.getlist("sections")
+        if request.POST.get("full") == "1":
+            selected = ["full"]
+
+        if action in {"backup", "backup_download"}:
+            dest = request.POST.get("dest_path") or default_path
+            try:
+                result = create_backup(
+                    sections=selected,
+                    dest=dest,
+                    created_by=request.user.get_username(),
+                )
+            except ValueError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(
+                    request,
+                    f"پشتیبان در «{result.path}» ذخیره شد "
+                    f"({_human_size(result.size)}، بخش‌ها: {_fa_join(result.sections)}).",
+                )
+                if action == "backup_download":
+                    handle = open(result.path, "rb")
+                    response = FileResponse(
+                        handle,
+                        as_attachment=True,
+                        filename=result.path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
+                        content_type="application/zip",
+                    )
+                    return response
+            return redirect("backup_center")
+
+        uploaded = request.FILES.get("archive_file")
+        source_path = (request.POST.get("source_path") or "").strip()
+        source = source_path
+        tmp_upload = None
+        try:
+            if uploaded:
+                from pathlib import Path
+                from tempfile import NamedTemporaryFile
+
+                tmp = NamedTemporaryFile(delete=False, suffix=".zip")
+                for chunk in uploaded.chunks():
+                    tmp.write(chunk)
+                tmp.close()
+                tmp_upload = tmp.name
+                source = tmp_upload
+
+            if action == "inspect":
+                try:
+                    inspect_info = read_manifest(source)
+                    inspect_info["source"] = uploaded.name if tmp_upload else source_path
+                    inspect_info["section_labels"] = _fa_join(inspect_info.get("sections") or [])
+                except (FileNotFoundError, ValueError, OSError) as exc:
+                    messages.error(request, str(exc))
+                    inspect_info = None
+            elif action == "restore":
+                if request.POST.get("confirm_restore") != "1":
+                    messages.error(request, "برای بازیابی باید جایگزینی بخش‌ها را تأیید کنید.")
+                else:
+                    try:
+                        result = restore_backup(source=source, sections=selected or None)
+                    except (FileNotFoundError, ValueError, OSError) as exc:
+                        messages.error(request, str(exc))
+                    else:
+                        messages.success(
+                            request,
+                            f"بازیابی از «{result.source}» انجام شد "
+                            f"(بخش‌ها: {_fa_join(result.sections)}، {result.loaded} رکورد).",
+                        )
+                        return redirect("backup_center")
+            else:
+                messages.error(request, "عملیات نامعتبر است.")
+        finally:
+            if tmp_upload:
+                from pathlib import Path
+
+                try:
+                    Path(tmp_upload).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    return render(
+        request,
+        "core/backup.html",
+        {
+            "sections": sections,
+            "default_path": default_path,
+            "inspect_info": inspect_info,
+            "last_source": request.POST.get("source_path") or "",
+        },
+    )
+
+
+def _human_size(n: int) -> str:
+    if n < 1024:
+        return f"{n} بایت"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} کیلوبایت"
+    return f"{n / (1024 * 1024):.1f} مگابایت"
+
+
+def _fa_join(keys: list[str]) -> str:
+    from .backup import available_sections
+
+    labels = {row["key"]: row["label"] for row in available_sections()}
+    return "، ".join(labels.get(k, k) for k in keys)
