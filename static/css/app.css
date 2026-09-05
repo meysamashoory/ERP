@@ -214,3 +214,32 @@ dialog.dialog::backdrop { background: rgba(15,23,42,.5); }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 .inline-edit-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
 .inline-edit-form .field { margin-bottom: 0; }
+
+.backup-lead { margin: 0 0 18px; max-width: 72ch; }
+.backup-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+.backup-sections .chk {
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.backup-sections .chk small { display: block; font-weight: 400; }
+.backup-full, .backup-confirm { margin: 4px 0 10px; font-weight: 600; }
+.path-input { font-family: ui-monospace, Tahoma, monospace; letter-spacing: 0; }
+.field-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.backup-inspect {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.backup-inspect h3 { margin: 0 0 8px; font-size: 14px; }
+.backup-inspect code { font-size: 12px; }
