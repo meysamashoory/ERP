@@ -1278,7 +1278,10 @@ class ReportUiPolishTests(TestCase):
         self.assertIn("novalidate", html)
         self.assertIn('option value="(">)', html)
         self.assertIn('option value=")">(', html)
-        self.assertNotIn('id="cond-paren-open" name="cond_paren_open" dir="ltr"', html)
+        self.assertIn("rb-paren-select", html)
+        css = Path("/workspace/static/css/report_app.css").read_text(encoding="utf-8")
+        self.assertIn(".rb-paren-select", css)
+        self.assertIn("direction: ltr", css)
         hub = Path("/workspace/static/js/flexible_hub.js").read_text(encoding="utf-8")
         self.assertIn("scrollTableToRtlStart", hub)
 

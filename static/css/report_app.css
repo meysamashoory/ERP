@@ -783,8 +783,12 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
   border-bottom: 1px solid var(--rp-line);
   vertical-align: middle;
 }
-.conditions-table .rb-paren-cell,
+.conditions-table .rb-paren-cell {
+  text-align: center;
+}
 .rb-paren-select {
+  direction: ltr;
+  unicode-bidi: isolate;
   text-align: center;
 }
 .conditions-table .rb-paren-glyph {
