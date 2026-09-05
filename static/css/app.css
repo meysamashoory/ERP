@@ -486,6 +486,13 @@ tr.is-conflict-row > td {
   overflow: visible;
   line-height: 1.45;
   text-align: right;
+  min-width: 420px;
+}
+.naming-keys-table td:nth-child(6) {
+  min-width: 260px;
+}
+.naming-link-select {
+  min-width: 240px;
 }
 .naming-badge {
   display: inline-block; margin-inline-start: 6px;

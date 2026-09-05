@@ -414,6 +414,12 @@
 
   function enhanceTable(table) {
     if (!table || table.getAttribute("data-layout-ready") === "1") return;
+    if (
+      table.classList.contains("naming-keys-table") ||
+      table.classList.contains("naming-cols-table")
+    ) {
+      return;
+    }
     table.setAttribute("data-layout-ready", "1");
     var section = sectionOf(table);
     var locks = locksFromBody();
