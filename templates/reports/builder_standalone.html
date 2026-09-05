@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=6">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=7">
 </head>
 <body class="report-app">
 <form method="post"
@@ -13,7 +13,8 @@
       class="builder-compact"
       action="{% if report %}{% url 'report_edit' report.pk %}{% else %}{% url 'report_create' %}{% endif %}"
       data-mode="{{ mode }}"
-      data-list-url="{{ list_url|default:'' }}">
+      data-list-url="{{ list_url|default:'' }}"
+      novalidate>
   {% csrf_token %}
   {{ form.columns_json }}
   <input type="hidden" name="source_links_json" id="id_source_links_json" value="[]">
@@ -269,18 +270,18 @@
       </div>
       <div class="field">
         <label for="cond-paren-open">پرانتز باز</label>
-        <select class="input" id="cond-paren-open" name="cond_paren_open" dir="ltr">
+        <select class="input rb-paren-select" id="cond-paren-open" name="cond_paren_open">
           <option value="">—</option>
-          <option value="(">(</option>
-          <option value="((">((</option>
+          <option value="(">)</option>
+          <option value="((">)))</option>
         </select>
       </div>
       <div class="field">
         <label for="cond-paren-close">پرانتز بسته</label>
-        <select class="input" id="cond-paren-close" name="cond_paren_close" dir="ltr">
+        <select class="input rb-paren-select" id="cond-paren-close" name="cond_paren_close">
           <option value="">—</option>
-          <option value=")">)</option>
-          <option value="))">))</option>
+          <option value=")">(</option>
+          <option value="))">((</option>
         </select>
       </div>
       <div class="field">
@@ -335,7 +336,7 @@
 {{ param_capable_keys|json_script:"param-capable-keys" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=12"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=13"></script>
 <script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {

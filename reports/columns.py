@@ -657,11 +657,14 @@ LEVEL_MODE_CHOICES: list[tuple[str, str]] = (
 
 
 def clamp_sort_priority(raw) -> int:
+    """0 = no explicit priority. 1–9 are sort ranks (1 first)."""
+    if raw is None or raw == "":
+        return 0
     try:
-        n = int(raw or 1)
+        n = int(raw)
     except (TypeError, ValueError):
-        n = 1
-    return max(1, min(9, n))
+        return 0
+    return max(0, min(9, n))
 
 
 def normalize_cell_align(raw) -> str:
@@ -808,7 +811,7 @@ def normalize_columns(raw) -> list[dict]:
                 "col_code": "",
                 "number_format": "General",
                 "formula": "",
-                "sort_priority": 1,
+                "sort_priority": 0,
                 "sort_asc": True,
                 "is_hidden": False,
                 "cell_align": "right",
@@ -1449,17 +1452,29 @@ def _sort_report_rows(
     display_rows: list[list],
     payloads: list[dict],
 ) -> tuple[list[list], list[dict]]:
-    """Sort rows by column sort_priority (1 first). Same priority → rightmost column first (RTL)."""
+    """Sort rows by column sort_priority (1 first). 0 = no priority.
+
+    All zeros → RTL from the rightmost column. If any column has 1–9,
+    only those prioritized columns are used (same rank → rightmost first).
+    """
     if not display_rows or not level_cols:
         return display_rows, payloads
     # RTL: index 0 is rightmost → earlier among equal priorities.
-    order = sorted(
-        range(len(level_cols)),
-        key=lambda i: (
-            clamp_sort_priority(level_cols[i].get("sort_priority")),
-            i,
-        ),
-    )
+    prioritized = [
+        i
+        for i in range(len(level_cols))
+        if clamp_sort_priority(level_cols[i].get("sort_priority")) > 0
+    ]
+    if prioritized:
+        order = sorted(
+            prioritized,
+            key=lambda i: (
+                clamp_sort_priority(level_cols[i].get("sort_priority")),
+                i,
+            ),
+        )
+    else:
+        order = list(range(len(level_cols)))
     paired = list(zip(display_rows, payloads))
 
     def row_sort_key(item):

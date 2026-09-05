@@ -784,14 +784,12 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
   vertical-align: middle;
 }
 .conditions-table .rb-paren-cell,
-#cond-paren-open,
-#cond-paren-close {
-  direction: ltr;
-  unicode-bidi: isolate;
+.rb-paren-select {
   text-align: center;
 }
 .conditions-table .rb-paren-glyph {
   display: inline-block;
+  /* Visual glyphs are already RTL-mirrored; isolate so they do not flip again. */
   direction: ltr;
   unicode-bidi: isolate;
 }
