@@ -83,8 +83,9 @@ def normalize_all_layouts(
             continue
         layout = default_layout(key)
         layout["row_height_px"] = fallback_height
-        if key in legacy_locks:
-            layout["width_locked"] = bool(legacy_locks[key])
+        # Old lock maps defaulted to unlocked (False). Only keep explicit True.
+        if bool(legacy_locks.get(key)):
+            layout["width_locked"] = True
         out[key] = layout
     return out
 

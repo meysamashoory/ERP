@@ -36,10 +36,11 @@ class TableLayoutHelpersTests(SimpleTestCase):
         layouts = normalize_all_layouts(
             {},
             legacy_height=40,
-            legacy_locks={"reports": True},
+            legacy_locks={"reports": True, "planning": False},
         )
         self.assertEqual(layouts["planning"]["row_height_px"], 40)
         self.assertTrue(layouts["reports"]["width_locked"])
+        self.assertTrue(layouts["planning"]["width_locked"])
 
     def test_css_includes_height_and_hidden_borders(self):
         css = css_for_layouts(
