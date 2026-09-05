@@ -56,6 +56,9 @@
         {% if profile.can_manage_users or user.is_superuser %}
         <a href="{% url 'user_management' %}" class="{% block nav_users %}{% endblock %}">مدیریت کاربران</a>
         {% endif %}
+        {% if profile.can_backup or user.is_superuser %}
+        <a href="{% url 'backup_center' %}" class="{% block nav_backup %}{% endblock %}">پشتیبان‌گیری</a>
+        {% endif %}
         <form method="post" action="{% url 'logout' %}" class="nav-logout" id="logout-form">{% csrf_token %}
           <button class="nav-logout-btn" type="submit">خروج از سامانه</button>
         </form>
