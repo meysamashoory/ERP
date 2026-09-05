@@ -702,9 +702,13 @@
           '<td><select class="input" data-level="' + idx + '">' + levelOptionsHtml(c.level_mode) + "</select></td>" +
           '<td><input class="input sel-width" type="text" inputmode="numeric" data-width="' + idx +
             '" value="' + (clampWidth(c.width) || "") + '"></td>' +
-          '<td class="key-cell"><label class="rb-check"><input type="checkbox" class="rb-check-input" data-key="' + idx + '"' + keyChecked + keyDisabled + "><span class="rb-check-ui" aria-hidden="true"></span></label></td>" +
-          '<td><select class="input sel-format" dir="ltr" data-format="' + idx + '">' + formatOptionsHtml(c.number_format || "General") + "</select></td>" +
-          '<td class="priority-cell"><select class="input" data-priority="' + idx + '">' + priorityOptionsHtml(c.sort_priority) + "</select></td>" +
+          '<td class="key-cell"><label class="rb-check"><input type="checkbox" class="rb-check-input" data-key="' +
+            idx + '"' + keyChecked + keyDisabled +
+            '><span class="rb-check-ui" aria-hidden="true"></span></label></td>' +
+          '<td><select class="input sel-format" dir="ltr" data-format="' + idx + '">' +
+            formatOptionsHtml(c.number_format || "General") + "</select></td>" +
+          '<td class="priority-cell"><select class="input" data-priority="' + idx + '">' +
+            priorityOptionsHtml(c.sort_priority) + "</select></td>" +
           '<td class="fx-cell">' + fxCell + "</td>" +
           '<td class="priv-cell">' + privCell + "</td>";
         list.appendChild(tr);
