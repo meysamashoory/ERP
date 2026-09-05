@@ -1,13 +1,15 @@
 {% extends "base.html" %}
-{% block title %}گزارش‌ها{% endblock %}
-{% block heading %}گزارش‌ها{% endblock %}
+{% load static %}
+{% block title %}لیست گزارش‌ها{% endblock %}
+{% block heading %}لیست گزارش‌ها{% endblock %}
 {% block nav_reports %}{% endblock %}
 {% block nav_report_list %}active{% endblock %}
 
 {% block topbar_actions %}
 {% if can_create %}
 <div class="topbar-actions">
-  <button type="button" class="btn btn-sm btn-primary-soft" id="btn-create-report">+ ایجاد گزارش</button>
+  <button type="button" class="btn btn-sm btn-primary-soft" id="btn-create-report"
+          data-create-url="{% url 'report_create' %}">+ ایجاد گزارش</button>
 </div>
 {% endif %}
 {% endblock %}
@@ -16,7 +18,7 @@
 <div class="panel panel-compact panel-list">
   {% if rows %}
   <div class="table-scroll">
-  <table class="table table-compact table-list-nav table-plan-list" id="report-list-table" data-table-section="reports">
+  <table class="table table-compact table-list-nav table-plan-list" id="report-list-table" data-table-section="reports" data-lock-widths="1">
     <thead>
       <tr>
         <th style="width:90px">
@@ -32,13 +34,15 @@
         <th style="width:120px">مدل گزارش</th>
         <th style="width:110px">نوع گزارش</th>
         <th style="width:110px">تعداد فرم</th>
-        <th style="width:200px">عملیات</th>
+        <th class="col-ops" style="width:280px">عملیات</th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
       <tr class="list-row" data-report-id="{{ row.report.pk }}"
-          data-href="{% url 'report_detail' row.report.pk %}"
+          data-view-url="{% url 'report_detail' row.report.pk %}"
+          data-edit-url="{% url 'report_edit' row.report.pk %}"
+          data-drill-index="{{ forloop.counter0 }}"
           data-title="{{ row.report.title }}"
           data-number="{{ row.report.number }}"
           data-description="{{ row.report.description }}"
@@ -96,10 +100,7 @@
 
 <template id="tpl-create">
   <div class="dialog-head"><h3>ایجاد گزارش</h3></div>
-  <form method="post" action="{% url 'report_create' %}" data-action-form>
-    {% csrf_token %}
-    <input type="hidden" name="columns_json" value="[]">
-    <input type="hidden" name="source_links_json" value="[]">
+  <form method="dialog" id="create-report-form" data-create-meta-form>
     <div class="field"><label>عنوان گزارش</label><input class="input" name="title" required maxlength="200"></div>
     <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری" maxlength="300"></div>
@@ -115,7 +116,7 @@
     </div>
     {% endif %}
     <div class="form-actions">
-      <button class="btn" type="submit">ایجاد گزارش</button>
+      <button class="btn" type="submit" data-create-confirm>تایید اطلاعات</button>
       <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
     </div>
   </form>
@@ -170,10 +171,17 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {
   var dialog = document.getElementById("report-action-dialog");
   var body = dialog.querySelector("[data-dialog-body]");
+
+  function openReportApp(url, opts) {
+    if (window.ERPOpenReportApp) return window.ERPOpenReportApp(url, opts);
+    window.location.href = url;
+    return false;
+  }
 
   function openFromTemplate(tplId, setup) {
     var tpl = document.getElementById(tplId);
@@ -183,14 +191,48 @@
     if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
     if (window.enhance) window.enhance(body);
     if (window.ERPNormalizeNumbers) window.ERPNormalizeNumbers.init(body);
+    if (window.ERPFormEnterNav) window.ERPFormEnterNav.bind(body);
   }
 
   var createBtn = document.getElementById("btn-create-report");
   if (createBtn) {
     createBtn.addEventListener("click", function () {
-      openFromTemplate("tpl-create");
+      openFromTemplate("tpl-create", function (root) {
+        var form = root.querySelector("[data-create-meta-form]");
+        if (!form) return;
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var title = (form.title.value || "").trim();
+          var numberRaw = String(form.number.value || "").trim();
+          var number = String(parseInt(numberRaw, 10) || "");
+          if (!title) { alert("عنوان گزارش را وارد کنید."); return; }
+          if (!number || number === "0") { alert("شماره گزارش را وارد کنید."); return; }
+          var params = new URLSearchParams();
+          params.set("title", title);
+          params.set("number", number);
+          params.set("description", (form.description.value || "").trim());
+          params.set("access_mode", form.access_mode.value || "readonly");
+          var std = form.querySelector('[name="is_standard"]');
+          if (std && std.checked) params.set("is_standard", "1");
+          var base = createBtn.getAttribute("data-create-url") || "{% url 'report_create' %}";
+          if (typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
+          openReportApp(base + (base.indexOf("?") >= 0 ? "&" : "?") + params.toString(), {
+            name: "erp-report-create-" + Date.now()
+          });
+        });
+      });
     });
   }
+
+  // Open report viewer in standalone window on row activate (2nd click / Enter)
+  document.getElementById("report-list-table") &&
+  document.getElementById("report-list-table").addEventListener("erp-row-activate", function (e) {
+    var tr = e.target.closest("tr.list-row");
+    if (!tr) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openReportApp(tr.getAttribute("data-view-url"));
+  });
 
   document.querySelectorAll("[data-ops]").forEach(function (sel) {
     var apply = sel.parentElement.querySelector("[data-ops-apply]");
@@ -199,7 +241,10 @@
       var row = sel.closest("tr");
       var op = sel.value;
       var id = row.getAttribute("data-report-id");
-      if (op === "edit") { window.location = "/reports/" + id + "/edit/"; return; }
+      if (op === "edit") {
+        openReportApp(row.getAttribute("data-edit-url") || ("/reports/" + id + "/edit/"));
+        return;
+      }
       var tplId = op === "send" ? "tpl-send" : op === "copy" ? "tpl-copy" : "tpl-delete";
       openFromTemplate(tplId, function (root) {
         var form = root.querySelector("[data-action-form]");

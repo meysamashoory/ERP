@@ -140,17 +140,36 @@
         stopReveal();
 
         var widths = lockAllColumnWidths(table);
-        var startX = e.clientX;
-        var startW = widths[idx];
+        var thRect = th.getBoundingClientRect();
+        var isRtl = true;
+        try {
+          isRtl = getComputedStyle(table).direction !== "ltr";
+        } catch (err) {}
+        var startAnchor = isRtl ? thRect.right : thRect.left;
+        var scrollEl = th.closest(".table-scroll, .table-scroll-wide, .table-wrap");
 
         function onMove(ev) {
-          var dx = startX - ev.clientX;
-          var next = Math.max(MIN_COL, Math.min(MAX_COL, startW + dx));
-          widths[idx] = Math.round(next);
+          var next = isRtl
+            ? Math.round(startAnchor - ev.clientX)
+            : Math.round(ev.clientX - startAnchor);
+          next = Math.max(MIN_COL, Math.min(MAX_COL, next));
+          var edgeBefore = isRtl ? th.getBoundingClientRect().right : th.getBoundingClientRect().left;
+          widths[idx] = next;
           th.style.width = next + "px";
           th.style.minWidth = next + "px";
           th.style.maxWidth = next + "px";
           applyFitWidth(table, widths);
+          if (scrollEl) {
+            var edgeAfter = isRtl ? th.getBoundingClientRect().right : th.getBoundingClientRect().left;
+            var drift = edgeAfter - edgeBefore;
+            if (drift) {
+              var scrollRtl = false;
+              try {
+                scrollRtl = getComputedStyle(scrollEl).direction === "rtl";
+              } catch (err2) {}
+              scrollEl.scrollLeft += scrollRtl ? -drift : drift;
+            }
+          }
         }
 
         function onUp() {
@@ -369,6 +388,7 @@
     var section = sectionOf(table);
     var locks = locksFromBody();
     var locked = section ? !!locks[section] : false;
+    if (table.getAttribute("data-lock-widths") === "1") locked = true;
 
     var metaWidths = null;
     if (table.id === "report-data-table") {
@@ -407,6 +427,10 @@
         'table.table[data-table-section="reports"], [data-table-section="reports"] table.table'
       )
       .forEach(enhanceTable);
+    // Marquee reveal for all scrollable data tables (height stays locked via CSS).
+    document
+      .querySelectorAll(".table-scroll table.table, .table-scroll-wide table.table")
+      .forEach(bindReveal);
   }
 
   function boot() {

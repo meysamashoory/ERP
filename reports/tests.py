@@ -37,12 +37,13 @@ class ReportFlowTests(TestCase):
                 ),
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
         report = SavedReport.objects.get(number=100, owner=self.expert)
         self.assertEqual(report.title, "گزارش تست")
         self.assertEqual(report.description, "توضیح نمونه")
         self.assertEqual(len(report.columns), 4)
-        self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
+        self.assertContains(resp, "گزارش ذخیره شد")
+        self.assertContains(resp, "در حال بستن پنجره")
 
         list_resp = self.client.get(reverse("report_list"))
         self.assertContains(list_resp, "گزارش تست")
@@ -51,6 +52,8 @@ class ReportFlowTests(TestCase):
         self.assertContains(list_resp, "نوع گزارش")
         self.assertContains(list_resp, "تعداد فرم")
         self.assertContains(list_resp, "+ ایجاد گزارش")
+        self.assertContains(list_resp, "لیست گزارش‌ها")
+        self.assertContains(list_resp, 'data-lock-widths="1"')
         self.assertContains(list_resp, "btn-create-report")
         self.assertContains(list_resp, "tpl-create")
         self.assertNotContains(list_resp, "th-filter-btn")
@@ -59,7 +62,7 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "100- گزارش تست")
         self.assertContains(detail, "(توضیح نمونه)")
-        self.assertContains(detail, ">ویرایش<")
+        self.assertNotContains(detail, 'id="rp-edit-link"')
         self.assertContains(detail, "خروجی")
         self.assertContains(detail, "موقعیت:")
         self.assertNotContains(detail, "قابل اصلاح")
@@ -69,7 +72,7 @@ class ReportFlowTests(TestCase):
         self.assertEqual(excel.status_code, 200)
         self.assertIn("spreadsheetml", excel["Content-Type"])
 
-    def test_create_report_meta_dialog_allows_empty_columns_and_strips_leading_zeros(self):
+    def test_create_report_rejects_empty_columns_and_prefills_meta_from_query(self):
         self.client.login(username="expert", password="erp12345")
         resp = self.client.post(
             reverse("report_create"),
@@ -81,15 +84,22 @@ class ReportFlowTests(TestCase):
                 "columns_json": "[]",
             },
         )
-        self.assertEqual(resp.status_code, 302)
-        report = SavedReport.objects.get(title="گزارش دیالوگ", owner=self.expert)
-        self.assertEqual(report.number, 5)
-        self.assertEqual(report.columns, [])
-        self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            SavedReport.objects.filter(title="گزارش دیالوگ", owner=self.expert).exists()
+        )
+        self.assertContains(resp, "حداقل یک ستون انتخاب کنید.")
 
-        get_create = self.client.get(reverse("report_create"))
-        self.assertEqual(get_create.status_code, 302)
-        self.assertIn("/reports/", get_create["Location"])
+        get_create = self.client.get(
+            reverse("report_create"),
+            {"title": "گزارش دیالوگ", "number": "05", "access_mode": "readonly"},
+        )
+        self.assertEqual(get_create.status_code, 200)
+        self.assertContains(get_create, "گزارش جدید")
+        self.assertContains(get_create, "report-builder-form")
+        self.assertContains(get_create, 'value="گزارش دیالوگ"')
+        self.assertContains(get_create, 'value="5"')
+        self.assertContains(get_create, "metaConfirmed: true")
 
     def test_report_sources_include_history_not_excel(self):
         from reports.columns import get_column_groups, run_report
@@ -195,7 +205,8 @@ class ReportFlowTests(TestCase):
                 ),
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "گزارش ذخیره شد")
         report = SavedReport.objects.get(number=777, owner=self.expert)
         self.assertEqual(report.access_mode, "editable")
         self.assertEqual(report.data_source, "data_entry")
@@ -654,7 +665,9 @@ class PrintFormFlowTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, report.title)
         self.assertContains(resp, "نحوه نمایش")
-        self.assertContains(resp, ">ویرایش<")
+        self.assertContains(resp, "ثبت گزارش")
+        self.assertNotContains(resp, 'id="edit-meta-btn"')
+        self.assertContains(resp, "برای ویرایش اطلاعات گزارش کلیک کنید")
         self.assertNotContains(resp, "بالا = راست")
 
     def test_sidebar_labels(self):
@@ -944,7 +957,8 @@ class ReportColumnKeyAndWidthTests(TestCase):
                 "source_links_json": "[]",
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "گزارش ذخیره شد")
         report.refresh_from_db()
         by_key = {c["key"]: c for c in report.columns}
         self.assertTrue(by_key["code"]["is_key"])
@@ -974,6 +988,67 @@ class ReportColumnKeyAndWidthTests(TestCase):
         self.assertIn("_drill_keys", payloads[0])
         self.assertIn("c1", payloads[0]["_drill_keys"])
         self.assertNotIn("c2", payloads[0]["_drill_keys"])
+
+
+
+class ColumnDisplayPropsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_demo")
+
+    def test_level_labels_use_ordinals(self):
+        from reports.columns import LEVEL_MODE_CHOICES
+        labels = dict(LEVEL_MODE_CHOICES)
+        self.assertEqual(labels["1"], "اول")
+        self.assertEqual(labels["9"], "نهم")
+        self.assertEqual(labels["upto_2"], "تا دوم")
+        self.assertEqual(labels["upto_8"], "تا هشتم")
+        self.assertEqual(labels["all"], "همه سطوح")
+
+    def test_hidden_column_excluded_from_display_but_sortable(self):
+        from reports.columns import normalize_columns, run_report, level_display_meta
+        from reports.formula import to_number
+
+        cols = normalize_columns([
+            {
+                "key": "code", "source": "product", "label": "کد",
+                "level_mode": "all", "is_key": True, "sort_priority": 2,
+            },
+            {
+                "key": "stock_finished", "source": "product", "label": "موجودی",
+                "level_mode": "all", "sort_priority": 1, "sort_asc": False,
+                "number_format": "#,##0", "cell_align": "center",
+            },
+            {
+                "key": "file_stock", "source": "product", "label": "فایل",
+                "level_mode": "all", "sort_priority": 9, "is_hidden": True,
+                "props_level_mode": "all",
+            },
+        ])
+        meta = level_display_meta(cols, 1)
+        self.assertEqual([m["label"] for m in meta], ["کد", "موجودی"])
+        self.assertEqual(meta[1]["cell_align"], "center")
+        headers, rows, _payloads, _deeper = run_report("product", cols, level=1)
+        self.assertEqual(headers, ["کد", "موجودی"])
+        self.assertTrue(rows)
+        self.assertEqual(len(rows[0]), 2)
+        first = to_number(str(rows[0][1]).replace(",", ""))
+        last = to_number(str(rows[-1][1]).replace(",", ""))
+        self.assertGreaterEqual(first, last)
+
+    def test_same_priority_prefers_rightmost_column(self):
+        from reports.columns import _sort_report_rows
+
+        level_cols = [
+            {"sort_priority": 1, "sort_asc": True, "label": "R"},
+            {"sort_priority": 1, "sort_asc": True, "label": "L"},
+        ]
+        rows = [["b", "a"], ["a", "b"]]
+        payloads = [{}, {}]
+        sorted_rows, _ = _sort_report_rows(level_cols, rows, payloads)
+        self.assertEqual(sorted_rows[0], ["a", "b"])
+        self.assertEqual(sorted_rows[1], ["b", "a"])
 
 
 class ReportDefaultColumnWidthTests(TestCase):
@@ -1153,3 +1228,255 @@ class ReportUiPolishTests(TestCase):
         self.assertIn("cell-reveal-inner", js)
         self.assertIn("overflow: hidden", css)
         self.assertNotIn("distance * 28", js)
+
+
+class ReportConditionsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo")
+        cls.expert = User.objects.get(username="expert")
+
+    def test_condition_validation_and_or_parens(self):
+        from reports.conditions import validate_conditions_blob, row_matches_conditions
+
+        good = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren": "(",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "parameter",
+                    "param_code": "date_today",
+                    "value": "",
+                },
+                {
+                    "logic": "or",
+                    "paren": "",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "14051102",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren": ")",
+                    "source": "fitting",
+                    "field": "code",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "ABC",
+                    "param_code": "",
+                },
+            ],
+            "private": {},
+        }
+        self.assertEqual(validate_conditions_blob(good), [])
+        rows = good["public"]
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "14051102", "code": "Z"}, rows, {"date_today": "14050101"}
+            )
+        )
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "14050101", "code": "Z"}, rows, {"date_today": "14050101"}
+            )
+        )
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "x", "code": "ABC"}, rows, {"date_today": "y"}
+            )
+        )
+        self.assertFalse(
+            row_matches_conditions(
+                {"date": "x", "code": "Z"}, rows, {"date_today": "y"}
+            )
+        )
+
+    def test_condition_split_parens_open_close(self):
+        from reports.conditions import validate_conditions_blob, row_matches_conditions
+
+        blob = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren_open": "(",
+                    "paren_close": "",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "14051102",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren_open": "",
+                    "paren_close": ")",
+                    "source": "fitting",
+                    "field": "code",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "ABC",
+                    "param_code": "",
+                },
+            ],
+            "private": {},
+        }
+        self.assertEqual(validate_conditions_blob(blob), [])
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "14051102", "code": "Z"}, blob["public"], {}
+            )
+        )
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "x", "code": "ABC"}, blob["public"], {}
+            )
+        )
+
+    def test_condition_exclusive_and_nested_parens(self):
+        from reports.conditions import (
+            paren_close_of,
+            paren_open_of,
+            row_matches_conditions,
+            validate_conditions_blob,
+        )
+
+        both = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren_open": "(",
+                    "paren_close": ")",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "14051102",
+                    "param_code": "",
+                }
+            ],
+            "private": {},
+        }
+        errs = validate_conditions_blob(both)
+        self.assertTrue(any("فقط پرانتز" in err for err in errs))
+
+        nested = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren_open": "((",
+                    "paren_close": "",
+                    "source": "fitting",
+                    "field": "a",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "1",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren_open": "(",
+                    "paren_close": "",
+                    "source": "fitting",
+                    "field": "b",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "2",
+                    "param_code": "",
+                },
+                {
+                    "logic": "and",
+                    "paren_open": "",
+                    "paren_close": ")",
+                    "source": "fitting",
+                    "field": "c",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "3",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren_open": "",
+                    "paren_close": "))",
+                    "source": "fitting",
+                    "field": "d",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "4",
+                    "param_code": "",
+                },
+            ],
+            "private": {},
+        }
+        self.assertEqual(validate_conditions_blob(nested), [])
+        self.assertEqual(paren_open_of(nested["public"][0]), "((")
+        self.assertEqual(paren_close_of(nested["public"][3]), "))")
+        rows = nested["public"]
+        self.assertTrue(row_matches_conditions({"a": "1", "b": "x", "c": "x", "d": "x"}, rows))
+        self.assertTrue(row_matches_conditions({"a": "x", "b": "2", "c": "3", "d": "x"}, rows))
+        self.assertTrue(row_matches_conditions({"a": "x", "b": "x", "c": "x", "d": "4"}, rows))
+        self.assertFalse(row_matches_conditions({"a": "x", "b": "2", "c": "x", "d": "x"}, rows))
+
+    def test_run_report_empty_columns_returns_no_system_rows(self):
+        from reports.columns import run_report
+
+        headers, rows, payloads, deeper = run_report("fitting", [])
+        self.assertEqual(headers, [])
+        self.assertEqual(rows, [])
+        self.assertEqual(payloads, [])
+        self.assertFalse(deeper)
+
+    def test_builder_and_viewer_use_standalone_templates(self):
+        self.client.login(username="expert", password="erp12345")
+        report = SavedReport.objects.create(
+            owner=self.expert,
+            created_by=self.expert,
+            title="Standalone",
+            number=777,
+            data_source="fitting",
+            columns=[{"key": "date", "source": "fitting", "level": 1, "label": "تاریخ", "uid": "c1"}],
+            conditions={
+                "public": [
+                    {
+                        "logic": "",
+                        "paren": "",
+                        "source": "fitting",
+                        "field": "date",
+                        "op": "=",
+                        "value_mode": "parameter",
+                        "param_code": "date_today",
+                        "value": "",
+                    }
+                ],
+                "private": {},
+            },
+        )
+        edit = self.client.get(reverse("report_edit", args=[report.pk]))
+        self.assertEqual(edit.status_code, 200)
+        self.assertContains(edit, "rp-shell")
+        self.assertContains(edit, "cond-tab-public")
+        self.assertContains(edit, "condition-dialog")
+        self.assertContains(edit, 'value="(("')
+        self.assertContains(edit, 'value="))"')
+        self.assertContains(edit, "delete-col")
+        self.assertContains(edit, "خصوصی")
+
+        detail = self.client.get(reverse("report_detail", args=[report.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "report-param-dialog")
+        self.assertContains(detail, "date_today")
+        self.assertTrue(detail.context["need_params"])
+
+        applied = self.client.post(
+            reverse("report_detail", args=[report.pk]),
+            {"action": "apply_params", "param_date_today": "14051102"},
+        )
+        self.assertEqual(applied.status_code, 200)
+        self.assertFalse(applied.context["need_params"])

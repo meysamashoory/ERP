@@ -636,13 +636,48 @@ def clamp_column_width(raw) -> int:
 
 
 # Level modes: exact 1-9, upto_2..upto_8, all. Legacy int level maps to exact.
+_LEVEL_ORDINALS = {
+    1: "اول",
+    2: "دوم",
+    3: "سوم",
+    4: "چهارم",
+    5: "پنجم",
+    6: "ششم",
+    7: "هفتم",
+    8: "هشتم",
+    9: "نهم",
+}
 LEVEL_MODE_CHOICES: list[tuple[str, str]] = (
-    [("1", "سطح ۱")]
-    + [(str(i), f"سطح {i}") for i in range(2, 10)]
-    + [(f"upto_{i}", f"تا سطح {i}") for i in range(2, 9)]
+    [(str(i), _LEVEL_ORDINALS[i]) for i in range(1, 10)]
+    + [(f"upto_{i}", f"تا {_LEVEL_ORDINALS[i]}") for i in range(2, 9)]
     + [("all", "همه سطوح")]
 )
 
+
+
+
+def clamp_sort_priority(raw) -> int:
+    try:
+        n = int(raw or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, min(9, n))
+
+
+def normalize_cell_align(raw) -> str:
+    text = str(raw or "right").strip().lower()
+    return text if text in {"left", "center", "right"} else "right"
+
+
+def props_apply_at_level(spec: dict, level: int) -> bool:
+    """Whether column property flags apply at the given report level."""
+    mode = normalize_level_mode(spec.get("props_level_mode") or "all", 1)
+    level = max(1, min(9, int(level or 1)))
+    if mode == "all":
+        return True
+    if mode.startswith("upto_"):
+        return level <= level_mode_max(mode)
+    return level_mode_max(mode) == level
 
 def normalize_level_mode(raw, legacy_level=1) -> str:
     text = str(raw or "").strip().lower()
@@ -773,6 +808,11 @@ def normalize_columns(raw) -> list[dict]:
                 "col_code": "",
                 "number_format": "General",
                 "formula": "",
+                "sort_priority": 1,
+                "sort_asc": True,
+                "is_hidden": False,
+                "cell_align": "right",
+                "props_level_mode": "all",
             })
             continue
         if not isinstance(item, dict):
@@ -811,6 +851,15 @@ def normalize_columns(raw) -> list[dict]:
         if kind == "calc" and formula and not formula.startswith("="):
             formula = "=" + formula
         col_code = str(item.get("col_code") or "").strip().lower()[:8]
+        sort_priority = clamp_sort_priority(item.get("sort_priority"))
+        sort_asc = item.get("sort_asc", True)
+        if isinstance(sort_asc, str):
+            sort_asc = sort_asc.strip().lower() not in {"0", "false", "no", ""}
+        else:
+            sort_asc = bool(sort_asc)
+        is_hidden = bool(item.get("is_hidden"))
+        cell_align = normalize_cell_align(item.get("cell_align"))
+        props_level_mode = normalize_level_mode(item.get("props_level_mode") or "all", 1)
         out.append({
             "key": key,
             "source": source,
@@ -824,6 +873,11 @@ def normalize_columns(raw) -> list[dict]:
             "col_code": col_code,
             "number_format": number_format,
             "formula": formula if kind == "calc" else "",
+            "sort_priority": sort_priority,
+            "sort_asc": sort_asc,
+            "is_hidden": is_hidden,
+            "cell_align": cell_align,
+            "props_level_mode": props_level_mode,
         })
     return assign_missing_col_codes(out)
 
@@ -841,6 +895,10 @@ def level_display_meta(columns, level: int = 1) -> list[dict]:
                 pick = lv
         if pick is not None:
             level_specs = [s for s in specs if column_visible_at_level(s, pick)]
+    visible = [
+        s for s in level_specs
+        if not (s.get("is_hidden") and props_apply_at_level(s, level))
+    ]
     return [
         {
             "key": storage_key(s),
@@ -852,8 +910,12 @@ def level_display_meta(columns, level: int = 1) -> list[dict]:
             "number_format": s.get("number_format") or "General",
             "kind": s.get("kind") or "field",
             "formula": s.get("formula") or "",
+            "cell_align": normalize_cell_align(s.get("cell_align")),
+            "sort_priority": clamp_sort_priority(s.get("sort_priority")),
+            "sort_asc": bool(s.get("sort_asc", True)),
+            "is_hidden": False,
         }
-        for s in level_specs
+        for s in visible
     ]
 
 
@@ -1235,12 +1297,8 @@ def run_report(
                 spec["source"] = data_source
 
     if not specs:
-        specs = [
-            {"key": k, "source": data_source, "level": 1, "level_mode": "1", "label": label,
-             "kind": "field", "col_code": "", "number_format": "General", "formula": ""}
-            for k, label, _ in _columns_for_source(data_source)
-        ]
-        specs = normalize_columns(specs)
+        # Empty report definition must not invent system columns.
+        return [], [], [], False
 
     resolved = _resolve_specs(data_source, specs)
     if not resolved:
@@ -1353,7 +1411,90 @@ def run_report(
             payloads.append(payload)
             row_i += 1
 
+    display_rows, payloads = _sort_report_rows(level_cols, display_rows, payloads)
+    headers, display_rows = _filter_hidden_display(level_cols, level, headers, display_rows)
+
     return headers, display_rows, payloads, deeper
+
+
+def _sort_value_key(raw, ascending: bool):
+    """Build a comparable sort key; blanks last; numbers before text."""
+    blank = raw is None or raw == ""
+    if blank:
+        primary = (1, 0, "")
+    else:
+        try:
+            from reports.formula import to_number
+            import math
+
+            num = to_number(raw, default=float("nan"))
+            if not math.isnan(num):
+                primary = (0, 0, num)
+            else:
+                primary = (0, 1, str(raw))
+        except Exception:
+            primary = (0, 1, str(raw))
+    if ascending:
+        return primary
+    # Invert for descending while keeping blanks last.
+    if primary[0] == 1:
+        return primary
+    if primary[1] == 0:
+        return (0, 0, -primary[2])
+    return (0, 1, "".join(chr(0x10FFFF - ord(ch)) for ch in primary[2]))
+
+
+def _sort_report_rows(
+    level_cols: list[dict],
+    display_rows: list[list],
+    payloads: list[dict],
+) -> tuple[list[list], list[dict]]:
+    """Sort rows by column sort_priority (1 first). Same priority → rightmost column first (RTL)."""
+    if not display_rows or not level_cols:
+        return display_rows, payloads
+    # RTL: index 0 is rightmost → earlier among equal priorities.
+    order = sorted(
+        range(len(level_cols)),
+        key=lambda i: (
+            clamp_sort_priority(level_cols[i].get("sort_priority")),
+            i,
+        ),
+    )
+    paired = list(zip(display_rows, payloads))
+
+    def row_sort_key(item):
+        row = item[0]
+        keys = []
+        for idx in order:
+            asc = bool(level_cols[idx].get("sort_asc", True))
+            val = row[idx] if idx < len(row) else ""
+            keys.append(_sort_value_key(val, asc))
+        return keys
+
+    paired.sort(key=row_sort_key)
+    if not paired:
+        return [], []
+    rows_out, payloads_out = zip(*paired)
+    return list(rows_out), list(payloads_out)
+
+
+def _filter_hidden_display(
+    level_cols: list[dict],
+    level: int,
+    headers: list[str],
+    display_rows: list[list],
+) -> tuple[list[str], list[list]]:
+    """Drop columns marked is_hidden when props apply at this level (still sorted/formula-ready)."""
+    show_idx = [
+        i
+        for i, spec in enumerate(level_cols)
+        if not (spec.get("is_hidden") and props_apply_at_level(spec, level))
+    ]
+    if len(show_idx) == len(level_cols):
+        return headers, display_rows
+    new_headers = [headers[i] for i in show_idx] if headers else [level_cols[i]["label"] for i in show_idx]
+    new_rows = [[row[i] for i in show_idx] for row in display_rows]
+    return new_headers, new_rows
 
 
 # Backward-compatible thin wrapper used by older call sites

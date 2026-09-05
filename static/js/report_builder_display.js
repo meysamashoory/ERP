@@ -47,13 +47,14 @@
     return String(n).replace(/\d/g, function (d) { return PERSIAN_DIGITS[parseInt(d, 10)]; });
   }
 
+  var ORDINAL_FA = ["", "اول", "دوم", "سوم", "چهارم", "پنجم", "ششم", "هفتم", "هشتم", "نهم"];
   var LEVEL_OPTIONS = (function () {
     var opts = [];
     for (var i = 1; i <= 9; i++) {
-      opts.push({ value: String(i), label: "سطح " + toPersianDigits(i) });
+      opts.push({ value: String(i), label: ORDINAL_FA[i] });
     }
     for (var u = 2; u <= 8; u++) {
-      opts.push({ value: "upto_" + u, label: "تا سطح " + toPersianDigits(u) });
+      opts.push({ value: "upto_" + u, label: "تا " + ORDINAL_FA[u] });
     }
     opts.push({ value: "all", label: "همه سطوح" });
     return opts;
@@ -73,7 +74,35 @@
 
     var selected = readJson("columns-initial", []);
     var sourceLinks = readJson("links-initial", []);
-    var conditions = [];
+    var conditionOps = readJson("condition-ops", [
+      { value: "=", label: "مساوی" },
+      { value: "<>", label: "مخالف" },
+      { value: ">", label: "بزرگ‌تر" },
+      { value: ">=", label: "بزرگ‌تر یا مساوی" },
+      { value: "<", label: "کوچک‌تر" },
+      { value: "<=", label: "کوچک‌تر یا مساوی" },
+      { value: "contains", label: "شامل" }
+    ]);
+    var parametersCatalog = readJson("parameters-catalog", {});
+    var fieldChoicesCatalog = readJson("field-choices", {});
+    var paramCapableKeys = readJson("param-capable-keys", []);
+    var paramKeySet = {};
+    (paramCapableKeys || []).forEach(function (k) { paramKeySet[k] = true; });
+
+    function normalizeConditionsBlob(raw) {
+      var out = { public: [], private: {} };
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+      if (Array.isArray(raw.public)) out.public = raw.public.slice();
+      if (raw.private && typeof raw.private === "object") {
+        Object.keys(raw.private).forEach(function (k) {
+          if (Array.isArray(raw.private[k])) out.private[k] = raw.private[k].slice();
+        });
+      }
+      return out;
+    }
+    var conditionsBlob = normalizeConditionsBlob(readJson("conditions-initial", {}));
+    var condScope = "public";
+    var condEditIdx = -1;
 
     function canBeKey(source, key) {
       if (source === "_calc") return false;
@@ -149,7 +178,8 @@
         return {
           key: item, source: "fitting", level: 1, level_mode: "1", label: item, origLabel: item,
           uid: newUid(), width: defaultWidthFor("fitting", item), is_key: false,
-          kind: "field", col_code: "", number_format: "General", formula: ""
+          kind: "field", col_code: "", number_format: "General", formula: "",
+          sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
         };
       }
       item.kind = item.kind === "calc" ? "calc" : "field";
@@ -159,6 +189,12 @@
       item.level_mode = normalizeLevelMode(item.level_mode, item.level);
       item.number_format = item.number_format || "General";
       item.formula = item.formula || "";
+      item.sort_priority = Math.max(1, Math.min(9, parseInt(item.sort_priority || 1, 10) || 1));
+      item.sort_asc = item.sort_asc !== false && item.sort_asc !== 0 && item.sort_asc !== "0";
+      item.is_hidden = !!item.is_hidden;
+      item.cell_align = (item.cell_align === "left" || item.cell_align === "center" || item.cell_align === "right") ? item.cell_align : "right";
+      item.props_level_mode = normalizeLevelMode(item.props_level_mode || "all", 1);
+
       item.col_code = item.col_code || "";
       if (item.kind === "calc") {
         item.source = "_calc";
@@ -213,7 +249,24 @@
     }
 
     function syncHeading() {
-      if (headingText) headingText.textContent = formatHeading() || "—";
+      var text = formatHeading() || "—";
+      if (headingText) headingText.textContent = text;
+      var winTitle = document.getElementById("rp-window-title");
+      if (winTitle) winTitle.textContent = text;
+      try { document.title = text; } catch (e) {}
+    }
+
+    function syncConditionsHidden() {
+      if (!conditionsHidden) return;
+      var cleaned = {};
+      Object.keys(conditionsBlob.private || {}).forEach(function (k) {
+        var arr = conditionsBlob.private[k] || [];
+        if (arr.length) cleaned[k] = arr;
+      });
+      conditionsHidden.value = JSON.stringify({
+        public: conditionsBlob.public || [],
+        private: cleaned
+      });
     }
 
     function syncHidden() {
@@ -231,11 +284,37 @@
           kind: c.kind || "field",
           col_code: c.col_code,
           number_format: c.number_format || "General",
-          formula: c.kind === "calc" ? (c.formula || "") : ""
+          formula: c.kind === "calc" ? (c.formula || "") : "",
+          sort_priority: Math.max(1, Math.min(9, parseInt(c.sort_priority || 1, 10) || 1)),
+          sort_asc: c.sort_asc !== false && c.sort_asc !== 0 && c.sort_asc !== "0",
+          is_hidden: !!c.is_hidden,
+          cell_align: (c.cell_align === "left" || c.cell_align === "center" || c.cell_align === "right") ? c.cell_align : "right",
+          props_level_mode: c.props_level_mode || "all"
         };
       }));
       if (linksHidden) linksHidden.value = JSON.stringify(sourceLinks);
-      if (conditionsHidden) conditionsHidden.value = JSON.stringify(conditions);
+      syncConditionsHidden();
+    }
+
+    function privateCountFor(uid) {
+      var arr = (conditionsBlob.private || {})[uid];
+      return arr && arr.length ? arr.length : 0;
+    }
+
+    function currentCondList() {
+      if (condScope === "public") return conditionsBlob.public || [];
+      if (activeIdx < 0 || !selected[activeIdx]) return null;
+      var uid = selected[activeIdx].uid;
+      if (!conditionsBlob.private[uid]) conditionsBlob.private[uid] = [];
+      return conditionsBlob.private[uid];
+    }
+
+    function setCurrentCondList(arr) {
+      if (condScope === "public") conditionsBlob.public = arr;
+      else if (activeIdx >= 0 && selected[activeIdx]) {
+        conditionsBlob.private[selected[activeIdx].uid] = arr;
+      }
+      syncConditionsHidden();
     }
 
     function groupLabel(sid) {
@@ -297,6 +376,17 @@
     }
     var editMetaBtn = document.getElementById("edit-meta-btn");
     if (editMetaBtn) editMetaBtn.addEventListener("click", showMetaEditor);
+    var winTitle = document.getElementById("rp-window-title");
+    if (winTitle) {
+      winTitle.style.cursor = "pointer";
+      winTitle.addEventListener("click", showMetaEditor);
+      winTitle.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          showMetaEditor();
+        }
+      });
+    }
     if (cancelBtn) cancelBtn.addEventListener("click", showBuilder);
     if (accessInput) accessInput.addEventListener("change", function () { fillSourceMenu(); });
 
@@ -384,7 +474,8 @@
               selected.push({
                 key: key, source: sid, level: 1, level_mode: "1", label: lab, origLabel: lab,
                 uid: newUid(), width: defaultWidthFor(sid, key), is_key: false,
-                kind: "field", col_code: "", number_format: "General", formula: ""
+                kind: "field", col_code: "", number_format: "General", formula: "",
+                sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
               });
               assignColCodes();
             } else {
@@ -420,9 +511,33 @@
     var moveUp = document.getElementById("move-up");
     var moveDown = document.getElementById("move-down");
     var copyCol = document.getElementById("copy-col");
+    var deleteColBtn = document.getElementById("delete-col");
     var addCalcBtn = document.getElementById("add-calc-col");
+
+    function updateMoveControls() {
+      var has = activeIdx >= 0 && !!selected[activeIdx];
+      [moveUp, moveDown, copyCol, deleteColBtn].forEach(function (b) {
+        if (b) b.disabled = !has;
+      });
+    }
+
     if (moveUp) moveUp.addEventListener("click", function () { moveActive(-1); });
     if (moveDown) moveDown.addEventListener("click", function () { moveActive(1); });
+    if (deleteColBtn) {
+      deleteColBtn.addEventListener("click", function () {
+        if (activeIdx < 0 || !selected[activeIdx]) return;
+        var removed = selected[activeIdx];
+        selected.splice(activeIdx, 1);
+        if (removed && conditionsBlob.private[removed.uid]) {
+          delete conditionsBlob.private[removed.uid];
+        }
+        if (activeIdx >= selected.length) activeIdx = selected.length - 1;
+        renderTrees();
+        renderSelected();
+        renderConditions();
+        syncHidden();
+      });
+    }
     if (copyCol) {
       copyCol.addEventListener("click", function () {
         if (activeIdx < 0 || !selected[activeIdx]) {
@@ -443,7 +558,12 @@
           kind: src.kind || "field",
           col_code: nextCopyCode(src.col_code),
           number_format: src.number_format || "General",
-          formula: src.kind === "calc" ? (src.formula || "") : ""
+          formula: src.kind === "calc" ? (src.formula || "") : "",
+          sort_priority: Math.max(1, Math.min(9, parseInt(src.sort_priority || 1, 10) || 1)),
+          sort_asc: src.sort_asc !== false,
+          is_hidden: !!src.is_hidden,
+          cell_align: src.cell_align || "right",
+          props_level_mode: src.props_level_mode || "all"
         };
         selected.splice(activeIdx + 1, 0, copy);
         activeIdx = activeIdx + 1;
@@ -467,7 +587,8 @@
           kind: "calc",
           col_code: "",
           number_format: "#,##0.##",
-          formula: ""
+          formula: "",
+          sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
         });
         assignColCodes();
         activeIdx = selected.length - 1;
@@ -498,10 +619,12 @@
     function formatOptionsHtml(current) {
       var opts = "";
       var seen = {};
-      formatPresets.forEach(function (p) {
-        seen[p.value] = true;
-        opts += '<option value="' + p.value.replace(/"/g, "&quot;") + '"' +
-          (current === p.value ? " selected" : "") + ">" + p.label + "</option>";
+      (formatPresets || []).forEach(function (p) {
+        var val = p.value || p;
+        var lab = p.label || p.value || p;
+        seen[val] = true;
+        opts += '<option value="' + String(val).replace(/"/g, "&quot;") + '"' +
+          (current === val ? " selected" : "") + ">" + lab + "</option>";
       });
       if (current && !seen[current]) {
         opts += '<option value="' + String(current).replace(/"/g, "&quot;") + '" selected>' +
@@ -517,41 +640,83 @@
       }).join("");
     }
 
+    function priorityOptionsHtml(current) {
+      var cur = Math.max(1, Math.min(9, parseInt(current || 1, 10) || 1));
+      var html = "";
+      for (var i = 1; i <= 9; i++) {
+        html += '<option value="' + i + '"' + (i === cur ? " selected" : "") + ">" + toPersianDigits(i) + "</option>";
+      }
+      return html;
+    }
+
+    function setActiveRow(idx, opts) {
+      opts = opts || {};
+      if (isNaN(idx)) return;
+      if (idx === activeIdx && !opts.force) {
+        return;
+      }
+      activeIdx = idx;
+      if (list) {
+        list.querySelectorAll(".display-col-row").forEach(function (tr) {
+          var i = parseInt(tr.dataset.idx, 10);
+          tr.classList.toggle("is-active", i === activeIdx);
+        });
+      }
+      updatePath();
+      updateMoveControls();
+      if (opts.props !== false) renderColumnProps();
+      if (condScope === "private") renderConditions();
+    }
+
     function renderSelected() {
       if (!list) return;
       list.innerHTML = "";
       if (!selected.length) {
-        list.innerHTML = '<tr><td colspan="8" class="muted empty">ستونی انتخاب نشده است.</td></tr>';
+        list.innerHTML = '<tr><td colspan="9" class="muted empty">ستونی انتخاب نشده است.</td></tr>';
+        activeIdx = -1;
         updatePath();
+        updateMoveControls();
+        renderColumnProps();
         return;
       }
       selected.forEach(function (c, idx) {
         var tr = document.createElement("tr");
         tr.className = "display-col-row" + (idx === activeIdx ? " is-active" : "") +
-          (c.kind === "calc" ? " is-calc" : "");
+          (c.kind === "calc" ? " is-calc" : "") +
+          (c.is_hidden ? " is-hidden-col" : "");
         tr.dataset.idx = String(idx);
+        tr.tabIndex = -1;
         var keyable = c.kind !== "calc" && canBeKey(c.source || "", c.key || "");
         var keyChecked = c.is_key && keyable ? " checked" : "";
         var keyDisabled = keyable ? "" : " disabled";
         var fxCell = c.kind === "calc"
           ? '<button type="button" class="btn-fx" data-fx="' + idx + '" title="ویرایش فرمول">ƒx</button>'
           : '<span class="muted">—</span>';
+        var privN = privateCountFor(c.uid);
+        var privCell = privN
+          ? '<span class="rb-private-badge" title="دارای شرط خصوصی">P</span>'
+          : '<span class="muted">—</span>';
         tr.innerHTML =
           '<td><input class="input sel-rename" data-label="' + idx + '" value="' +
             String(c.label || "").replace(/"/g, "&quot;") + '"></td>' +
           '<td class="col-code-cell" dir="ltr">' + String(c.col_code || "").toUpperCase() + "</td>" +
           '<td><select class="input" data-level="' + idx + '">' + levelOptionsHtml(c.level_mode) + "</select></td>" +
-          '<td><input class="input sel-width" type="number" min="40" max="800" step="1" data-width="' + idx +
+          '<td><input class="input sel-width" type="text" inputmode="numeric" data-width="' + idx +
             '" value="' + (clampWidth(c.width) || "") + '"></td>' +
-          '<td class="key-cell"><input type="checkbox" data-key="' + idx + '"' + keyChecked + keyDisabled + "></td>" +
-          '<td><input class="input sel-format" list="fmt-presets-' + idx + '" data-format="' + idx +
-            '" value="' + String(c.number_format || "General").replace(/"/g, "&quot;") + '">' +
-            '<datalist id="fmt-presets-' + idx + '">' + formatOptionsHtml(c.number_format) + "</datalist></td>" +
+          '<td class="key-cell"><label class="rb-check"><input type="checkbox" class="rb-check-input" data-key="' +
+            idx + '"' + keyChecked + keyDisabled +
+            '><span class="rb-check-ui" aria-hidden="true"></span></label></td>' +
+          '<td><select class="input sel-format" dir="ltr" data-format="' + idx + '">' +
+            formatOptionsHtml(c.number_format || "General") + "</select></td>" +
+          '<td class="priority-cell"><select class="input" data-priority="' + idx + '">' +
+            priorityOptionsHtml(c.sort_priority) + "</select></td>" +
           '<td class="fx-cell">' + fxCell + "</td>" +
-          '<td><button type="button" class="btn btn-xs btn-danger" data-rm="' + idx + '">×</button></td>';
+          '<td class="priv-cell">' + privCell + "</td>";
         list.appendChild(tr);
       });
       updatePath();
+      updateMoveControls();
+      renderColumnProps();
     }
 
     if (list) {
@@ -561,22 +726,51 @@
           openFormulaDialog(parseInt(fx.getAttribute("data-fx"), 10));
           return;
         }
-        var rm = e.target.closest("[data-rm]");
-        if (rm) {
-          var i = parseInt(rm.getAttribute("data-rm"), 10);
-          selected.splice(i, 1);
-          if (activeIdx === i) activeIdx = -1;
-          else if (activeIdx > i) activeIdx -= 1;
-          renderTrees();
-          renderSelected();
-          syncHidden();
-          return;
-        }
-        if (e.target.closest("select") || e.target.closest("input") || e.target.closest("button")) return;
         var row = e.target.closest(".display-col-row");
         if (!row) return;
-        activeIdx = parseInt(row.dataset.idx, 10);
-        renderSelected();
+        var idx = parseInt(row.dataset.idx, 10);
+        if (!isNaN(idx) && idx !== activeIdx) {
+          // Update selection without re-rendering so the same click can open
+          // dropdowns / toggle checkboxes on the first press.
+          setActiveRow(idx);
+        }
+        if (!e.target.closest("input, select, textarea, button, label, a")) {
+          try { row.focus(); } catch (err) {}
+        }
+      });
+      
+      list.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.target && e.target.closest && e.target.closest("textarea")) return;
+        var row = e.target.closest(".display-col-row");
+        if (!row) return;
+        e.preventDefault();
+        var idx = parseInt(row.dataset.idx, 10);
+        if (isNaN(idx) || idx >= selected.length - 1) return;
+        var next = idx + 1;
+        setActiveRow(next);
+        var control = e.target.closest("input, select, button, [data-fx], [data-key]");
+        var attr = null;
+        if (control) {
+          ["data-label", "data-level", "data-width", "data-format", "data-priority", "data-key", "data-fx"].forEach(function (a) {
+            if (attr) return;
+            if (control.getAttribute && control.getAttribute(a) != null) attr = a;
+            else if (control.closest && control.closest("[" + a + "]")) attr = a;
+          });
+        }
+        var el = attr ? list.querySelector("[" + attr + "=\"" + next + "\"]") : null;
+        if (!el) {
+          var nextRow = list.querySelector('.display-col-row[data-idx="' + next + '"]');
+          el = nextRow ? nextRow.querySelector("input, select, button") : null;
+        }
+        if (el && el.focus) {
+          try { el.focus(); } catch (err) {}
+          if (el.tagName === "SELECT") {
+            try { el.click(); } catch (err2) {}
+          } else if (el.type !== "checkbox" && el.select) {
+            try { el.select(); } catch (err3) {}
+          }
+        }
       });
       list.addEventListener("dblclick", function (e) {
         var fx = e.target.closest("[data-fx], .fx-cell");
@@ -589,6 +783,19 @@
         var sel = e.target.closest("[data-level]");
         if (sel) {
           selected[parseInt(sel.getAttribute("data-level"), 10)].level_mode = sel.value;
+          syncHidden();
+          return;
+        }
+        var fmt = e.target.closest("[data-format]");
+        if (fmt) {
+          selected[parseInt(fmt.getAttribute("data-format"), 10)].number_format = fmt.value || "General";
+          syncHidden();
+          return;
+        }
+        var pri = e.target.closest("[data-priority]");
+        if (pri) {
+          selected[parseInt(pri.getAttribute("data-priority"), 10)].sort_priority =
+            Math.max(1, Math.min(9, parseInt(pri.value || "1", 10) || 1));
           syncHidden();
           return;
         }
@@ -619,11 +826,6 @@
           selected[parseInt(wInp.getAttribute("data-width"), 10)].width = clampWidth(wInp.value);
           syncHidden();
           return;
-        }
-        var fInp = e.target.closest("[data-format]");
-        if (fInp) {
-          selected[parseInt(fInp.getAttribute("data-format"), 10)].number_format = fInp.value || "General";
-          syncHidden();
         }
       });
     }
@@ -812,76 +1014,597 @@
       });
     });
 
+    function opLabel(v) {
+      var hit = conditionOps.find(function (o) { return o.value === v; });
+      return hit ? hit.label : v;
+    }
+
+    function fieldSupportsParam(fieldKey) {
+      return !!paramKeySet[fieldKey];
+    }
+
+    function fillCondSources(sel, selectedSource) {
+      if (!sel) return;
+      var html = '<option value="">— منبع —</option>';
+      groups.forEach(function (g) {
+        if (!sourceAllowedForAccess(g.id)) return;
+        html += '<option value="' + g.id + '"' + (g.id === selectedSource ? " selected" : "") + ">" +
+          g.label + "</option>";
+      });
+      sel.innerHTML = html;
+    }
+
+    function fillCondFields(sel, sourceId, selectedField) {
+      if (!sel) return;
+      var g = groups.find(function (x) { return x.id === sourceId; });
+      var html = '<option value="">— فیلد —</option>';
+      if (g && g.columns) {
+        g.columns.forEach(function (pair) {
+          var k = pair[0];
+          var lab = pair[1];
+          html += '<option value="' + k + '"' + (k === selectedField ? " selected" : "") + ">" +
+            lab + "</option>";
+        });
+      }
+      sel.innerHTML = html;
+    }
+
+    function fillCondOps(sel, selectedOp) {
+      if (!sel) return;
+      sel.innerHTML = conditionOps.map(function (o) {
+        return '<option value="' + o.value + '"' + (o.value === selectedOp ? " selected" : "") + ">" +
+          o.label + "</option>";
+      }).join("");
+    }
+
+    function refreshCondValueModeOptions() {
+      var modeSel = document.getElementById("cond-value-mode");
+      var fieldSel = document.getElementById("cond-field");
+      if (!modeSel) return;
+      var fieldKey = fieldSel ? fieldSel.value : "";
+      var allow = fieldSupportsParam(fieldKey);
+      var cur = modeSel.value || "value";
+      modeSel.innerHTML = '<option value="value">value</option>' +
+        (allow ? '<option value="parameter">parameter</option>' : "");
+      modeSel.value = allow && cur === "parameter" ? "parameter" : "value";
+      refreshCondValueWidgets();
+    }
+
+    function refreshCondValueWidgets() {
+      var modeSel = document.getElementById("cond-value-mode");
+      var fieldSel = document.getElementById("cond-field");
+      var valueEl = document.getElementById("cond-value");
+      var paramEl = document.getElementById("cond-param");
+      var offsetEl = document.getElementById("cond-value-offset");
+      var mode = modeSel ? modeSel.value : "value";
+      var fieldKey = fieldSel ? fieldSel.value : "";
+      var choices = fieldChoicesCatalog[fieldKey] || null;
+      var params = parametersCatalog[fieldKey] || [];
+      var allowParam = fieldSupportsParam(fieldKey);
+
+      if (paramEl) {
+        if (mode === "parameter") {
+          paramEl.hidden = false;
+          paramEl.innerHTML = '<option value="">— پارامتر —</option>' +
+            params.map(function (p) {
+              return '<option value="' + p.code + '">' + p.label + "</option>";
+            }).join("");
+        } else {
+          paramEl.hidden = true;
+        }
+      }
+
+      if (valueEl) {
+        if (mode === "parameter") {
+          valueEl.hidden = true;
+        } else {
+          valueEl.hidden = false;
+          // Rebuild as select or keep input
+          var wrap = document.getElementById("cond-value-wrap");
+          var useSelect = false;
+          var options = [];
+          if (choices && choices.length) {
+            useSelect = true;
+            options = choices;
+          } else if (allowParam && params.length) {
+            // value mode + param-capable: show params as selectable presets
+            useSelect = true;
+            options = params.map(function (p) {
+              return { value: "__param__:" + p.code, label: p.label + " (پارامتر)" };
+            });
+          }
+          if (useSelect) {
+            if (valueEl.tagName !== "SELECT") {
+              var sel = document.createElement("select");
+              sel.className = "input";
+              sel.id = "cond-value";
+              sel.name = "cond_value";
+              valueEl.parentNode.replaceChild(sel, valueEl);
+              valueEl = sel;
+            }
+            valueEl.innerHTML = '<option value="">— مقدار —</option>' +
+              options.map(function (c) {
+                return '<option value="' + String(c.value).replace(/"/g, "&quot;") + '">' +
+                  c.label + "</option>";
+              }).join("");
+          } else {
+            if (valueEl.tagName !== "INPUT") {
+              var inp = document.createElement("input");
+              inp.className = "input";
+              inp.id = "cond-value";
+              inp.name = "cond_value";
+              inp.type = "text";
+              inp.autocomplete = "off";
+              valueEl.parentNode.replaceChild(inp, valueEl);
+              valueEl = inp;
+            }
+          }
+          if (wrap) {
+            var lab = wrap.querySelector("label");
+            if (lab) lab.setAttribute("for", "cond-value");
+          }
+        }
+      }
+
+      if (offsetEl) {
+        var valNow = document.getElementById("cond-value");
+        var picked = valNow ? String(valNow.value || "") : "";
+        var enableOffset = mode === "value" && allowParam && picked.indexOf("__param__:") === 0;
+        offsetEl.disabled = !enableOffset;
+        if (!enableOffset) offsetEl.value = "";
+      }
+    }
+
+    function parenOpenValue(c) {
+      if (!c) return "";
+      var raw = String(c.paren_open || "").trim();
+      if (raw === "(" || raw === "((") return raw;
+      return c.paren === "(" ? "(" : "";
+    }
+
+    function parenCloseValue(c) {
+      if (!c) return "";
+      var raw = String(c.paren_close || "").trim();
+      if (raw === ")" || raw === "))") return raw;
+      return c.paren === ")" ? ")" : "";
+    }
+
+    function parenOpenWeight(marker) {
+      return marker === "((" ? 2 : (marker === "(" ? 1 : 0);
+    }
+
+    function parenCloseWeight(marker) {
+      return marker === "))" ? 2 : (marker === ")" ? 1 : 0);
+    }
+
+    function syncParenExclusive(changed) {
+      var openEl = document.getElementById("cond-paren-open");
+      var closeEl = document.getElementById("cond-paren-close");
+      if (!openEl || !closeEl) return;
+      if (changed === "open" && openEl.value) closeEl.value = "";
+      if (changed === "close" && closeEl.value) openEl.value = "";
+    }
+
+    function validateCondDraft(draft, list, editIdx) {
+      if (!draft.source) return "منبع را انتخاب کنید.";
+      if (!draft.field) return "فیلد را انتخاب کنید.";
+      if (!draft.op) return "عملگر را انتخاب کنید.";
+      if (editIdx <= 0 && (editIdx === 0 || (editIdx < 0 && !list.length))) {
+        if (draft.logic) return "شرط اول نباید AND/OR داشته باشد.";
+      } else if (editIdx !== 0) {
+        var isFirst = editIdx < 0 ? !list.length : editIdx === 0;
+        if (!isFirst && !draft.logic) return "برای شرط‌های بعدی AND یا OR را مشخص کنید.";
+      }
+      if (draft.value_mode === "parameter") {
+        if (!fieldSupportsParam(draft.field)) return "این فیلد از پارامتر پشتیبانی نمی‌کند.";
+        if (!draft.param_code) return "پارامتر را انتخاب کنید.";
+      } else {
+        if (draft.param_code) {
+          if (!String(draft.value_offset || "").trim()) {
+            return "برای قفل مقدار با پارامتر، عدد/مقدار افست را وارد کنید.";
+          }
+        } else if (!String(draft.value || "").trim() && draft.op !== "empty" && draft.op !== "not_empty") {
+          return "مقدار شرط را وارد کنید.";
+        }
+      }
+      if (parenOpenValue(draft) && parenCloseValue(draft)) {
+        return "در یک شرط فقط پرانتز باز یا پرانتز بسته مجاز است.";
+      }
+      var open = 0;
+      list.forEach(function (c, i) {
+        if (i === editIdx) return;
+        open += parenOpenWeight(parenOpenValue(c));
+        open -= parenCloseWeight(parenCloseValue(c));
+      });
+      open += parenOpenWeight(parenOpenValue(draft));
+      open -= parenCloseWeight(parenCloseValue(draft));
+      if (open < 0) return "پرانتز بسته بدون پرانتز باز مجاز نیست.";
+      return "";
+    }
+
+    function openConditionDialog(editIdx) {
+      var dialog = document.getElementById("condition-dialog");
+      if (!dialog) return;
+      if (condScope === "private" && (activeIdx < 0 || !selected[activeIdx])) {
+        alert("برای شرط خصوصی ابتدا یک ستون را در نحوه نمایش انتخاب کنید.");
+        return;
+      }
+      condEditIdx = typeof editIdx === "number" ? editIdx : -1;
+      var errEl = document.getElementById("cond-dlg-error");
+      if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+      var titleEl = dialog.querySelector(".dialog-head h3");
+      if (titleEl) titleEl.textContent = condEditIdx >= 0 ? "ویرایش شرط" : "شرط گزارش";
+
+      var base = {
+        logic: "", paren_open: "", paren_close: "", source: "", field: "", op: "=",
+        value_mode: "value", value: "", param_code: "", value_offset: ""
+      };
+      var list = currentCondList() || [];
+      if (condEditIdx >= 0 && list[condEditIdx]) {
+        base = Object.assign(base, list[condEditIdx]);
+      }
+
+      fillCondSources(document.getElementById("cond-source"), base.source);
+      fillCondFields(document.getElementById("cond-field"), base.source, base.field);
+      fillCondOps(document.getElementById("cond-operator"), base.op || "=");
+      var logicEl = document.getElementById("cond-logic");
+      var parenOpenEl = document.getElementById("cond-paren-open");
+      var parenCloseEl = document.getElementById("cond-paren-close");
+      if (logicEl) logicEl.value = base.logic || "";
+      var pOpen = parenOpenValue(base);
+      var pClose = parenCloseValue(base);
+      if (pOpen && pClose) pClose = "";
+      if (parenOpenEl) parenOpenEl.value = pOpen;
+      if (parenCloseEl) parenCloseEl.value = pClose;
+      refreshCondValueModeOptions();
+      var modeEl = document.getElementById("cond-value-mode");
+      if (modeEl) {
+        modeEl.value = base.value_mode === "parameter" ? "parameter" : "value";
+      }
+      refreshCondValueWidgets();
+      if (base.value_mode === "parameter") {
+        var pEl = document.getElementById("cond-param");
+        if (pEl) pEl.value = base.param_code || "";
+      } else {
+        var vEl = document.getElementById("cond-value");
+        if (vEl) {
+          if (base.param_code) vEl.value = "__param__:" + base.param_code;
+          else vEl.value = base.value || "";
+        }
+        refreshCondValueWidgets();
+        var off = document.getElementById("cond-value-offset");
+        if (off) off.value = base.value_offset || "";
+      }
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    }
+
+    function saveConditionDialog() {
+      var list = currentCondList();
+      if (!list) {
+        alert("برای شرط خصوصی ابتدا یک ستون را انتخاب کنید.");
+        return;
+      }
+      var modeEl = document.getElementById("cond-value-mode");
+      var mode = modeEl ? modeEl.value : "value";
+      var draft = {
+        logic: (document.getElementById("cond-logic") || {}).value || "",
+        paren_open: parenOpenValue({
+          paren_open: (document.getElementById("cond-paren-open") || {}).value || ""
+        }),
+        paren_close: parenCloseValue({
+          paren_close: (document.getElementById("cond-paren-close") || {}).value || ""
+        }),
+        source: (document.getElementById("cond-source") || {}).value || "",
+        field: (document.getElementById("cond-field") || {}).value || "",
+        op: (document.getElementById("cond-operator") || {}).value || "=",
+        value_mode: mode,
+        value: "",
+        param_code: "",
+        value_offset: ""
+      };
+      if (draft.paren_open && draft.paren_close) draft.paren_close = "";
+      if (mode === "parameter") {
+        draft.param_code = (document.getElementById("cond-param") || {}).value || "";
+      } else {
+        var raw = (document.getElementById("cond-value") || {}).value || "";
+        if (String(raw).indexOf("__param__:") === 0) {
+          draft.param_code = String(raw).slice("__param__:".length);
+          draft.value_offset = (document.getElementById("cond-value-offset") || {}).value || "";
+          draft.value = draft.value_offset;
+        } else {
+          draft.value = String(raw).trim();
+        }
+      }
+      var err = validateCondDraft(draft, list.slice(), condEditIdx);
+      var errEl = document.getElementById("cond-dlg-error");
+      if (err) {
+        if (errEl) { errEl.hidden = false; errEl.textContent = err; }
+        else alert(err);
+        return;
+      }
+      if (condEditIdx >= 0) list[condEditIdx] = draft;
+      else list.push(draft);
+      setCurrentCondList(list);
+      var dialog = document.getElementById("condition-dialog");
+      if (dialog) {
+        if (typeof dialog.close === "function") dialog.close();
+        else dialog.removeAttribute("open");
+      }
+      renderConditions();
+      renderSelected();
+    }
+
     function renderConditions() {
       var box = document.getElementById("conditions-list");
       var empty = document.getElementById("conditions-empty");
+      var table = document.getElementById("conditions-table");
+      var tbody = document.getElementById("conditions-tbody");
       if (!box) return;
-      box.querySelectorAll(".condition-row").forEach(function (n) { n.remove(); });
-      if (!conditions.length) {
-        if (empty) empty.hidden = false;
+
+      if (tbody) tbody.innerHTML = "";
+      else box.querySelectorAll(".condition-row").forEach(function (n) { n.remove(); });
+
+      if (condScope === "private" && (activeIdx < 0 || !selected[activeIdx])) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = "برای شرط خصوصی ابتدا یک ستون را انتخاب کنید.";
+        }
+        if (table) table.hidden = true;
+        return;
+      }
+
+      var list = currentCondList() || [];
+      if (!list.length) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = condScope === "private"
+            ? "شرط خصوصی برای این ستون ثبت نشده است."
+            : "هنوز شرطی تعریف نشده است.";
+        }
+        if (table) table.hidden = true;
+        syncConditionsHidden();
         return;
       }
       if (empty) empty.hidden = true;
-      conditions.forEach(function (cond, idx) {
-        var row = document.createElement("div");
-        row.className = "condition-row";
-        row.innerHTML =
-          '<select class="input cond-field" data-ci="' + idx + '">' +
-          selected.map(function (c) {
-            return '<option value="' + (c.col_code || c.uid) + '"' +
-              ((cond.field === (c.col_code || c.uid)) ? " selected" : "") + ">" +
-              String(c.col_code || "").toUpperCase() + " — " + (c.label || c.key) + "</option>";
-          }).join("") +
-          "</select>" +
-          '<select class="input cond-op" data-ci="' + idx + '">' +
-          ["=", "<>", ">", ">=", "<", "<=", "شامل"].map(function (op) {
-            return '<option value="' + op + '"' + (cond.op === op ? " selected" : "") + ">" + op + "</option>";
-          }).join("") +
-          "</select>" +
-          '<input class="input cond-val" data-ci="' + idx + '" value="' +
-            String(cond.value || "").replace(/"/g, "&quot;") + '" placeholder="مقدار">' +
-          '<button type="button" class="btn btn-xs btn-ghost" data-cond-rm="' + idx + '">حذف</button>';
-        box.appendChild(row);
+      if (table) table.hidden = false;
+
+      list.forEach(function (cond, idx) {
+        var valShow = cond.value_mode === "parameter"
+          ? ("پارامتر: " + (cond.param_code || "—"))
+          : (cond.param_code
+            ? ((cond.param_code || "") + " → " + (cond.value_offset || cond.value || ""))
+            : (cond.value || ""));
+        var pOpen = parenOpenValue(cond);
+        var pClose = parenCloseValue(cond);
+        var html =
+          "<td>" + (cond.logic ? String(cond.logic).toUpperCase() : "—") + "</td>" +
+          "<td class=\"rb-paren-cell\"><span class=\"rb-paren-glyph\" dir=\"ltr\">" + (pOpen || "—") + "</span></td>" +
+          "<td>" + groupLabel(cond.source) + "</td>" +
+          "<td>" + labelOf(cond.source, cond.field) + "</td>" +
+          "<td>" + opLabel(cond.op) + "</td>" +
+          "<td>" + String(valShow) + "</td>" +
+          "<td class=\"rb-paren-cell\"><span class=\"rb-paren-glyph\" dir=\"ltr\">" + (pClose || "—") + "</span></td>";
+        if (tbody) {
+          var tr = document.createElement("tr");
+          tr.className = "condition-row" + (idx === activeCondIdx ? " is-active" : "");
+          tr.dataset.condIdx = String(idx);
+          tr.innerHTML = html;
+          tbody.appendChild(tr);
+        } else {
+          var row = document.createElement("div");
+          row.className = "condition-row" + (idx === activeCondIdx ? " is-active" : "");
+          row.dataset.condIdx = String(idx);
+          row.innerHTML = html;
+          box.appendChild(row);
+        }
+      });
+      syncConditionsHidden();
+      updateCondToolbar();
+    }
+
+    var activeCondIdx = -1;
+    var propsLevelSelect = document.getElementById("prop-level");
+    if (propsLevelSelect && !propsLevelSelect.options.length) {
+      propsLevelSelect.innerHTML = levelOptionsHtml("all");
+    }
+
+    function showConditionsChrome(scope) {
+      var listBox = document.getElementById("conditions-list");
+      var propsBox = document.getElementById("column-props-panel");
+      var toolbar = document.querySelector(".conditions-toolbar");
+      var isProps = scope === "props";
+      if (listBox) listBox.hidden = isProps;
+      if (propsBox) propsBox.hidden = !isProps;
+      if (toolbar) toolbar.hidden = isProps;
+    }
+
+    function renderColumnProps() {
+      var empty = document.getElementById("column-props-empty");
+      var form = document.getElementById("column-props-form");
+      var col = activeIdx >= 0 ? selected[activeIdx] : null;
+      if (!col) {
+        if (empty) empty.hidden = false;
+        if (form) form.hidden = true;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      if (form) form.hidden = false;
+      var asc = document.getElementById("prop-sort-asc");
+      var hid = document.getElementById("prop-hidden");
+      var align = document.getElementById("prop-align");
+      var lvl = document.getElementById("prop-level");
+      if (asc) asc.checked = col.sort_asc !== false;
+      if (hid) hid.checked = !!col.is_hidden;
+      if (align) align.value = col.cell_align || "right";
+      if (lvl) {
+        if (!lvl.options.length) lvl.innerHTML = levelOptionsHtml("all");
+        lvl.value = col.props_level_mode || "all";
+      }
+    }
+
+    function bindProp(id, apply) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", function () {
+        if (activeIdx < 0 || !selected[activeIdx]) return;
+        apply(selected[activeIdx], el);
+        renderSelected();
+        syncHidden();
       });
     }
+    bindProp("prop-sort-asc", function (col, el) { col.sort_asc = !!el.checked; });
+    bindProp("prop-hidden", function (col, el) { col.is_hidden = !!el.checked; });
+    bindProp("prop-align", function (col, el) { col.cell_align = el.value || "right"; });
+    bindProp("prop-level", function (col, el) { col.props_level_mode = el.value || "all"; });
+
+    function updateCondToolbar() {
+      var list = currentCondList() || [];
+      var has = activeCondIdx >= 0 && activeCondIdx < list.length;
+      [["cond-edit-btn", has], ["cond-copy-btn", has], ["cond-delete-btn", has],
+       ["cond-up-btn", has && activeCondIdx > 0],
+       ["cond-down-btn", has && activeCondIdx < list.length - 1]].forEach(function (pair) {
+        var b = document.getElementById(pair[0]);
+        if (b) b.disabled = !pair[1];
+      });
+      var addBtn = document.getElementById("add-condition-btn");
+      if (addBtn) addBtn.disabled = condScope === "props";
+    }
+
+    document.querySelectorAll(".cond-tab").forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        document.querySelectorAll(".cond-tab").forEach(function (t) {
+          t.classList.toggle("is-active", t === tab);
+          t.setAttribute("aria-selected", t === tab ? "true" : "false");
+        });
+        condScope = tab.getAttribute("data-cond-scope") || "public";
+        var listEl = document.getElementById("conditions-list");
+        if (listEl) listEl.setAttribute("data-active-scope", condScope);
+        showConditionsChrome(condScope);
+        activeCondIdx = -1;
+        if (condScope === "props") renderColumnProps();
+        else renderConditions();
+        updateCondToolbar();
+      });
+    });
+    showConditionsChrome(condScope);
 
     var addCondBtn = document.getElementById("add-condition-btn");
     if (addCondBtn) {
       addCondBtn.addEventListener("click", function () {
-        var first = selected[0];
-        conditions.push({
-          field: first ? (first.col_code || first.uid) : "",
-          op: "=",
-          value: ""
-        });
-        renderConditions();
-        syncHidden();
+        if (condScope === "props") return;
+        openConditionDialog(-1);
       });
     }
+
+    var condEditBtn = document.getElementById("cond-edit-btn");
+    if (condEditBtn) {
+      condEditBtn.addEventListener("click", function () {
+        if (activeCondIdx < 0) return;
+        openConditionDialog(activeCondIdx);
+      });
+    }
+    var condCopyBtn = document.getElementById("cond-copy-btn");
+    if (condCopyBtn) {
+      condCopyBtn.addEventListener("click", function () {
+        var list = currentCondList();
+        if (!list || activeCondIdx < 0 || activeCondIdx >= list.length) return;
+        var clone = JSON.parse(JSON.stringify(list[activeCondIdx]));
+        list.splice(activeCondIdx + 1, 0, clone);
+        setCurrentCondList(list);
+        activeCondIdx = activeCondIdx + 1;
+        renderConditions();
+      });
+    }
+    var condDelBtn = document.getElementById("cond-delete-btn");
+    if (condDelBtn) {
+      condDelBtn.addEventListener("click", function () {
+        var list = currentCondList();
+        if (!list || activeCondIdx < 0 || activeCondIdx >= list.length) return;
+        list.splice(activeCondIdx, 1);
+        if (activeCondIdx >= list.length) activeCondIdx = list.length - 1;
+        setCurrentCondList(list);
+        renderConditions();
+        renderSelected();
+      });
+    }
+    function moveCond(dir) {
+      var list = currentCondList();
+      if (!list || activeCondIdx < 0) return;
+      var j = activeCondIdx + dir;
+      if (j < 0 || j >= list.length) return;
+      var tmp = list[activeCondIdx];
+      list[activeCondIdx] = list[j];
+      list[j] = tmp;
+      activeCondIdx = j;
+      setCurrentCondList(list);
+      renderConditions();
+    }
+    var condUpBtn = document.getElementById("cond-up-btn");
+    if (condUpBtn) condUpBtn.addEventListener("click", function () { moveCond(-1); });
+    var condDownBtn = document.getElementById("cond-down-btn");
+    if (condDownBtn) condDownBtn.addEventListener("click", function () { moveCond(1); });
+    var condSaveBtn = document.getElementById("condition-save-btn");
+    if (condSaveBtn) condSaveBtn.addEventListener("click", saveConditionDialog);
+    var parenOpenBind = document.getElementById("cond-paren-open");
+    var parenCloseBind = document.getElementById("cond-paren-close");
+    if (parenOpenBind) {
+      parenOpenBind.addEventListener("change", function () { syncParenExclusive("open"); });
+    }
+    if (parenCloseBind) {
+      parenCloseBind.addEventListener("change", function () { syncParenExclusive("close"); });
+    }
+    var condCancelBtn = document.getElementById("condition-cancel-btn");
+    if (condCancelBtn) {
+      condCancelBtn.addEventListener("click", function () {
+        var dialog = document.getElementById("condition-dialog");
+        if (dialog) {
+          if (typeof dialog.close === "function") dialog.close();
+          else dialog.removeAttribute("open");
+        }
+      });
+    }
+    var condSource = document.getElementById("cond-source");
+    if (condSource) {
+      condSource.addEventListener("change", function () {
+        fillCondFields(document.getElementById("cond-field"), condSource.value, "");
+        refreshCondValueModeOptions();
+      });
+    }
+    var condField = document.getElementById("cond-field");
+    if (condField) condField.addEventListener("change", refreshCondValueModeOptions);
+    var condMode = document.getElementById("cond-value-mode");
+    if (condMode) condMode.addEventListener("change", refreshCondValueWidgets);
+    document.addEventListener("change", function (e) {
+      if (e.target && e.target.id === "cond-value") refreshCondValueWidgets();
+    });
+
     var condBox = document.getElementById("conditions-list");
     if (condBox) {
       condBox.addEventListener("click", function (e) {
+        var edit = e.target.closest("[data-cond-edit]");
+        if (edit) {
+          activeCondIdx = parseInt(edit.getAttribute("data-cond-edit"), 10);
+          openConditionDialog(activeCondIdx);
+          return;
+        }
         var rm = e.target.closest("[data-cond-rm]");
-        if (!rm) return;
-        conditions.splice(parseInt(rm.getAttribute("data-cond-rm"), 10), 1);
-        renderConditions();
-        syncHidden();
-      });
-      condBox.addEventListener("change", function (e) {
-        var t = e.target;
-        var ci = parseInt(t.getAttribute("data-ci"), 10);
-        if (isNaN(ci) || !conditions[ci]) return;
-        if (t.classList.contains("cond-field")) conditions[ci].field = t.value;
-        if (t.classList.contains("cond-op")) conditions[ci].op = t.value;
-        syncHidden();
-      });
-      condBox.addEventListener("input", function (e) {
-        var t = e.target;
-        if (!t.classList.contains("cond-val")) return;
-        var ci = parseInt(t.getAttribute("data-ci"), 10);
-        if (isNaN(ci) || !conditions[ci]) return;
-        conditions[ci].value = t.value;
-        syncHidden();
+        if (rm) {
+          var list = currentCondList();
+          if (!list) return;
+          var ri = parseInt(rm.getAttribute("data-cond-rm"), 10);
+          list.splice(ri, 1);
+          if (activeCondIdx >= list.length) activeCondIdx = list.length - 1;
+          setCurrentCondList(list);
+          renderConditions();
+          renderSelected();
+          return;
+        }
+        var row = e.target.closest(".condition-row");
+        if (row && row.dataset.condIdx != null) {
+          activeCondIdx = parseInt(row.dataset.condIdx, 10);
+          renderConditions();
+        }
       });
     }
 
@@ -897,6 +1620,11 @@
     if (formEl) {
       formEl.addEventListener("submit", function (e) {
         syncHidden();
+        if (!selected.length) {
+          e.preventDefault();
+          alert("برای ایجاد گزارش حداقل یک آیتم از منابع را انتخاب کنید.");
+          return;
+        }
         var levels = {};
         selected.forEach(function (c) {
           var mode = c.level_mode || "1";
@@ -932,7 +1660,7 @@
       });
     }
 
-    if (mode === "edit" || opts.hasErrors) showBuilder();
+    if (mode === "edit" || opts.hasErrors || opts.metaConfirmed) showBuilder();
     else {
       renderAll();
       showMetaEditor();

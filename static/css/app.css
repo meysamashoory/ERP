@@ -2027,7 +2027,7 @@ body.excel-resizing-row, body.excel-resizing-row * { cursor: row-resize !importa
 }
 
 .ops-add { color: #15803d; }
-.ops-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ops-inline { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
 .table td.col-ops .ops-inline,
 .table td.col-ops .row-actions-ops {
   justify-content: flex-start;
@@ -3005,3 +3005,24 @@ input[type=number].spin {
 
 
 
+
+
+/* Report list: keep apply beside ops select */
+#report-list-table td.col-ops,
+#report-list-table th.col-ops {
+  min-width: 280px;
+  width: 280px;
+  white-space: nowrap;
+}
+#report-list-table .ops-inline {
+  flex-wrap: nowrap !important;
+}
+#report-list-table .ops-select {
+  min-width: 140px;
+  max-width: 170px;
+  flex: 0 1 auto;
+}
+#report-list-table .ops-apply {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
