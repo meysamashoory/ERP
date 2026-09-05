@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}گزارش‌ها{% endblock %}
-{% block heading %}گزارش‌ها{% endblock %}
+{% block title %}لیست گزارش‌ها{% endblock %}
+{% block heading %}لیست گزارش‌ها{% endblock %}
 {% block nav_reports %}{% endblock %}
 {% block nav_report_list %}active{% endblock %}
 
@@ -18,7 +18,7 @@
 <div class="panel panel-compact panel-list">
   {% if rows %}
   <div class="table-scroll">
-  <table class="table table-compact table-list-nav table-plan-list" id="report-list-table" data-table-section="reports">
+  <table class="table table-compact table-list-nav table-plan-list" id="report-list-table" data-table-section="reports" data-lock-widths="1">
     <thead>
       <tr>
         <th style="width:90px">
@@ -34,7 +34,7 @@
         <th style="width:120px">مدل گزارش</th>
         <th style="width:110px">نوع گزارش</th>
         <th style="width:110px">تعداد فرم</th>
-        <th style="width:200px">عملیات</th>
+        <th class="col-ops" style="width:280px">عملیات</th>
       </tr>
     </thead>
     <tbody>
@@ -100,11 +100,7 @@
 
 <template id="tpl-create">
   <div class="dialog-head"><h3>ایجاد گزارش</h3></div>
-  <form method="post" action="{% url 'report_create' %}" data-action-form id="create-report-form">
-    {% csrf_token %}
-    <input type="hidden" name="columns_json" value="[]">
-    <input type="hidden" name="source_links_json" value="[]">
-    <input type="hidden" name="report_conditions_json" value='{"public":[],"private":{}}'>
+  <form method="dialog" id="create-report-form" data-create-meta-form>
     <div class="field"><label>عنوان گزارش</label><input class="input" name="title" required maxlength="200"></div>
     <div class="field"><label>شماره گزارش (۱ تا ۹۹۹)</label><input class="input js-report-number" type="number" name="number" min="1" max="999" step="1" required></div>
     <div class="field"><label>توضیحات</label><input class="input" name="description" placeholder="اختیاری" maxlength="300"></div>
@@ -120,7 +116,7 @@
     </div>
     {% endif %}
     <div class="form-actions">
-      <button class="btn" type="submit">ایجاد گزارش</button>
+      <button class="btn" type="submit" data-create-confirm>تایید اطلاعات</button>
       <button class="btn btn-ghost" type="button" data-dialog-close>انصراف</button>
     </div>
   </form>
@@ -181,8 +177,8 @@
   var dialog = document.getElementById("report-action-dialog");
   var body = dialog.querySelector("[data-dialog-body]");
 
-  function openReportApp(url) {
-    if (window.ERPOpenReportApp) return window.ERPOpenReportApp(url);
+  function openReportApp(url, opts) {
+    if (window.ERPOpenReportApp) return window.ERPOpenReportApp(url, opts);
     window.location.href = url;
     return false;
   }
@@ -201,8 +197,30 @@
   var createBtn = document.getElementById("btn-create-report");
   if (createBtn) {
     createBtn.addEventListener("click", function () {
-      // Create environment opens in standalone report window; list stays in main app.
-      openReportApp(createBtn.getAttribute("data-create-url") || "{% url 'report_create' %}");
+      openFromTemplate("tpl-create", function (root) {
+        var form = root.querySelector("[data-create-meta-form]");
+        if (!form) return;
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var title = (form.title.value || "").trim();
+          var numberRaw = String(form.number.value || "").trim();
+          var number = String(parseInt(numberRaw, 10) || "");
+          if (!title) { alert("عنوان گزارش را وارد کنید."); return; }
+          if (!number || number === "0") { alert("شماره گزارش را وارد کنید."); return; }
+          var params = new URLSearchParams();
+          params.set("title", title);
+          params.set("number", number);
+          params.set("description", (form.description.value || "").trim());
+          params.set("access_mode", form.access_mode.value || "readonly");
+          var std = form.querySelector('[name="is_standard"]');
+          if (std && std.checked) params.set("is_standard", "1");
+          var base = createBtn.getAttribute("data-create-url") || "{% url 'report_create' %}";
+          if (typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
+          openReportApp(base + (base.indexOf("?") >= 0 ? "&" : "?") + params.toString(), {
+            name: "erp-report-create-" + Date.now()
+          });
+        });
+      });
     });
   }
 

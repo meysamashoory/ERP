@@ -369,6 +369,7 @@
     var section = sectionOf(table);
     var locks = locksFromBody();
     var locked = section ? !!locks[section] : false;
+    if (table.getAttribute("data-lock-widths") === "1") locked = true;
 
     var metaWidths = null;
     if (table.id === "report-data-table") {

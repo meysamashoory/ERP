@@ -1163,3 +1163,85 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
   .rp-pane-display { grid-column: 1; grid-row: 2; }
   .rp-conditions { grid-column: 1; grid-row: 3; }
 }
+
+
+/* Compact crisp checkbox in builder display grid */
+.rb-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  cursor: pointer;
+}
+.rb-check-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.rb-check-ui {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #64748b;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.06);
+  pointer-events: none;
+}
+.rb-check-input:checked + .rb-check-ui {
+  background: #0f766e;
+  border-color: #0f766e;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.2 6.6 11.2 12.5 4.8'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.rb-check-input:focus-visible + .rb-check-ui {
+  outline: 2px solid rgba(14, 116, 144, 0.45);
+  outline-offset: 1px;
+}
+.rb-check-input:disabled + .rb-check-ui {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-icon-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+.btn-icon-tool:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+.btn-icon-tool:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.btn-icon-tool.btn-icon-danger {
+  color: #b91c1c;
+}
+.btn-icon-tool.btn-icon-danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+.conditions-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}

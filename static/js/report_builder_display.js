@@ -649,6 +649,25 @@
       return html;
     }
 
+    function setActiveRow(idx, opts) {
+      opts = opts || {};
+      if (isNaN(idx)) return;
+      if (idx === activeIdx && !opts.force) {
+        return;
+      }
+      activeIdx = idx;
+      if (list) {
+        list.querySelectorAll(".display-col-row").forEach(function (tr) {
+          var i = parseInt(tr.dataset.idx, 10);
+          tr.classList.toggle("is-active", i === activeIdx);
+        });
+      }
+      updatePath();
+      updateMoveControls();
+      if (opts.props !== false) renderColumnProps();
+      if (condScope === "private") renderConditions();
+    }
+
     function renderSelected() {
       if (!list) return;
       list.innerHTML = "";
@@ -683,7 +702,7 @@
           '<td><select class="input" data-level="' + idx + '">' + levelOptionsHtml(c.level_mode) + "</select></td>" +
           '<td><input class="input sel-width" type="text" inputmode="numeric" data-width="' + idx +
             '" value="' + (clampWidth(c.width) || "") + '"></td>' +
-          '<td class="key-cell"><input type="checkbox" data-key="' + idx + '"' + keyChecked + keyDisabled + "></td>" +
+          '<td class="key-cell"><label class="rb-check"><input type="checkbox" class="rb-check-input" data-key="' + idx + '"' + keyChecked + keyDisabled + "><span class="rb-check-ui" aria-hidden="true"></span></label></td>" +
           '<td><select class="input sel-format" dir="ltr" data-format="' + idx + '">' + formatOptionsHtml(c.number_format || "General") + "</select></td>" +
           '<td class="priority-cell"><select class="input" data-priority="' + idx + '">' + priorityOptionsHtml(c.sort_priority) + "</select></td>" +
           '<td class="fx-cell">' + fxCell + "</td>" +
@@ -706,23 +725,35 @@
         if (!row) return;
         var idx = parseInt(row.dataset.idx, 10);
         if (!isNaN(idx) && idx !== activeIdx) {
-          activeIdx = idx;
-          renderSelected();
-          if (condScope === "private") renderConditions();
-          else if (condScope === "props") renderColumnProps();
-          // Re-focus the same control if user clicked an input/select
-          if (e.target && e.target.closest && e.target.closest("input, select")) {
-            var focusSel = null;
-            if (e.target.getAttribute("data-label") != null) focusSel = '[data-label="' + idx + '"]';
-            else if (e.target.getAttribute("data-level") != null) focusSel = '[data-level="' + idx + '"]';
-            else if (e.target.getAttribute("data-width") != null) focusSel = '[data-width="' + idx + '"]';
-            else if (e.target.getAttribute("data-format") != null) focusSel = '[data-format="' + idx + '"]';
-            else if (e.target.getAttribute("data-priority") != null) focusSel = '[data-priority="' + idx + '"]';
-            else if (e.target.getAttribute("data-key") != null) focusSel = '[data-key="' + idx + '"]';
-            if (focusSel) {
-              var el = list.querySelector(focusSel);
-              if (el && el.focus) try { el.focus(); } catch (err) {}
-            }
+          // Update selection without re-rendering so the same click can open
+          // dropdowns / toggle checkboxes on the first press.
+          setActiveRow(idx);
+        }
+      });
+      
+      list.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter") return;
+        var control = e.target.closest("input, select, textarea, button");
+        if (!control || control.type === "checkbox") return;
+        var row = e.target.closest(".display-col-row");
+        if (!row) return;
+        e.preventDefault();
+        var idx = parseInt(row.dataset.idx, 10);
+        if (isNaN(idx) || idx >= selected.length - 1) return; // last row: do nothing
+        var next = idx + 1;
+        setActiveRow(next);
+        var attr = null;
+        ["data-label", "data-level", "data-width", "data-format", "data-priority", "data-key"].forEach(function (a) {
+          if (control.getAttribute(a) != null) attr = a;
+        });
+        var sel = attr ? '[' + attr + '="' + next + '"]' : null;
+        var el = sel ? list.querySelector(sel) : null;
+        if (el && el.focus) {
+          try { el.focus(); } catch (err) {}
+          if (el.tagName === "SELECT") {
+            try { el.click(); } catch (err2) {}
+          } else if (el.select) {
+            try { el.select(); } catch (err3) {}
           }
         }
       });
@@ -1134,11 +1165,11 @@
       var open = 0;
       list.forEach(function (c, i) {
         if (i === editIdx) return;
-        if (c.paren === "(") open += 1;
-        if (c.paren === ")") open -= 1;
+        if ((c.paren_open || c.paren) === "(") open += 1;
+        if ((c.paren_close || (c.paren === ")" ? ")" : "")) === ")") open -= 1;
       });
-      if (draft.paren === "(") open += 1;
-      if (draft.paren === ")") open -= 1;
+      if ((draft.paren_open || draft.paren) === "(") open += 1;
+      if ((draft.paren_close || (draft.paren === ")" ? ")" : "")) === ")") open -= 1;
       if (open < 0) return "پرانتز بسته بدون پرانتز باز مجاز نیست.";
       return "";
     }
@@ -1157,7 +1188,7 @@
       if (titleEl) titleEl.textContent = condEditIdx >= 0 ? "ویرایش شرط" : "شرط گزارش";
 
       var base = {
-        logic: "", paren: "", source: "", field: "", op: "=",
+        logic: "", paren_open: "", paren_close: "", source: "", field: "", op: "=",
         value_mode: "value", value: "", param_code: "", value_offset: ""
       };
       var list = currentCondList() || [];
@@ -1169,9 +1200,13 @@
       fillCondFields(document.getElementById("cond-field"), base.source, base.field);
       fillCondOps(document.getElementById("cond-operator"), base.op || "=");
       var logicEl = document.getElementById("cond-logic");
-      var parenEl = document.getElementById("cond-paren");
+      var parenOpenEl = document.getElementById("cond-paren-open");
+      var parenCloseEl = document.getElementById("cond-paren-close");
       if (logicEl) logicEl.value = base.logic || "";
-      if (parenEl) parenEl.value = base.paren || "";
+      var pOpen = base.paren_open || (base.paren === "(" ? "(" : "");
+      var pClose = base.paren_close || (base.paren === ")" ? ")" : "");
+      if (parenOpenEl) parenOpenEl.value = pOpen;
+      if (parenCloseEl) parenCloseEl.value = pClose;
       refreshCondValueModeOptions();
       var modeEl = document.getElementById("cond-value-mode");
       if (modeEl) {
@@ -1205,7 +1240,8 @@
       var mode = modeEl ? modeEl.value : "value";
       var draft = {
         logic: (document.getElementById("cond-logic") || {}).value || "",
-        paren: (document.getElementById("cond-paren") || {}).value || "",
+        paren_open: (document.getElementById("cond-paren-open") || {}).value || "",
+        paren_close: (document.getElementById("cond-paren-close") || {}).value || "",
         source: (document.getElementById("cond-source") || {}).value || "",
         field: (document.getElementById("cond-field") || {}).value || "",
         op: (document.getElementById("cond-operator") || {}).value || "=",
@@ -1285,17 +1321,16 @@
           : (cond.param_code
             ? ((cond.param_code || "") + " → " + (cond.value_offset || cond.value || ""))
             : (cond.value || ""));
+        var pOpen = cond.paren_open || (cond.paren === "(" ? "(" : "");
+        var pClose = cond.paren_close || (cond.paren === ")" ? ")" : "");
         var html =
           "<td>" + (cond.logic ? String(cond.logic).toUpperCase() : "—") + "</td>" +
-          "<td dir=\"ltr\">" + (cond.paren || "—") + "</td>" +
+          "<td dir=\"ltr\">" + (pOpen || "—") + "</td>" +
           "<td>" + groupLabel(cond.source) + "</td>" +
           "<td>" + labelOf(cond.source, cond.field) + "</td>" +
           "<td>" + opLabel(cond.op) + "</td>" +
           "<td>" + String(valShow) + "</td>" +
-          '<td class="cond-row-actions">' +
-            '<button type="button" class="btn btn-xs btn-ghost" data-cond-edit="' + idx + '">ویرایش</button> ' +
-            '<button type="button" class="btn btn-xs btn-ghost" data-cond-rm="' + idx + '">حذف</button>' +
-          "</td>";
+          "<td dir=\"ltr\">" + (pClose || "—") + "</td>";
         if (tbody) {
           var tr = document.createElement("tr");
           tr.className = "condition-row" + (idx === activeCondIdx ? " is-active" : "");
@@ -1372,7 +1407,7 @@
     function updateCondToolbar() {
       var list = currentCondList() || [];
       var has = activeCondIdx >= 0 && activeCondIdx < list.length;
-      [["cond-copy-btn", has], ["cond-delete-btn", has],
+      [["cond-edit-btn", has], ["cond-copy-btn", has], ["cond-delete-btn", has],
        ["cond-up-btn", has && activeCondIdx > 0],
        ["cond-down-btn", has && activeCondIdx < list.length - 1]].forEach(function (pair) {
         var b = document.getElementById(pair[0]);
@@ -1408,6 +1443,13 @@
       });
     }
 
+    var condEditBtn = document.getElementById("cond-edit-btn");
+    if (condEditBtn) {
+      condEditBtn.addEventListener("click", function () {
+        if (activeCondIdx < 0) return;
+        openConditionDialog(activeCondIdx);
+      });
+    }
     var condCopyBtn = document.getElementById("cond-copy-btn");
     if (condCopyBtn) {
       condCopyBtn.addEventListener("click", function () {
@@ -1516,6 +1558,11 @@
     if (formEl) {
       formEl.addEventListener("submit", function (e) {
         syncHidden();
+        if (!selected.length) {
+          e.preventDefault();
+          alert("برای ایجاد گزارش حداقل یک آیتم از منابع را انتخاب کنید.");
+          return;
+        }
         var levels = {};
         selected.forEach(function (c) {
           var mode = c.level_mode || "1";
@@ -1551,7 +1598,7 @@
       });
     }
 
-    if (mode === "edit" || opts.hasErrors) showBuilder();
+    if (mode === "edit" || opts.hasErrors || opts.metaConfirmed) showBuilder();
     else {
       renderAll();
       showMetaEditor();

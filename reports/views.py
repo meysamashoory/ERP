@@ -82,7 +82,7 @@ def _parse_conditions_post(request: HttpRequest) -> dict:
     return normalize_conditions(raw)
 
 
-def _builder_context(request: HttpRequest, form, report=None, mode="edit") -> dict:
+def _builder_context(request: HttpRequest, form, report=None, mode="edit", meta_confirmed=False) -> dict:
     from reports.formula import FORMULA_FUNCTION_CATALOG, NUMBER_FORMAT_PRESETS
     from django.urls import reverse
 
@@ -109,6 +109,7 @@ def _builder_context(request: HttpRequest, form, report=None, mode="edit") -> di
         "page_title": report.heading_label if report else "گزارش جدید",
         "report": report,
         "list_url": reverse("report_list"),
+        "meta_confirmed": bool(meta_confirmed),
     }
 
 
@@ -282,7 +283,8 @@ def report_create(request: HttpRequest) -> HttpResponse:
     if not can_create_report(request.user):
         return HttpResponseForbidden("مشاهده‌گر مجاز به ایجاد گزارش نیست.")
     if request.method == "POST":
-        form = SavedReportForm(request.POST, user=request.user, allow_empty_columns=True)
+        # Creating a report requires at least one source/column item.
+        form = SavedReportForm(request.POST, user=request.user, allow_empty_columns=False)
         if form.is_valid():
             report = form.save(commit=False)
             report.owner = request.user
@@ -309,13 +311,33 @@ def report_create(request: HttpRequest) -> HttpResponse:
         return render(
             request,
             "reports/builder_standalone.html",
-            _builder_context(request, form, mode="create"),
+            _builder_context(request, form, mode="create", meta_confirmed=True),
         )
-    form = SavedReportForm(user=request.user, allow_empty_columns=True)
+    initial = {}
+    title = (request.GET.get("title") or "").strip()
+    number = (request.GET.get("number") or "").strip()
+    description = (request.GET.get("description") or "").strip()
+    access_mode = (request.GET.get("access_mode") or "").strip()
+    is_standard = request.GET.get("is_standard") in ("1", "true", "on", "yes")
+    if title:
+        initial["title"] = title[:200]
+    if number:
+        try:
+            initial["number"] = int(str(number).lstrip("0") or "0") or None
+        except (TypeError, ValueError):
+            initial["number"] = number
+    if description:
+        initial["description"] = description[:300]
+    if access_mode in {c[0] for c in ReportAccessMode.choices}:
+        initial["access_mode"] = access_mode
+    if is_standard:
+        initial["is_standard"] = True
+    form = SavedReportForm(user=request.user, allow_empty_columns=True, initial=initial)
+    meta_confirmed = bool(title and number)
     return render(
         request,
         "reports/builder_standalone.html",
-        _builder_context(request, form, mode="create"),
+        _builder_context(request, form, mode="create", meta_confirmed=meta_confirmed),
     )
 
 

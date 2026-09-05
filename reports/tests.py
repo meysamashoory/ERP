@@ -52,6 +52,8 @@ class ReportFlowTests(TestCase):
         self.assertContains(list_resp, "نوع گزارش")
         self.assertContains(list_resp, "تعداد فرم")
         self.assertContains(list_resp, "+ ایجاد گزارش")
+        self.assertContains(list_resp, "لیست گزارش‌ها")
+        self.assertContains(list_resp, 'data-lock-widths="1"')
         self.assertContains(list_resp, "btn-create-report")
         self.assertContains(list_resp, "tpl-create")
         self.assertNotContains(list_resp, "th-filter-btn")
@@ -70,7 +72,7 @@ class ReportFlowTests(TestCase):
         self.assertEqual(excel.status_code, 200)
         self.assertIn("spreadsheetml", excel["Content-Type"])
 
-    def test_create_report_meta_dialog_allows_empty_columns_and_strips_leading_zeros(self):
+    def test_create_report_rejects_empty_columns_and_prefills_meta_from_query(self):
         self.client.login(username="expert", password="erp12345")
         resp = self.client.post(
             reverse("report_create"),
@@ -83,16 +85,21 @@ class ReportFlowTests(TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        report = SavedReport.objects.get(title="گزارش دیالوگ", owner=self.expert)
-        self.assertEqual(report.number, 5)
-        self.assertEqual(report.columns, [])
-        self.assertContains(resp, "گزارش ذخیره شد")
-        self.assertContains(resp, "در حال بستن پنجره")
+        self.assertFalse(
+            SavedReport.objects.filter(title="گزارش دیالوگ", owner=self.expert).exists()
+        )
+        self.assertContains(resp, "حداقل یک ستون انتخاب کنید.")
 
-        get_create = self.client.get(reverse("report_create"))
+        get_create = self.client.get(
+            reverse("report_create"),
+            {"title": "گزارش دیالوگ", "number": "05", "access_mode": "readonly"},
+        )
         self.assertEqual(get_create.status_code, 200)
         self.assertContains(get_create, "گزارش جدید")
         self.assertContains(get_create, "report-builder-form")
+        self.assertContains(get_create, 'value="گزارش دیالوگ"')
+        self.assertContains(get_create, 'value="5"')
+        self.assertContains(get_create, "metaConfirmed: true")
 
     def test_report_sources_include_history_not_excel(self):
         from reports.columns import get_column_groups, run_report
@@ -1289,6 +1296,57 @@ class ReportConditionsTests(TestCase):
                 {"date": "x", "code": "Z"}, rows, {"date_today": "y"}
             )
         )
+
+    def test_condition_split_parens_open_close(self):
+        from reports.conditions import validate_conditions_blob, row_matches_conditions
+
+        blob = {
+            "public": [
+                {
+                    "logic": "",
+                    "paren_open": "(",
+                    "paren_close": "",
+                    "source": "fitting",
+                    "field": "date",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "14051102",
+                    "param_code": "",
+                },
+                {
+                    "logic": "or",
+                    "paren_open": "",
+                    "paren_close": ")",
+                    "source": "fitting",
+                    "field": "code",
+                    "op": "=",
+                    "value_mode": "value",
+                    "value": "ABC",
+                    "param_code": "",
+                },
+            ],
+            "private": {},
+        }
+        self.assertEqual(validate_conditions_blob(blob), [])
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "14051102", "code": "Z"}, blob["public"], {}
+            )
+        )
+        self.assertTrue(
+            row_matches_conditions(
+                {"date": "x", "code": "ABC"}, blob["public"], {}
+            )
+        )
+
+    def test_run_report_empty_columns_returns_no_system_rows(self):
+        from reports.columns import run_report
+
+        headers, rows, payloads, deeper = run_report("fitting", [])
+        self.assertEqual(headers, [])
+        self.assertEqual(rows, [])
+        self.assertEqual(payloads, [])
+        self.assertFalse(deeper)
 
     def test_builder_and_viewer_use_standalone_templates(self):
         self.client.login(username="expert", password="erp12345")

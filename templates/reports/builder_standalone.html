@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=5">
 </head>
 <body class="report-app">
 <form method="post"
@@ -37,7 +37,7 @@
     </div>
 
     <div class="rp-builder-body">
-      <div class="rp-meta-bar panel panel-compact" id="meta-editor" {% if mode == 'edit' %}hidden{% endif %}>
+      <div class="rp-meta-bar panel panel-compact" id="meta-editor" {% if mode == 'edit' or meta_confirmed %}hidden{% endif %}>
         <div class="panel-body panel-body-compact">
           <div class="form-grid form-grid-compact form-grid-2">
             <div class="field">
@@ -75,7 +75,7 @@
         </div>
       </div>
 
-      <div class="rp-builder-zones" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
+      <div class="rp-builder-zones" id="builder-panel" {% if mode != 'edit' and not meta_confirmed %}hidden{% endif %}>
         {# Grid: sources spans full height (right in RTL); display on top-left; conditions under display #}
         <div class="rp-pane rp-pane-sources">
           <div class="rp-pane-head">
@@ -156,12 +156,12 @@
               <thead>
                 <tr>
                   <th style="width:56px">منطق</th>
-                  <th style="width:44px">()</th>
+                  <th style="width:72px">پرانتز باز</th>
                   <th>منبع</th>
                   <th>فیلد</th>
                   <th style="width:100px">عملگر</th>
                   <th>مقدار</th>
-                  <th style="width:120px"></th>
+                  <th style="width:72px">پرانتز بسته</th>
                 </tr>
               </thead>
               <tbody id="conditions-tbody"></tbody>
@@ -194,10 +194,21 @@
           </div>
           <div class="conditions-toolbar">
             <button type="button" class="btn btn-sm" id="add-condition-btn">+ افزودن شرط</button>
-            <button type="button" class="btn-move" id="cond-copy-btn" title="کپی شرط" aria-label="کپی شرط" disabled>⧉</button>
-            <button type="button" class="btn-move" id="cond-delete-btn" title="حذف شرط" aria-label="حذف شرط" disabled>✕</button>
-            <button type="button" class="btn-move" id="cond-up-btn" title="بالا" aria-label="جابجایی شرط به بالا" disabled>▲</button>
-            <button type="button" class="btn-move" id="cond-down-btn" title="پایین" aria-label="جابجایی شرط به پایین" disabled>▼</button>
+            <button type="button" class="btn-icon-tool" id="cond-edit-btn" title="ویرایش شرط" aria-label="ویرایش شرط" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 15.5V20h4.5L19 9.5 14.5 5 4 15.5zm14.7-9.2 1.5-1.5a1 1 0 0 0 0-1.4l-2.1-2.1a1 1 0 0 0-1.4 0l-1.5 1.5 3.5 3.5z"/></svg>
+            </button>
+            <button type="button" class="btn-icon-tool" id="cond-copy-btn" title="کپی شرط" aria-label="کپی شرط" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 4h10a2 2 0 0 1 2 2v12h-2V6H8V4zm-4 4h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zm0 2v10h10V10H4z"/></svg>
+            </button>
+            <button type="button" class="btn-icon-tool btn-icon-danger" id="cond-delete-btn" title="حذف شرط" aria-label="حذف شرط" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6 7h12v2H6V7zm2 3h8l-1 11H9L8 10zm3-6h2l1 2h4v2H6V6h4l1-2z"/></svg>
+            </button>
+            <button type="button" class="btn-icon-tool" id="cond-up-btn" title="بالا" aria-label="جابجایی شرط به بالا" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 5l7 8h-4v6H9v-6H5l7-8z"/></svg>
+            </button>
+            <button type="button" class="btn-icon-tool" id="cond-down-btn" title="پایین" aria-label="جابجایی شرط به پایین" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 19l-7-8h4V5h6v6h4l-7 8z"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -257,10 +268,16 @@
         </select>
       </div>
       <div class="field">
-        <label for="cond-paren">پرانتز</label>
-        <select class="input" id="cond-paren" name="cond_paren">
+        <label for="cond-paren-open">پرانتز باز</label>
+        <select class="input" id="cond-paren-open" name="cond_paren_open">
           <option value="">—</option>
           <option value="(">(</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="cond-paren-close">پرانتز بسته</label>
+        <select class="input" id="cond-paren-close" name="cond_paren_close">
+          <option value="">—</option>
           <option value=")">)</option>
         </select>
       </div>
@@ -316,7 +333,7 @@
 {{ param_capable_keys|json_script:"param-capable-keys" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=9"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=10"></script>
 <script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {
@@ -384,7 +401,8 @@
   if (window.ERPReportBuilderDisplay) {
     window.ERPReportBuilderDisplay.init({
       mode: "{{ mode }}",
-      hasErrors: {% if form.errors %}true{% else %}false{% endif %}
+      hasErrors: {% if form.errors %}true{% else %}false{% endif %},
+      metaConfirmed: {% if meta_confirmed %}true{% else %}false{% endif %}
     });
   }
 })();

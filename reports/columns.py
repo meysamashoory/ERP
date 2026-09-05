@@ -1297,12 +1297,8 @@ def run_report(
                 spec["source"] = data_source
 
     if not specs:
-        specs = [
-            {"key": k, "source": data_source, "level": 1, "level_mode": "1", "label": label,
-             "kind": "field", "col_code": "", "number_format": "General", "formula": ""}
-            for k, label, _ in _columns_for_source(data_source)
-        ]
-        specs = normalize_columns(specs)
+        # Empty report definition must not invent system columns.
+        return [], [], [], False
 
     resolved = _resolve_specs(data_source, specs)
     if not resolved:
