@@ -259,6 +259,31 @@ class BackupRestoreTests(TestCase):
         self.assertContains(resp, "مشخصات پشتیبان")
         self.assertContains(resp, "برنامه‌ریزی هفتگی")
 
+    def test_full_backup_restore_roundtrip(self):
+        import tempfile
+
+        from catalog.models import Machine
+        from core.backup import create_backup, restore_backup
+        from planning.models import WeeklyPlan
+        from production.models import FittingProduction, ProductionDayEntry, ProductionProgram
+
+        dest = tempfile.mkdtemp(prefix="erp-backup-full-")
+        archive = create_backup(sections=["full"], dest=dest).path
+        counts = {
+            "fitting": FittingProduction.objects.count(),
+            "plans": WeeklyPlan.objects.count(),
+            "machines": Machine.objects.count(),
+            "programs": ProductionProgram.objects.count(),
+            "days": ProductionDayEntry.objects.count(),
+        }
+        restored = restore_backup(source=archive, sections=["full"])
+        self.assertEqual(set(restored.sections), {"users", "catalog", "planning", "production"})
+        self.assertEqual(FittingProduction.objects.count(), counts["fitting"])
+        self.assertEqual(WeeklyPlan.objects.count(), counts["plans"])
+        self.assertEqual(Machine.objects.count(), counts["machines"])
+        self.assertEqual(ProductionProgram.objects.count(), counts["programs"])
+        self.assertEqual(ProductionDayEntry.objects.count(), counts["days"])
+
     def test_catalog_only_restore_blocked_when_production_exists(self):
         import tempfile
 

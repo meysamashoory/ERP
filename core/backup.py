@@ -46,6 +46,16 @@ _SECTION_SPECS: dict[str, dict] = {
         ],
         "replace": True,
     },
+    "planning": {
+        "label": "برنامه‌ریزی هفتگی",
+        "hint": "برنامه‌های هفتگی، ردیف‌ها و خطوط تولید برنامه‌ریزی‌شده",
+        "models": [
+            ("planning", "WeeklyPlan"),
+            ("planning", "WeeklyPlanItem"),
+            ("planning", "WeeklyPlanLine"),
+        ],
+        "replace": True,
+    },
     "production": {
         "label": "ثبت و سوابق تولید",
         "hint": "ثبت روزانه اتصالات و لوله، برنامه‌های تولید و توقفات",
@@ -55,16 +65,6 @@ _SECTION_SPECS: dict[str, dict] = {
             ("production", "ProductionProgram"),
             ("production", "ProductionDayEntry"),
             ("production", "ProductionStoppage"),
-        ],
-        "replace": True,
-    },
-    "planning": {
-        "label": "برنامه‌ریزی هفتگی",
-        "hint": "برنامه‌های هفتگی، ردیف‌ها و خطوط تولید برنامه‌ریزی‌شده",
-        "models": [
-            ("planning", "WeeklyPlan"),
-            ("planning", "WeeklyPlanItem"),
-            ("planning", "WeeklyPlanLine"),
         ],
         "replace": True,
     },
@@ -371,10 +371,12 @@ def restore_backup(*, source: str, sections: Iterable[str] | None = None) -> Res
     try:
         with transaction.atomic():
             try:
-                for key in chosen:
-                    spec = _SECTION_SPECS[key]
-                    if spec.get("replace", True):
+                # Wipe children before parents so a full restore is not blocked
+                # by PROTECT foreign keys between sections.
+                for key in reversed(chosen):
+                    if _SECTION_SPECS[key].get("replace", True):
                         deleted += _wipe_section(key)
+                for key in chosen:
                     raw = archive.read(f"data/{key}.json")
                     for obj in serializers.deserialize("json", raw):
                         obj.save()
