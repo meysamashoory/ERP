@@ -86,10 +86,7 @@ def build_system_groups() -> list[SystemGroup]:
                     title="کلیدهای نام‌گذاری سیستم",
                     admin_changelist="",
                     url_name="system_naming_keys",
-                    description=(
-                        "همه کلیدهای عنوان (بخش‌ها، سرستون‌ها، انتقال داده، گزارش‌ها) "
-                        "با آدرس دقیق — قابل جستجو و تغییر نام."
-                    ),
+                    description="",
                     count_fn=_count(SystemNamingKey),
                     can_add=False,
                 ),
@@ -98,10 +95,7 @@ def build_system_groups() -> list[SystemGroup]:
                     title="سرستون‌های جداول و عرض ستون گزارش",
                     admin_changelist="",
                     url_name="system_table_columns",
-                    description=(
-                        "تغییر نام، نمایش/پنهان، افزودن ستون سفارشی، و برای منابع گزارش "
-                        "تنظیم «عرض ستون» پیش‌فرض (متن/عدد تا وقتی مقدار ندهید)."
-                    ),
+                    description="",
                     count_fn=lambda: SystemNamingKey.objects.filter(
                         category=SystemNamingKey.Category.COLUMN
                     ).count(),
@@ -113,11 +107,7 @@ def build_system_groups() -> list[SystemGroup]:
                     admin_changelist="",
                     url_name="system_table_layout",
                     can_add=False,
-                    description=(
-                        "ارتفاع یکنواخت ردیف برای همه جداول و صفحات سامانه، "
-                        "و قفل تغییر عرض ستون در گزارش‌ها. "
-                        "عرض پیش‌فرض ستون‌های منابع گزارش از «سرستون‌های جداول» تنظیم می‌شود."
-                    ),
+                    description="",
                     count_fn=_count(TableLayoutSettings),
                 ),
             ],
@@ -206,7 +196,7 @@ def build_system_groups() -> list[SystemGroup]:
         ),
         SystemGroup(
             key="daily",
-            title="ثبت تولید روزانه",
+            title="ثبت و کنترل تولید",
             items=[
                 SystemItem(
                     key="day_entries",

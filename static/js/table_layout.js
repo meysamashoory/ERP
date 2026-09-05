@@ -414,6 +414,12 @@
 
   function enhanceTable(table) {
     if (!table || table.getAttribute("data-layout-ready") === "1") return;
+    if (
+      table.classList.contains("naming-keys-table") ||
+      table.classList.contains("naming-cols-table")
+    ) {
+      return;
+    }
     table.setAttribute("data-layout-ready", "1");
     var section = sectionOf(table);
     var locks = locksFromBody();
@@ -457,7 +463,7 @@
   function enhanceAll() {
     document
       .querySelectorAll(
-        'table.table[data-table-section="reports"], [data-table-section="reports"] table.table'
+        "table.table[data-table-section], [data-table-section] table.table"
       )
       .forEach(enhanceTable);
     // Marquee reveal for all scrollable data tables (height stays locked via CSS).

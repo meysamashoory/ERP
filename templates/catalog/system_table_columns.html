@@ -62,7 +62,7 @@
           <th style="width:110px">نوع / پیش‌فرض</th>
           {% else %}
           <th>آدرس دقیق</th>
-          <th style="width:160px">ربط به بخش</th>
+          <th style="width:220px" title="فقط برای پیدا کردن این ستون در فیلتر «بخش سیستم». داده جدول عوض نمی‌شود.">بخش مرتبط</th>
           {% endif %}
           <th style="width:90px">نمایش</th>
           {% if can_edit %}<th style="width:120px">عملیات</th>{% endif %}
@@ -101,7 +101,8 @@
           <td><div class="naming-address" title="{{ row.address }}">{{ row.address|default:"—" }}</div></td>
           <td>
             {% if can_edit %}
-            <select class="input naming-link-select" data-field="linked_section_key">
+            <select class="input naming-link-select" data-field="linked_section_key"
+                    title="اگر بخشی را انتخاب کنید، این ستون در فیلتر «بخش سیستم» همان بخش پیدا می‌شود. داده یا جدول عوض نمی‌شود. «به هیچ بخشی وصل نیست» یعنی فقط در همین جدول دیده می‌شود.">
               {% for val, lab in section_choices %}
               <option value="{{ val }}" {% if row.linked_section_key == val %}selected{% endif %}>{{ lab }}</option>
               {% endfor %}
@@ -143,7 +144,7 @@
         <input class="input" id="add-col-label" maxlength="200" placeholder="عنوان فارسی">
       </label>
       <label class="field">
-        <span>ربط به بخش</span>
+        <span>بخش مرتبط</span>
         <select class="input" id="add-col-link">
           {% for val, lab in section_choices %}
           <option value="{{ val }}">{{ lab }}</option>

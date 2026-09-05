@@ -129,6 +129,15 @@ class TableLayoutSettingsTests(TestCase):
         cls.User = get_user_model()
         cls.admin = cls.User.objects.get(username="admin")
 
+    def test_table_layout_defaults_lock_non_reports(self):
+        from catalog.models import TableLayoutSettings
+
+        settings = TableLayoutSettings.load()
+        self.assertFalse(settings.is_width_locked("reports"))
+        self.assertTrue(settings.is_width_locked("product_data"))
+        self.assertTrue(settings.is_width_locked("planning"))
+        self.assertTrue(settings.is_width_locked("systemic"))
+
     def test_table_layout_page_save(self):
         from django.urls import reverse
         from catalog.models import TableLayoutSettings
@@ -137,17 +146,53 @@ class TableLayoutSettingsTests(TestCase):
         url = reverse("system_table_layout")
         get = self.client.get(url)
         self.assertEqual(get.status_code, 200)
-        self.assertContains(get, "ارتفاع ردیف همه جداول")
-        self.assertContains(get, "قفل عرض ستون گزارش")
+        self.assertContains(get, "ارتفاع ردیف جداول")
+        self.assertContains(get, "قفل عرض ستون جداول")
+        self.assertContains(get, "برنامه‌ریزی هفتگی")
+        self.assertContains(get, "برنامه‌ریزی توسط سیستم")
+        self.assertContains(get, "نمایش مرز ستون")
+        self.assertContains(get, "مخفی کردن مرز ردیف")
+        self.assertNotContains(get, "عرض پیش‌فرض ستون‌های منابع گزارش")
         resp = self.client.post(
             url,
             {
+                "section": "reports",
                 "row_height_px": "44",
-                "lock_reports": "1",
+                "col_border": "show",
+                "row_border": "show",
+                "width_locked": "1",
             },
         )
         self.assertEqual(resp.status_code, 302)
         settings = TableLayoutSettings.load()
         self.assertEqual(settings.clamped_row_height(), 44)
         self.assertTrue(settings.is_width_locked("reports"))
-        self.assertFalse(settings.is_width_locked("product_data"))
+        self.assertTrue(settings.is_width_locked("product_data"))
+
+    def test_table_layout_save_other_section(self):
+        from django.urls import reverse
+        from catalog.models import TableLayoutSettings
+
+        self.client.login(username="admin", password="erp12345")
+        url = reverse("system_table_layout")
+        resp = self.client.post(
+            url,
+            {
+                "section": "planning",
+                "row_height_px": "8",
+                "col_border": "hide",
+                "row_border": "show",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("section=planning", resp["Location"])
+        settings = TableLayoutSettings.load()
+        layout = settings.layouts_map()["planning"]
+        self.assertEqual(layout["row_height_px"], 8)
+        self.assertFalse(layout["col_border"])
+        self.assertTrue(layout["row_border"])
+        self.assertFalse(layout["width_locked"])
+        self.assertFalse(settings.is_width_locked("reports"))
+        get = self.client.get(url, {"section": "planning"})
+        self.assertContains(get, 'value="8"')
+        self.assertContains(get, 'name="col_border" value="hide"')

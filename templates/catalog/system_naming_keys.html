@@ -13,21 +13,7 @@
 
 {% block content %}
 {% csrf_token %}
-<div class="panel panel-list naming-keys-panel">
-  <p class="panel-hint">
-    هر ردیف یک کلید پایدار سامانه است. <strong>عنوان نمایشی</strong> قابل تغییر است؛
-    ستون <strong>آدرس</strong> می‌گوید این عنوان کجای سامانه دیده می‌شود.
-  </p>
-  <ul class="panel-hint naming-source-legend">
-    <li><strong>صفحات کاربری:</strong> جدول‌هایی مثل فهرست برنامه و سوابق تولید که در خود ERP می‌بینید.</li>
-    <li><strong>انتقال / گزارش:</strong> فیلدها و عناوین دیالوگ انتقال اکسل (بخش مقصد، سطح، سرستون‌ها) و ستون‌های گزارش‌ساز — از مدیریت داده‌های سامانه → «عناوین دیالوگ و مقاصد انتقال داده».</li>
-    <li><strong>پنل مدیریت (ادمین):</strong> ستون‌های فهرست در مسیر <code>/admin/</code> — مثل «ID» یا «created by» که در صفحات اصلی ERP نیستند؛ فقط وقتی منبع را روی ادمین بگذارید دیده می‌شوند.</li>
-  </ul>
-  <p class="muted" style="margin:0 0 12px">
-    مجموع فعال: {{ total_count }} · فیلتر: {{ filtered_count }} · نمایش: {{ shown_count }}
-    {% if filtered_count > shown_count %}(برای دیدن همه، فیلتر دقیق‌تر بزنید){% endif %}
-  </p>
-
+<div class="panel panel-list naming-keys-panel" data-table-section="system">
   <form class="list-filter-bar naming-filter-bar" method="get">
     <label class="field">
       <span>منبع</span>
@@ -78,27 +64,34 @@
     <div class="naming-filter-actions">
       <button class="btn btn-primary-soft" type="submit">اعمال فیلتر</button>
       <a class="btn btn-ghost" href="{% url 'system_naming_keys' %}">پاک کردن</a>
+      {% if can_edit %}
+      <button class="btn btn-sm btn-ghost" type="submit" form="naming-resync-form">همگام‌سازی مجدد از سامانه</button>
+      {% endif %}
     </div>
   </form>
 
+  <p class="muted naming-filter-count">
+    مجموع فعال: {{ total_count }} · فیلتر: {{ filtered_count }} · نمایش: {{ shown_count }}
+    {% if filtered_count > shown_count %}(برای دیدن همه، فیلتر دقیق‌تر بزنید){% endif %}
+  </p>
+
   {% if can_edit %}
-  <form method="post" class="naming-resync-form">
+  <form method="post" class="naming-resync-form" id="naming-resync-form" hidden>
     {% csrf_token %}
     <input type="hidden" name="action" value="resync">
-    <button class="btn btn-sm btn-ghost" type="submit">همگام‌سازی مجدد از سامانه</button>
   </form>
   {% endif %}
 
   <div class="table-scroll">
-    <table class="table table-compact naming-keys-table">
+    <table class="table table-compact naming-keys-table" data-table-section="system">
       <thead>
         <tr>
           <th style="width:70px">ردیف</th>
           <th>کلید پایدار</th>
           <th>عنوان نمایشی</th>
-          <th>آدرس / محل در سامانه</th>
+          <th>آدرس دقیق</th>
           <th style="width:110px">دسته</th>
-          <th style="width:120px">ربط بخش</th>
+          <th style="width:220px" title="فقط برای پیدا کردن این کلید در فیلتر «بخش سیستم». داده جدول عوض نمی‌شود.">بخش مرتبط</th>
           <th style="width:90px">وضعیت</th>
           <th style="width:90px">کلیدی</th>
           {% if can_edit %}<th style="width:100px">عملیات</th>{% endif %}
@@ -130,14 +123,19 @@
           </td>
           <td>
             <div class="naming-address" title="{{ row.address }}">{{ row.address|default:"—" }}</div>
-            {% if row.table_key %}<div class="muted" style="font-size:11px">جدول: {{ row.table_key }}{% if row.column_key %} · ستون: {{ row.column_key }}{% endif %}</div>{% endif %}
+            {% if row.table_key %}<div class="muted naming-address-meta">جدول: {{ row.table_key }}{% if row.column_key %} · ستون: {{ row.column_key }}{% endif %}</div>{% endif %}
           </td>
           <td>{{ row.get_category_display }}</td>
           <td>
             {% if can_edit %}
-            <input class="input naming-link-input" data-field="linked_section_key" list="section-key-list" value="{{ row.linked_section_key }}" placeholder="کلید بخش">
+            <select class="input naming-link-select" data-field="linked_section_key"
+                    title="اگر بخشی را انتخاب کنید، این کلید در فیلتر «بخش سیستم» همان بخش پیدا می‌شود. داده یا جدول عوض نمی‌شود. «به هیچ بخشی وصل نیست» یعنی فقط در همین فهرست دیده می‌شود.">
+              {% for val, lab in section_choices %}
+              <option value="{{ val }}" {% if row.linked_section_key == val %}selected{% endif %}>{{ lab }}</option>
+              {% endfor %}
+            </select>
             {% else %}
-            {{ row.linked_section_key|default:"—" }}
+            {{ row.linked_section_label|default:"به هیچ بخشی وصل نیست" }}
             {% endif %}
           </td>
           <td>
@@ -170,20 +168,13 @@
           {% endif %}
         </tr>
         {% empty %}
-        <tr><td colspan="8" class="empty">موردی یافت نشد. همگام‌سازی را بزنید یا منبع را عوض کنید.</td></tr>
+        <tr><td colspan="9" class="empty">موردی یافت نشد. همگام‌سازی را بزنید یا منبع را عوض کنید.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   <p class="muted" id="naming-status" style="margin-top:8px;min-height:1.2em"></p>
 </div>
-{% if can_edit %}
-<datalist id="section-key-list">
-  {% for val, lab in section_choices %}
-  {% if val %}<option value="{{ val }}">{{ lab }}</option>{% endif %}
-  {% endfor %}
-</datalist>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}

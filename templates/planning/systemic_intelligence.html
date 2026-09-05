@@ -54,11 +54,11 @@
   {% endfor %}
 </div>
 
-<div class="panel panel-compact panel-list">
+<div class="panel panel-compact panel-list" data-table-section="systemic">
   {% if active_tab == "balance" %}
   <p class="panel-hint">تقاضا = سفارش + پیش‌بینی. پوشش = موجودی محصول + مقدار روی برنامه‌های باز (غیرتمام‌شده).</p>
   <div class="table-scroll">
-    <table class="table table-compact">
+    <table class="table table-compact" data-table-section="systemic">
       <thead>
         <tr>
           <th>کد</th>
@@ -95,7 +95,7 @@
   {% elif active_tab == "materials" %}
   <p class="panel-hint">برای کسری خالص (یا برنامه باز)، انفجار BOM و مواد مصرفی در برابر موجودی اجزاء.</p>
   <div class="table-scroll">
-    <table class="table table-compact">
+    <table class="table table-compact" data-table-section="systemic">
       <thead>
         <tr>
           <th>کد جزء / ماده</th>
@@ -126,7 +126,7 @@
   {% elif active_tab == "capacity" %}
   <p class="panel-hint">ساعت برآوردی ردیف‌های برنامه باز روی هر دستگاه تزریق، در برابر {{ hours_per_machine|floatformat:0 }} ساعت در هفته.</p>
   <div class="table-scroll">
-    <table class="table table-compact">
+    <table class="table table-compact" data-table-section="systemic">
       <thead>
         <tr>
           <th>دستگاه</th>
@@ -159,7 +159,7 @@
   {% elif active_tab == "variance" %}
   <p class="panel-hint">سوابق تولید: مقدار، سیکل و ضایعات در برابر برنامه. آستانه انحراف مقدار {{ 10 }}٪ و سیکل {{ 15 }}٪.</p>
   <div class="table-scroll">
-    <table class="table table-compact">
+    <table class="table table-compact" data-table-section="systemic">
       <thead>
         <tr>
           <th>شناسه</th>
@@ -196,7 +196,7 @@
   {% elif active_tab == "exceptions" %}
   <p class="panel-hint">پیام‌هایی که برنامه‌ریز باید قبل از تأیید برنامه هفتگی ببیند — نه کپی لیست MRP، بلکه استثناهای همین سامانه.</p>
   <div class="table-scroll">
-    <table class="table table-compact">
+    <table class="table table-compact" data-table-section="systemic">
       <thead>
         <tr>
           <th>کد</th>

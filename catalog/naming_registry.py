@@ -99,7 +99,7 @@ def column_label_map_for_table(table_key: str) -> dict[str, str]:
 def section_choices() -> list[tuple[str, str]]:
     from catalog.system_sections import build_system_groups
 
-    out: list[tuple[str, str]] = [("", "— بدون ربط —")]
+    out: list[tuple[str, str]] = [("", "به هیچ بخشی وصل نیست")]
     for group in build_system_groups():
         for item in group.items:
             out.append((item.key, f"{group.title} / {item.title}"))

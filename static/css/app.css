@@ -468,8 +468,31 @@ tr.is-conflict-row > td {
   word-break: break-all;
 }
 .naming-address {
-  font-size: 12px; color: #334155; max-width: 360px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; color: #334155;
+  max-width: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.naming-address-meta { font-size: 11px; margin-top: 2px; }
+.naming-filter-count { margin: 0 0 12px; }
+.table td:has(.naming-address) {
+  white-space: normal;
+  max-height: none;
+  height: auto;
+  overflow: visible;
+  line-height: 1.45;
+  text-align: right;
+  min-width: 420px;
+}
+.naming-keys-table td:nth-child(6) {
+  min-width: 260px;
+}
+.naming-link-select {
+  min-width: 240px;
 }
 .naming-badge {
   display: inline-block; margin-inline-start: 6px;
@@ -2418,6 +2441,55 @@ table.js-table-nav tbody tr.is-row-selected:hover { cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+.table-layout-tabs {
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.table-layout-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+  align-items: start;
+}
+.table-layout-fields .field { margin: 0; }
+.layout-choice-field {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0;
+  background: #fff;
+}
+.layout-choice-field legend {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 6px;
+}
+.layout-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.layout-lock-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+[data-table-section] .pcx-table th,
+[data-table-section] .pcx-table td {
+  height: var(--table-row-height, 26px);
+  min-height: var(--table-row-height, 26px);
+  max-height: var(--table-row-height, 26px);
+}
+@media (max-width: 800px) {
+  .table-layout-fields { grid-template-columns: 1fr; }
 }
 
 .stepper { display: flex; align-items: center; gap: 4px; }

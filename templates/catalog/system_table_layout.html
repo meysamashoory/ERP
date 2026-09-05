@@ -13,39 +13,59 @@
 {% block content %}
 <form method="post" class="panel panel-compact table-layout-form" data-table-section="system">
   {% csrf_token %}
+  <input type="hidden" name="section" value="{{ active_section }}">
   <div class="panel-body">
-    <p class="panel-hint">
-      ارتفاع ردیف روی <strong>همه جداول و صفحات سامانه</strong> اعمال می‌شود
-      (گزارش‌ها، دیتای محصولات، برنامه‌ریزی، تولید، اکسل، فرم‌ها و داده‌های سیستم).
-      تغییر عرض ستون با کشیدن موس فقط در <strong>گزارش‌ها</strong> فعال است.
-      عرض پیش‌فرض ستون‌های منابع گزارش را از
-      <a href="{% url 'system_table_columns' %}">سرستون‌های جداول</a>
-      (جداول با کلید <code>report.*</code>) تنظیم کنید.
-    </p>
+    <nav class="tabs table-layout-tabs" aria-label="منوهای سامانه">
+      {% for tab in tabs %}
+      <a class="tab {% if tab.active %}active{% endif %}" href="?section={{ tab.key }}">{{ tab.label }}</a>
+      {% endfor %}
+    </nav>
 
-    <div class="field" style="max-width:280px">
-      <label for="id_row_height_px">ارتفاع ردیف همه جداول (پیکسل)</label>
-      <input class="input" type="number" name="row_height_px" id="id_row_height_px"
-             min="18" max="120" step="1" value="{{ row_height_px }}">
-      <span class="muted" style="font-size:12px">بین ۱۸ تا ۱۲۰</span>
-    </div>
-
-    <div class="field" style="margin-top:18px">
-      <label>قفل عرض ستون گزارش‌ها</label>
-      <div class="lock-grid">
-        {% for item in lock_items %}
-        <label class="lock-item chk">
-          <input type="checkbox" name="lock_{{ item.key }}" value="1" {% if item.locked %}checked{% endif %}>
-          <span>{{ item.label }}</span>
+    <div class="table-layout-fields">
+      <label class="field">
+        <span>ارتفاع ردیف جداول</span>
+        <input class="input" type="number" name="row_height_px" id="id_row_height_px"
+               min="5" max="120" step="1" value="{{ row_height_px }}"
+               {% if not can_edit %}disabled{% endif %}>
+      </label>
+      <fieldset class="field layout-choice-field">
+        <legend>مرز ستون</legend>
+        <label class="layout-choice">
+          <input type="radio" name="col_border" value="show" {% if col_border %}checked{% endif %}
+                 {% if not can_edit %}disabled{% endif %}>
+          <span>نمایش مرز ستون</span>
         </label>
-        {% endfor %}
-      </div>
-      <span class="muted" style="font-size:12px;display:block;margin-top:6px">اگر قفل باشد، دستگیره تغییر عرض در گزارش‌ها پنهان می‌شود.</span>
+        <label class="layout-choice">
+          <input type="radio" name="col_border" value="hide" {% if not col_border %}checked{% endif %}
+                 {% if not can_edit %}disabled{% endif %}>
+          <span>مخفی کردن مرز ستون</span>
+        </label>
+      </fieldset>
+      <fieldset class="field layout-choice-field">
+        <legend>مرز ردیف</legend>
+        <label class="layout-choice">
+          <input type="radio" name="row_border" value="show" {% if row_border %}checked{% endif %}
+                 {% if not can_edit %}disabled{% endif %}>
+          <span>نمایش مرز ردیف</span>
+        </label>
+        <label class="layout-choice">
+          <input type="radio" name="row_border" value="hide" {% if not row_border %}checked{% endif %}
+                 {% if not can_edit %}disabled{% endif %}>
+          <span>مخفی کردن مرز ردیف</span>
+        </label>
+      </fieldset>
+      <label class="field field-check layout-lock-field">
+        <input type="checkbox" name="width_locked" value="1" {% if width_locked %}checked{% endif %}
+               {% if not can_edit %}disabled{% endif %}>
+        <span>قفل عرض ستون جداول</span>
+      </label>
     </div>
 
+    {% if can_edit %}
     <div class="line-actions" style="margin-top:18px">
-      <button type="submit" class="btn">ذخیره تنظیمات</button>
+      <button type="submit" class="btn">ذخیره تنظیمات این بخش</button>
     </div>
+    {% endif %}
   </div>
 </form>
 {% endblock %}

@@ -791,8 +791,13 @@ def system_naming_keys(request: HttpRequest) -> HttpResponse:
 
     filtered_count = qs.count()
     rows = list(qs.order_by("category", "table_key", "order", "key")[:250])
+    section_label_map = dict(section_choices())
     for row in rows:
         row.source_bucket = key_source(row.key)  # type: ignore[attr-defined]
+        row.linked_section_label = section_label_map.get(  # type: ignore[attr-defined]
+            row.linked_section_key or "",
+            "به هیچ بخشی وصل نیست",
+        )
     tables = (
         SystemNamingKey.objects.exclude(table_key="")
         .values_list("table_key", flat=True)
@@ -926,8 +931,14 @@ def system_naming_key_delete(request: HttpRequest) -> JsonResponse:
 
 @login_required
 def system_table_layout(request: HttpRequest) -> HttpResponse:
-    """Global row height + per-section column-width lock flags."""
+    """Per-menu row height, borders, and column-width lock."""
     from .models import TableLayoutSettings
+    from .table_layout import (
+        SECTION_CHOICES,
+        SECTION_KEYS,
+        clamp_row_height,
+        locks_from_layouts,
+    )
 
     if not _can_edit_naming(request.user) and request.method == "POST":
         return HttpResponseForbidden("مجاز نیستید.")
@@ -936,33 +947,47 @@ def system_table_layout(request: HttpRequest) -> HttpResponse:
     if settings.pk is None:
         settings.save()
 
-    if request.method == "POST":
-        try:
-            height = int(request.POST.get("row_height_px") or 36)
-        except (TypeError, ValueError):
-            height = 36
-        settings.row_height_px = max(18, min(120, height))
-        locks = settings.normalized_locks()
-        # Preserve other section flags; only reports lock is edited in UI.
-        locks["reports"] = request.POST.get("lock_reports") == "1"
-        settings.section_width_locks = locks
-        settings.save()
-        messages.success(request, "تنظیمات نمایش جداول ذخیره شد.")
-        return redirect("system_table_layout")
+    active = (request.POST.get("section") or request.GET.get("section") or "reports").strip()
+    if active not in SECTION_KEYS:
+        active = "reports"
 
-    locks = settings.normalized_locks()
-    # Interactive column resize exists only for reports; expose that lock alone.
-    lock_items = [
-        {"key": key, "label": label, "locked": locks.get(key, False)}
-        for key, label in TableLayoutSettings.SECTION_CHOICES
-        if key == "reports"
+    if request.method == "POST":
+        layouts = settings.layouts_map()
+        layouts[active] = {
+            "row_height_px": clamp_row_height(request.POST.get("row_height_px")),
+            "col_border": request.POST.get("col_border") == "show",
+            "row_border": request.POST.get("row_border") == "show",
+            "width_locked": request.POST.get("width_locked") == "1",
+        }
+        settings.section_layouts = layouts
+        settings.section_width_locks = locks_from_layouts(layouts)
+        settings.row_height_px = int(layouts.get("reports", {}).get("row_height_px") or 36)
+        settings.save()
+        messages.success(request, "تنظیمات نمایش این بخش ذخیره شد.")
+        return redirect(f"{request.path}?section={active}")
+
+    layouts = settings.layouts_map()
+    tabs = [
+        {
+            "key": key,
+            "label": label,
+            "active": key == active,
+            "layout": layouts[key],
+        }
+        for key, label in SECTION_CHOICES
     ]
+    current = layouts[active]
     return render(
         request,
         "catalog/system_table_layout.html",
         {
-            "row_height_px": settings.clamped_row_height(),
-            "lock_items": lock_items,
+            "active_section": active,
+            "tabs": tabs,
+            "row_height_px": current["row_height_px"],
+            "col_border": current["col_border"],
+            "row_border": current["row_border"],
+            "width_locked": current["width_locked"],
+            "can_edit": _can_edit_naming(request.user),
         },
     )
 
