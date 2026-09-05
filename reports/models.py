@@ -7,8 +7,8 @@ import django_jalali.db.models as jmodels
 
 
 class DataSource(models.TextChoices):
-    FITTING = "fitting", "تولید اتصالات"
-    PIPE = "pipe", "تولید لوله"
+    FITTING = "fitting", "ثبت و کنترل تولید (دستگاه تزریق)"
+    PIPE = "pipe", "ثبت و کنترل تولید (خط لوله)"
     PRODUCT = "product", "اطلاعات کالا و موجودی"
     DATA_ENTRY = "data_entry", "ثبت داده"
 

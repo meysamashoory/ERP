@@ -173,13 +173,24 @@
       return letter + (maxN + 1);
     }
 
+    function clampPriority(raw) {
+      var n = parseInt(raw, 10);
+      if (isNaN(n)) n = 0;
+      return Math.max(0, Math.min(9, n));
+    }
+
+    function setMetaFieldsRequired(on) {
+      if (titleInput) titleInput.required = !!on;
+      if (numberInput) numberInput.required = !!on;
+    }
+
     selected = (selected || []).map(function (item) {
       if (typeof item === "string") {
         return {
           key: item, source: "fitting", level: 1, level_mode: "1", label: item, origLabel: item,
           uid: newUid(), width: defaultWidthFor("fitting", item), is_key: false,
           kind: "field", col_code: "", number_format: "General", formula: "",
-          sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
+          sort_priority: 0, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
         };
       }
       item.kind = item.kind === "calc" ? "calc" : "field";
@@ -189,7 +200,7 @@
       item.level_mode = normalizeLevelMode(item.level_mode, item.level);
       item.number_format = item.number_format || "General";
       item.formula = item.formula || "";
-      item.sort_priority = Math.max(1, Math.min(9, parseInt(item.sort_priority || 1, 10) || 1));
+      item.sort_priority = clampPriority(item.sort_priority);
       item.sort_asc = item.sort_asc !== false && item.sort_asc !== 0 && item.sort_asc !== "0";
       item.is_hidden = !!item.is_hidden;
       item.cell_align = (item.cell_align === "left" || item.cell_align === "center" || item.cell_align === "right") ? item.cell_align : "right";
@@ -285,7 +296,7 @@
           col_code: c.col_code,
           number_format: c.number_format || "General",
           formula: c.kind === "calc" ? (c.formula || "") : "",
-          sort_priority: Math.max(1, Math.min(9, parseInt(c.sort_priority || 1, 10) || 1)),
+          sort_priority: clampPriority(c.sort_priority),
           sort_asc: c.sort_asc !== false && c.sort_asc !== 0 && c.sort_asc !== "0",
           is_hidden: !!c.is_hidden,
           cell_align: (c.cell_align === "left" || c.cell_align === "center" || c.cell_align === "right") ? c.cell_align : "right",
@@ -346,6 +357,7 @@
       if (builderPanel) builderPanel.hidden = false;
       if (topSubmit) topSubmit.hidden = false;
       if (cancelBtn) cancelBtn.hidden = false;
+      setMetaFieldsRequired(false);
       if (headingView) headingView.hidden = false;
       if (headingEdit) headingEdit.hidden = true;
       syncHeading();
@@ -353,6 +365,7 @@
     }
 
     function showMetaEditor() {
+      setMetaFieldsRequired(true);
       if (metaEditor) metaEditor.hidden = false;
       if (builderPanel) builderPanel.hidden = true;
       if (topSubmit) topSubmit.hidden = true;
@@ -475,7 +488,7 @@
                 key: key, source: sid, level: 1, level_mode: "1", label: lab, origLabel: lab,
                 uid: newUid(), width: defaultWidthFor(sid, key), is_key: false,
                 kind: "field", col_code: "", number_format: "General", formula: "",
-                sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
+                sort_priority: 0, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
               });
               assignColCodes();
             } else {
@@ -559,7 +572,7 @@
           col_code: nextCopyCode(src.col_code),
           number_format: src.number_format || "General",
           formula: src.kind === "calc" ? (src.formula || "") : "",
-          sort_priority: Math.max(1, Math.min(9, parseInt(src.sort_priority || 1, 10) || 1)),
+          sort_priority: clampPriority(src.sort_priority),
           sort_asc: src.sort_asc !== false,
           is_hidden: !!src.is_hidden,
           cell_align: src.cell_align || "right",
@@ -588,7 +601,7 @@
           col_code: "",
           number_format: "#,##0.##",
           formula: "",
-          sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
+          sort_priority: 0, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
         });
         assignColCodes();
         activeIdx = selected.length - 1;
@@ -641,9 +654,9 @@
     }
 
     function priorityOptionsHtml(current) {
-      var cur = Math.max(1, Math.min(9, parseInt(current || 1, 10) || 1));
+      var cur = clampPriority(current);
       var html = "";
-      for (var i = 1; i <= 9; i++) {
+      for (var i = 0; i <= 9; i++) {
         html += '<option value="' + i + '"' + (i === cur ? " selected" : "") + ">" + toPersianDigits(i) + "</option>";
       }
       return html;
@@ -795,7 +808,7 @@
         var pri = e.target.closest("[data-priority]");
         if (pri) {
           selected[parseInt(pri.getAttribute("data-priority"), 10)].sort_priority =
-            Math.max(1, Math.min(9, parseInt(pri.value || "1", 10) || 1));
+            clampPriority(pri.value);
           syncHidden();
           return;
         }
@@ -1155,6 +1168,15 @@
       }
     }
 
+    function rtlParenGlyph(marker) {
+      var m = String(marker || "");
+      if (m === "(") return ")";
+      if (m === "((") return "))";
+      if (m === ")") return "(";
+      if (m === "))") return "((";
+      return m;
+    }
+
     function parenOpenValue(c) {
       if (!c) return "";
       var raw = String(c.paren_open || "").trim();
@@ -1379,12 +1401,14 @@
         var pClose = parenCloseValue(cond);
         var html =
           "<td>" + (cond.logic ? String(cond.logic).toUpperCase() : "—") + "</td>" +
-          "<td class=\"rb-paren-cell\"><span class=\"rb-paren-glyph\" dir=\"ltr\">" + (pOpen || "—") + "</span></td>" +
+          "<td class=\"rb-paren-cell\"><span class=\"rb-paren-glyph\">" +
+            (pOpen ? rtlParenGlyph(pOpen) : "—") + "</span></td>" +
           "<td>" + groupLabel(cond.source) + "</td>" +
           "<td>" + labelOf(cond.source, cond.field) + "</td>" +
           "<td>" + opLabel(cond.op) + "</td>" +
           "<td>" + String(valShow) + "</td>" +
-          "<td class=\"rb-paren-cell\"><span class=\"rb-paren-glyph\" dir=\"ltr\">" + (pClose || "—") + "</span></td>";
+          "<td class=\"rb-paren-cell\"><span class=\"rb-paren-glyph\">" +
+            (pClose ? rtlParenGlyph(pClose) : "—") + "</span></td>";
         if (tbody) {
           var tr = document.createElement("tr");
           tr.className = "condition-row" + (idx === activeCondIdx ? " is-active" : "");
@@ -1620,6 +1644,16 @@
     if (formEl) {
       formEl.addEventListener("submit", function (e) {
         syncHidden();
+        var title = ((titleInput && titleInput.value) || "").trim();
+        var number = ((numberInput && numberInput.value) || "").trim();
+        if (!title || !number) {
+          e.preventDefault();
+          showMetaEditor();
+          setMetaFieldsRequired(true);
+          alert(!title ? "عنوان گزارش را وارد کنید." : "شماره گزارش را وارد کنید.");
+          try { (!title && titleInput ? titleInput : numberInput).focus(); } catch (err) {}
+          return;
+        }
         if (!selected.length) {
           e.preventDefault();
           alert("برای ایجاد گزارش حداقل یک آیتم از منابع را انتخاب کنید.");

@@ -69,8 +69,18 @@
     });
   }
 
+  function scrollToRtlStart() {
+    if (window.ERPTableLayout && typeof window.ERPTableLayout.scrollTableToRtlStart === "function") {
+      window.ERPTableLayout.scrollTableToRtlStart(table);
+    }
+  }
+
   renderHead();
   renderBody();
+  scrollToRtlStart();
+  requestAnimationFrame(function () {
+    requestAnimationFrame(scrollToRtlStart);
+  });
 
   if (window.ERPTableNav && typeof window.ERPTableNav.bind === "function") {
     delete table.dataset.tableNavBound;

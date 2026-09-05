@@ -108,6 +108,7 @@ class ReportFlowTests(TestCase):
         self.assertIn("history", ids)
         self.assertIn("data_entry", ids)
         self.assertTrue(all(not str(i).startswith("excel_table_") for i in ids))
+        self.assertTrue(all("report" not in str(i) for i in ids))
 
         headers, rows, _p, _d = run_report(
             "history",
@@ -115,6 +116,54 @@ class ReportFlowTests(TestCase):
         )
         self.assertEqual(headers, ["شماره برنامه"])
         self.assertIsInstance(rows, list)
+
+    def test_report_sources_follow_menu_names_and_headers(self):
+        from reports.app_sources import SOURCE_WEEKLY
+        from reports.columns import get_column_groups, run_report
+
+        groups = get_column_groups()
+        ids = [g["id"] for g in groups]
+        labels = [g["label"] for g in groups]
+        self.assertEqual(ids[0], SOURCE_WEEKLY)
+        self.assertEqual(labels[0], "برنامه‌ریزی هفتگی")
+        weekly = groups[0]
+        weekly_keys = {c[0] for c in weekly["columns"]}
+        self.assertIn("change_uid", weekly_keys)
+        self.assertIn("mold_number", weekly_keys)
+        self.assertIn("program_number", weekly_keys)
+        self.assertIn("mold_count", weekly_keys)
+
+        self.assertIn("systemic__balance", ids)
+        self.assertIn("برنامه‌ریزی توسط سیستم (تراز تقاضا و تأمین)", labels)
+        self.assertIn("برنامه‌ریزی توسط سیستم (کسری مواد)", labels)
+        self.assertIn("ثبت و کنترل تولید (دستگاه تزریق)", labels)
+        self.assertIn("ثبت و کنترل تولید (خط لوله)", labels)
+        self.assertTrue(any(lab.startswith("دیتای محصولات (") and lab.endswith(")") for lab in labels))
+        self.assertNotIn("دیتای محصولات — مشخصات کالاها", labels)
+        self.assertTrue(all(not str(i).startswith("excel_table_") for i in ids))
+        self.assertTrue(all("saved_report" not in str(i) and i != "reports" for i in ids))
+
+        headers, rows, _p, _d = run_report(
+            SOURCE_WEEKLY,
+            [
+                {"key": "program_number", "source": SOURCE_WEEKLY, "level": 1, "label": "شماره برنامه"},
+                {"key": "change_uid", "source": SOURCE_WEEKLY, "level": 1, "label": "شناسه تعویض"},
+                {"key": "mold_number", "source": SOURCE_WEEKLY, "level": 1, "label": "شماره قالب"},
+            ],
+        )
+        self.assertEqual(headers, ["شماره برنامه", "شناسه تعویض", "شماره قالب"])
+        self.assertTrue(rows)
+        self.assertTrue(any(r[0] for r in rows))
+
+        bal_headers, bal_rows, _bp, _bd = run_report(
+            "systemic__balance",
+            [
+                {"key": "product_code", "source": "systemic__balance", "level": 1, "label": "کد"},
+                {"key": "status", "source": "systemic__balance", "level": 1, "label": "وضعیت"},
+            ],
+        )
+        self.assertEqual(bal_headers, ["کد", "وضعیت"])
+        self.assertIsInstance(bal_rows, list)
 
     def test_builder_filters_sources_by_access_mode_in_script(self):
         """Readonly hides data_entry; editable keeps only data_entry (client filter)."""
@@ -1050,6 +1099,40 @@ class ColumnDisplayPropsTests(TestCase):
         self.assertEqual(sorted_rows[0], ["a", "b"])
         self.assertEqual(sorted_rows[1], ["b", "a"])
 
+    def test_clamp_sort_priority_allows_zero(self):
+        from reports.columns import clamp_sort_priority
+
+        self.assertEqual(clamp_sort_priority(None), 0)
+        self.assertEqual(clamp_sort_priority(""), 0)
+        self.assertEqual(clamp_sort_priority(0), 0)
+        self.assertEqual(clamp_sort_priority("0"), 0)
+        self.assertEqual(clamp_sort_priority(3), 3)
+        self.assertEqual(clamp_sort_priority(10), 9)
+
+    def test_all_zero_priority_sorts_from_right(self):
+        from reports.columns import _sort_report_rows
+
+        level_cols = [
+            {"sort_priority": 0, "sort_asc": True, "label": "R"},
+            {"sort_priority": 0, "sort_asc": True, "label": "L"},
+        ]
+        rows = [["b", "a"], ["a", "b"]]
+        sorted_rows, _ = _sort_report_rows(level_cols, rows, [{}, {}])
+        self.assertEqual(sorted_rows[0], ["a", "b"])
+        self.assertEqual(sorted_rows[1], ["b", "a"])
+
+    def test_mixed_zero_uses_only_prioritized_columns(self):
+        from reports.columns import _sort_report_rows
+
+        level_cols = [
+            {"sort_priority": 0, "sort_asc": True, "label": "R"},
+            {"sort_priority": 1, "sort_asc": True, "label": "L"},
+        ]
+        rows = [["z", "a"], ["a", "b"]]
+        sorted_rows, _ = _sort_report_rows(level_cols, rows, [{}, {}])
+        self.assertEqual(sorted_rows[0], ["z", "a"])
+        self.assertEqual(sorted_rows[1], ["a", "b"])
+
 
 class ReportDefaultColumnWidthTests(TestCase):
     @classmethod
@@ -1226,8 +1309,30 @@ class ReportUiPolishTests(TestCase):
         self.assertIn('th.style.position = "sticky"', js)
         self.assertIn("REVEAL_SPEED_PX_PER_SEC", js)
         self.assertIn("cell-reveal-inner", js)
+        self.assertIn("scrollTableToRtlStart", js)
         self.assertIn("overflow: hidden", css)
         self.assertNotIn("distance * 28", js)
+
+    def test_builder_priority_zero_and_rtl_parens(self):
+        from pathlib import Path
+
+        js = Path("/workspace/static/js/report_builder_display.js").read_text(encoding="utf-8")
+        html = Path("/workspace/templates/reports/builder_standalone.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("function clampPriority", js)
+        self.assertIn("for (var i = 0; i <= 9; i++)", js)
+        self.assertIn("sort_priority: 0", js)
+        self.assertIn("function rtlParenGlyph", js)
+        self.assertIn("novalidate", html)
+        self.assertIn('option value="(">)', html)
+        self.assertIn('option value=")">(', html)
+        self.assertIn("rb-paren-select", html)
+        css = Path("/workspace/static/css/report_app.css").read_text(encoding="utf-8")
+        self.assertIn(".rb-paren-select", css)
+        self.assertIn("direction: ltr", css)
+        hub = Path("/workspace/static/js/flexible_hub.js").read_text(encoding="utf-8")
+        self.assertIn("scrollTableToRtlStart", hub)
 
 
 class ReportConditionsTests(TestCase):

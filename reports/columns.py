@@ -58,6 +58,9 @@ FITTING_COLUMNS = [
     ("deviation_reason", "دلیل انحراف", _dev_reason),
     ("stock_finished", "موجودی محصول", lambda r: r.program.item.product.stock_finished),
     ("stock_unassembled", "موجودی مونتاژ‌نشده", lambda r: r.program.item.product.stock_unassembled),
+    ("program_number", "شماره برنامه", lambda r: r.program.item.plan.program_number),
+    ("status", "وضعیت", lambda r: r.program.get_status_display()),
+    ("produced_planned", "تولید/برنامه", lambda r: f"{r.produced_quantity} / {r.planned_quantity}"),
 ]
 
 PIPE_COLUMNS = [
@@ -174,10 +177,10 @@ def _excel_table_column_tuples(table) -> list[tuple[str, str, object]]:
 
 
 def _flex_column_tuples(destination_id: str, level_id: str) -> list[tuple[str, str, object]]:
-    from catalog.flexible_data import load_schema_columns
+    from reports.app_sources import load_all_flex_columns
 
     out: list[tuple[str, str, object]] = []
-    for col in load_schema_columns(destination_id, level_id):
+    for col in load_all_flex_columns(destination_id, level_id):
         key = str(col.get("key") or "").strip()
         if not key:
             continue
@@ -187,27 +190,33 @@ def _flex_column_tuples(destination_id: str, level_id: str) -> list[tuple[str, s
 
 
 def get_product_data_flex_groups() -> list[dict]:
-    """One source group per product-data tab that has a transferred schema."""
+    """One source group per product-data tab (hidden and visible columns)."""
+    from reports.app_sources import load_all_flex_columns, parenthesized_label
     from catalog.flexible_data import DEFAULT_PRODUCT_TABS, list_tab_levels
 
     groups: list[dict] = []
     for tab in list_tab_levels("product_data", DEFAULT_PRODUCT_TABS):
         level_id = tab["id"]
-        tuples = _flex_column_tuples("product_data", level_id)
-        if not tuples:
-            continue
+        cols = load_all_flex_columns("product_data", level_id)
         groups.append({
             "id": flex_source_id("product_data", level_id),
-            "label": f"دیتای محصولات — {tab['label']}",
-            "hint": "فقط داده‌های منتقل‌شده به این تب (نه فایل اکسل خام).",
-            "columns": [(k, label) for k, label, _ in tuples],
+            "label": parenthesized_label("دیتای محصولات", tab["label"]),
+            "hint": "ستون‌های منتقل‌شده به این تب (مخفی و آشکار). فایل اکسل خام منبع نیست.",
+            "columns": [(c["key"], c["label"]) for c in cols],
         })
     return groups
 
 
 def get_column_groups() -> list[dict]:
-    """Built-in sources + history + transferred product-data tabs (no raw Excel)."""
-    groups = [g for g in COLUMN_GROUPS if g.get("id") not in ("file",)]
+    """Menu-aligned sources. No raw Excel and no saved reports."""
+    from reports.app_sources import systemic_groups, weekly_planning_group
+
+    groups: list[dict] = [weekly_planning_group()]
+    groups.extend(systemic_groups())
+    for g in COLUMN_GROUPS:
+        if g.get("id") in {"file"}:
+            continue
+        groups.append(g)
     groups.append({
         "id": "history",
         "label": "سوابق تولید",
@@ -299,12 +308,12 @@ COLUMNS_BY_SOURCE = {
 COLUMN_GROUPS = [
     {
         "id": "fitting",
-        "label": "تولید اتصالات (داده ذخیره‌شده)",
+        "label": "ثبت و کنترل تولید (دستگاه تزریق)",
         "columns": [(k, label) for k, label, _ in FITTING_COLUMNS],
     },
     {
         "id": "pipe",
-        "label": "تولید لوله (داده ذخیره‌شده)",
+        "label": "ثبت و کنترل تولید (خط لوله)",
         "columns": [(k, label) for k, label, _ in PIPE_COLUMNS],
     },
     {
@@ -465,6 +474,11 @@ def _columns_for_source(source: str) -> list[tuple[str, str, object]]:
         if not parsed:
             return []
         return _flex_column_tuples(parsed[0], parsed[1])
+    from reports.app_sources import columns_for_app_source
+
+    app_cols = columns_for_app_source(source)
+    if app_cols:
+        return app_cols
     return list(COLUMNS_BY_SOURCE.get(source, []))
 
 
@@ -657,11 +671,14 @@ LEVEL_MODE_CHOICES: list[tuple[str, str]] = (
 
 
 def clamp_sort_priority(raw) -> int:
+    """0 = no explicit priority. 1–9 are sort ranks (1 first)."""
+    if raw is None or raw == "":
+        return 0
     try:
-        n = int(raw or 1)
+        n = int(raw)
     except (TypeError, ValueError):
-        n = 1
-    return max(1, min(9, n))
+        return 0
+    return max(0, min(9, n))
 
 
 def normalize_cell_align(raw) -> str:
@@ -808,7 +825,7 @@ def normalize_columns(raw) -> list[dict]:
                 "col_code": "",
                 "number_format": "General",
                 "formula": "",
-                "sort_priority": 1,
+                "sort_priority": 0,
                 "sort_asc": True,
                 "is_hidden": False,
                 "cell_align": "right",
@@ -944,7 +961,9 @@ def persist_column_uids(report) -> list[dict]:
 def _getter_map(source: str) -> dict:
     by_key = {}
     for k, label, getter in _columns_for_source(source):
-        if is_flex_source(source) or is_excel_table_source(source) or source == "history":
+        from reports.app_sources import is_dict_row_source
+
+        if is_flex_source(source) or is_excel_table_source(source) or is_dict_row_source(source):
             by_key[k] = (label, getter or _dict_get(k))
         else:
             by_key[k] = (label, getter)
@@ -970,6 +989,7 @@ def _queryset(data_source: str):
         return []
     return ProductionDayEntry.objects.select_related(
         "program__item__product",
+        "program__item__plan",
         "program__item__machine__unit",
         "deviation_reason",
     ).all()
@@ -998,6 +1018,8 @@ def _excel_row_dicts(table) -> list[dict]:
 
 
 def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
+    from reports.app_sources import is_dict_row_source
+
     by_key = _getter_map(data_source)
     for k, label, getter in FILE_COLUMNS:
         by_key.setdefault(k, (label, getter or (lambda _r: "")))
@@ -1032,7 +1054,7 @@ def _resolve_specs(data_source: str, column_specs: list[dict]) -> list[dict]:
                     "getter": getter or (lambda _r: ""),
                 }
             )
-        elif is_flex_source(src or data_source) and key:
+        elif (is_flex_source(src or data_source) or is_dict_row_source(src or data_source)) and key:
             resolved.append({
                 **spec,
                 "label": spec.get("label") or key,
@@ -1201,6 +1223,27 @@ def _build_records(data_source: str, specs: list[dict], entry_data: dict | None 
     if is_flex_source(data_source):
         parsed = parse_flex_source(data_source)
         records = _flex_row_dicts(parsed[0], parsed[1]) if parsed else []
+        rows = []
+        for record in records:
+            cell = {}
+            for spec in specs:
+                sk = storage_key(spec)
+                dk = data_key(spec)
+                if is_data_entry_key(dk, spec.get("source") or ""):
+                    cell[sk] = ""
+                    continue
+                try:
+                    cell[sk] = spec["getter"](record) if spec.get("getter") else record.get(dk, "")
+                except Exception:
+                    cell[sk] = ""
+            rows.append(cell)
+        return rows
+
+    from reports.app_sources import is_dict_row_source, rows_for_app_source
+
+    app_rows = rows_for_app_source(data_source)
+    if app_rows is not None:
+        records = app_rows
         rows = []
         for record in records:
             cell = {}
@@ -1449,17 +1492,29 @@ def _sort_report_rows(
     display_rows: list[list],
     payloads: list[dict],
 ) -> tuple[list[list], list[dict]]:
-    """Sort rows by column sort_priority (1 first). Same priority → rightmost column first (RTL)."""
+    """Sort rows by column sort_priority (1 first). 0 = no priority.
+
+    All zeros → RTL from the rightmost column. If any column has 1–9,
+    only those prioritized columns are used (same rank → rightmost first).
+    """
     if not display_rows or not level_cols:
         return display_rows, payloads
     # RTL: index 0 is rightmost → earlier among equal priorities.
-    order = sorted(
-        range(len(level_cols)),
-        key=lambda i: (
-            clamp_sort_priority(level_cols[i].get("sort_priority")),
-            i,
-        ),
-    )
+    prioritized = [
+        i
+        for i in range(len(level_cols))
+        if clamp_sort_priority(level_cols[i].get("sort_priority")) > 0
+    ]
+    if prioritized:
+        order = sorted(
+            prioritized,
+            key=lambda i: (
+                clamp_sort_priority(level_cols[i].get("sort_priority")),
+                i,
+            ),
+        )
+    else:
+        order = list(range(len(level_cols)))
     paired = list(zip(display_rows, payloads))
 
     def row_sort_key(item):
