@@ -33,6 +33,7 @@
 {% if line.is_matrix_line and matrix %}
 <section class="pcx"
          id="pcx-root"
+         data-table-section="pipe_calc"
          data-line="{{ line.code }}"
          data-run-url="{% url 'pipe_calc_run' %}"
          data-defs-url="{% url 'pipe_calc_save_defs' %}"

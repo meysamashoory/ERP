@@ -209,16 +209,16 @@ class TableLayoutSettingsAdmin(admin.ModelAdmin):
             "ارتفاع ردیف",
             {
                 "fields": ("row_height_px",),
-                "description": "ارتفاع یکسان برای همه ردیف‌های جداول سامانه (پیکسل).",
+                "description": "مقدار همگام با تب گزارش‌ها؛ تنظیم اصلی از صفحه داده‌های سامانه است.",
             },
         ),
         (
-            "قفل عرض ستون",
+            "نمایش به تفکیک منو",
             {
-                "fields": ("section_width_locks",),
+                "fields": ("section_layouts", "section_width_locks"),
                 "description": (
-                    "برای هر بخش کلید را true کنید تا دستگیره تغییر عرض ستون پنهان شود. "
-                    'مثال: {"reports": true, "product_data": false, "history": true}'
+                    "برای هر منو: ارتفاع ردیف، مرز ستون/ردیف، و قفل عرض. "
+                    "پیش‌فرض: فقط گزارش‌ها بدون قفل عرض هستند."
                 ),
             },
         ),

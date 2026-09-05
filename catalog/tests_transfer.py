@@ -48,7 +48,7 @@ class MenuAndHistoryTests(TestCase):
         self.assertContains(system, "گزارش‌ها")
         self.assertContains(system, "بررسی مجوزها")
         self.assertContains(system, "برنامه‌ریزی هفتگی")
-        self.assertContains(system, "ثبت تولید روزانه")
+        self.assertContains(system, "ثبت و کنترل تولید")
         self.assertContains(system, "واحد‌های تولید")
         self.assertContains(system, "زیرگروه محصولات")
         self.assertContains(system, "فیلد اطلاعات نوار شیشه‌ای")

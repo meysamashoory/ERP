@@ -5,6 +5,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from .table_layout import SECTION_CHOICES as LAYOUT_SECTION_CHOICES
+
 
 class CountingUnit(models.TextChoices):
     COUNT = "count", "عدد"
@@ -807,38 +809,35 @@ class FlexibleRow(models.Model):
 
 
 class TableLayoutSettings(models.Model):
-    """Global table row height + per-section column-width lock flags.
+    """Per-menu table display: row height, borders, and column-width lock.
 
-    Managed from «داده‌های سیستم». ``section_width_locks`` maps section keys
-    (reports, product_data, history, …) to booleans.
+    Managed from «داده‌های سیستم». ``section_layouts`` is the source of truth;
+    ``row_height_px`` and ``section_width_locks`` stay in sync for older code.
     """
 
-    SECTION_CHOICES = (
-        ("reports", "گزارش‌ها"),
-        ("product_data", "دیتای محصولات"),
-        ("history", "سوابق تولید"),
-        ("planning", "برنامه‌ریزی هفتگی"),
-        ("production", "ثبت و کنترل تولید"),
-        ("excel", "جداول اکسل"),
-        ("forms", "فرم‌های چاپی"),
-        ("system", "داده‌های سیستم"),
-    )
+    SECTION_CHOICES = LAYOUT_SECTION_CHOICES
 
     row_height_px = models.PositiveSmallIntegerField(
-        "ارتفاع یکنواخت ردیف جداول (پیکسل)",
+        "ارتفاع ردیف جداول (پیکسل)",
         default=36,
-        help_text="بین ۱۸ تا ۱۲۰. روی همه جداول سامانه اعمال می‌شود.",
+        help_text="بین ۵ تا ۱۲۰. برای هر منو جداگانه در section_layouts ذخیره می‌شود.",
     )
     section_width_locks = models.JSONField(
         "قفل عرض ستون به تفکیک بخش",
         default=dict,
         blank=True,
-        help_text='مثال: {"reports": true, "history": false}',
+        help_text='همگام با section_layouts. مثال: {"reports": false, "history": true}',
+    )
+    section_layouts = models.JSONField(
+        "تنظیمات نمایش به تفکیک منو",
+        default=dict,
+        blank=True,
+        help_text='مثال: {"reports": {"row_height_px": 36, "col_border": true, "row_border": true, "width_locked": false}}',
     )
 
     class Meta:
         verbose_name = "تنظیمات نمایش جداول"
-        verbose_name_plural = "تنظیمات نمایش جداول (ارتفاع ردیف و قفل عرض)"
+        verbose_name_plural = "تنظیمات نمایش جداول (ارتفاع ردیف، مرز و قفل عرض)"
 
     def __str__(self) -> str:
         return f"ارتفاع ردیف {self.row_height_px}px"
@@ -847,26 +846,39 @@ class TableLayoutSettings(models.Model):
     def load(cls) -> "TableLayoutSettings":
         obj = cls.objects.first()
         if obj is None:
-            obj = cls(row_height_px=36, section_width_locks={})
+            obj = cls(row_height_px=36, section_width_locks={}, section_layouts={})
         return obj
 
+    def layouts_map(self) -> dict[str, dict]:
+        from .table_layout import normalize_all_layouts
+
+        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
+        return normalize_all_layouts(
+            self.section_layouts,
+            legacy_height=self.row_height_px,
+            legacy_locks={str(k): bool(v) for k, v in locks.items()},
+        )
+
     def clamped_row_height(self) -> int:
-        try:
-            h = int(self.row_height_px or 36)
-        except (TypeError, ValueError):
-            h = 36
-        return max(18, min(120, h))
+        from .table_layout import DEFAULT_ROW_HEIGHT, clamp_row_height
+
+        layouts = self.layouts_map()
+        reports = layouts.get("reports") or {}
+        return clamp_row_height(reports.get("row_height_px"), DEFAULT_ROW_HEIGHT)
 
     def is_width_locked(self, section_key: str) -> bool:
-        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
-        return bool(locks.get(str(section_key or ""), False))
+        from .table_layout import default_width_locked
+
+        layouts = self.layouts_map()
+        key = str(section_key or "")
+        if key in layouts:
+            return bool(layouts[key]["width_locked"])
+        return default_width_locked(key)
 
     def normalized_locks(self) -> dict[str, bool]:
-        locks = self.section_width_locks if isinstance(self.section_width_locks, dict) else {}
-        out: dict[str, bool] = {}
-        for key, _label in self.SECTION_CHOICES:
-            out[key] = bool(locks.get(key, False))
-        return out
+        from .table_layout import locks_from_layouts
+
+        return locks_from_layouts(self.layouts_map())
 
 
 # Pipe production-time calculation master data (see catalog.pipe_calc).

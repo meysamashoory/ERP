@@ -457,7 +457,7 @@
   function enhanceAll() {
     document
       .querySelectorAll(
-        'table.table[data-table-section="reports"], [data-table-section="reports"] table.table'
+        "table.table[data-table-section], [data-table-section] table.table"
       )
       .forEach(enhanceTable);
     // Marquee reveal for all scrollable data tables (height stays locked via CSS).
