@@ -382,6 +382,36 @@
     });
   }
 
+  function scrollerOf(table) {
+    return table && table.closest
+      ? table.closest(".table-scroll, .table-scroll-wide")
+      : null;
+  }
+
+  function scrollTableToRtlStart(table) {
+    var scroller = scrollerOf(table);
+    if (!scroller || scroller.getAttribute("data-rtl-start-done") === "1") return;
+    var thCount = table.tHead ? table.tHead.querySelectorAll("th").length : 0;
+    if (!thCount) return;
+    var tableDir = "rtl";
+    var scrollDir = "ltr";
+    try { tableDir = getComputedStyle(table).direction || "rtl"; } catch (e) {}
+    try { scrollDir = getComputedStyle(scroller).direction || "ltr"; } catch (e2) {}
+    if (tableDir !== "rtl") {
+      scroller.setAttribute("data-rtl-start-done", "1");
+      return;
+    }
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (scroller.getAttribute("data-rtl-start-done") === "1") return;
+        var max = scroller.scrollWidth - scroller.clientWidth;
+        if (max <= 1) return;
+        scroller.scrollLeft = scrollDir === "rtl" ? 0 : max;
+        scroller.setAttribute("data-rtl-start-done", "1");
+      });
+    });
+  }
+
   function enhanceTable(table) {
     if (!table || table.getAttribute("data-layout-ready") === "1") return;
     table.setAttribute("data-layout-ready", "1");
@@ -405,11 +435,14 @@
     var stored = loadWidths(table);
     if (metaWidths && metaWidths.some(function (w) { return w > 0; })) {
       applyFixedWidths(table, metaWidths);
+      scrollTableToRtlStart(table);
     } else if (stored) {
       applyFixedWidths(table, stored);
+      scrollTableToRtlStart(table);
     } else {
       requestAnimationFrame(function () {
         lockAllColumnWidths(table);
+        scrollTableToRtlStart(table);
       });
     }
 
@@ -430,7 +463,10 @@
     // Marquee reveal for all scrollable data tables (height stays locked via CSS).
     document
       .querySelectorAll(".table-scroll table.table, .table-scroll-wide table.table")
-      .forEach(bindReveal);
+      .forEach(function (table) {
+        bindReveal(table);
+        scrollTableToRtlStart(table);
+      });
   }
 
   function boot() {
@@ -450,6 +486,7 @@
   global.ERPTableLayout = {
     enhanceAll: enhanceAll,
     enhanceTable: enhanceTable,
+    scrollTableToRtlStart: scrollTableToRtlStart,
     stopReveal: stopReveal,
     playCellReveal: playCellReveal,
     onCellSelected: onCellSelected,

@@ -1050,6 +1050,40 @@ class ColumnDisplayPropsTests(TestCase):
         self.assertEqual(sorted_rows[0], ["a", "b"])
         self.assertEqual(sorted_rows[1], ["b", "a"])
 
+    def test_clamp_sort_priority_allows_zero(self):
+        from reports.columns import clamp_sort_priority
+
+        self.assertEqual(clamp_sort_priority(None), 0)
+        self.assertEqual(clamp_sort_priority(""), 0)
+        self.assertEqual(clamp_sort_priority(0), 0)
+        self.assertEqual(clamp_sort_priority("0"), 0)
+        self.assertEqual(clamp_sort_priority(3), 3)
+        self.assertEqual(clamp_sort_priority(10), 9)
+
+    def test_all_zero_priority_sorts_from_right(self):
+        from reports.columns import _sort_report_rows
+
+        level_cols = [
+            {"sort_priority": 0, "sort_asc": True, "label": "R"},
+            {"sort_priority": 0, "sort_asc": True, "label": "L"},
+        ]
+        rows = [["b", "a"], ["a", "b"]]
+        sorted_rows, _ = _sort_report_rows(level_cols, rows, [{}, {}])
+        self.assertEqual(sorted_rows[0], ["a", "b"])
+        self.assertEqual(sorted_rows[1], ["b", "a"])
+
+    def test_mixed_zero_uses_only_prioritized_columns(self):
+        from reports.columns import _sort_report_rows
+
+        level_cols = [
+            {"sort_priority": 0, "sort_asc": True, "label": "R"},
+            {"sort_priority": 1, "sort_asc": True, "label": "L"},
+        ]
+        rows = [["z", "a"], ["a", "b"]]
+        sorted_rows, _ = _sort_report_rows(level_cols, rows, [{}, {}])
+        self.assertEqual(sorted_rows[0], ["z", "a"])
+        self.assertEqual(sorted_rows[1], ["a", "b"])
+
 
 class ReportDefaultColumnWidthTests(TestCase):
     @classmethod
@@ -1226,8 +1260,27 @@ class ReportUiPolishTests(TestCase):
         self.assertIn('th.style.position = "sticky"', js)
         self.assertIn("REVEAL_SPEED_PX_PER_SEC", js)
         self.assertIn("cell-reveal-inner", js)
+        self.assertIn("scrollTableToRtlStart", js)
         self.assertIn("overflow: hidden", css)
         self.assertNotIn("distance * 28", js)
+
+    def test_builder_priority_zero_and_rtl_parens(self):
+        from pathlib import Path
+
+        js = Path("/workspace/static/js/report_builder_display.js").read_text(encoding="utf-8")
+        html = Path("/workspace/templates/reports/builder_standalone.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("function clampPriority", js)
+        self.assertIn("for (var i = 0; i <= 9; i++)", js)
+        self.assertIn("sort_priority: 0", js)
+        self.assertIn("function rtlParenGlyph", js)
+        self.assertIn("novalidate", html)
+        self.assertIn('option value="(">)', html)
+        self.assertIn('option value=")">(', html)
+        self.assertNotIn('id="cond-paren-open" name="cond_paren_open" dir="ltr"', html)
+        hub = Path("/workspace/static/js/flexible_hub.js").read_text(encoding="utf-8")
+        self.assertIn("scrollTableToRtlStart", hub)
 
 
 class ReportConditionsTests(TestCase):
