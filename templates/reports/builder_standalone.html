@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=4">
 </head>
 <body class="report-app">
 <form method="post"
@@ -22,7 +22,7 @@
 
   <div class="rp-shell">
     <div class="rp-titlebar">
-      <span class="rp-title" id="rp-window-title">{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</span>
+      <span class="rp-title" id="rp-window-title" title="برای ویرایش اطلاعات گزارش کلیک کنید" role="button" tabindex="0">{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</span>
       <div class="rp-win-btns">
         <button type="button" id="rp-minimize" title="کوچک‌سازی">—</button>
         <button type="button" id="rp-maximize" title="بزرگ‌سازی">□</button>
@@ -32,8 +32,6 @@
 
     <div class="rp-toolbar">
       <button type="submit" class="btn btn-sm" id="top-submit">ثبت گزارش</button>
-      <span class="sep"></span>
-      <button type="button" class="btn btn-sm btn-ghost" id="edit-meta-btn">ویرایش اطلاعات</button>
       <span class="spacer"></span>
       <span class="muted" id="builder-status">{% if mode == 'edit' %}ویرایش گزارش{% else %}ایجاد گزارش{% endif %}</span>
     </div>

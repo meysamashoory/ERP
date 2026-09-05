@@ -411,6 +411,8 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
 
 /* Sources */
 .source-menu {
+  position: relative;
+  z-index: 25;
   border: 1.5px solid var(--rp-field-border);
   border-radius: 8px;
   background: #fff;
@@ -424,8 +426,17 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
 }
 .source-menu-summary::-webkit-details-marker { display: none; }
 .source-menu-list {
-  border-top: 1px solid var(--rp-line);
-  max-height: 180px;
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  left: 0;
+  z-index: 40;
+  margin: 0;
+  border: 1px solid var(--rp-line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+  max-height: 220px;
   overflow: auto;
 }
 .source-menu-item {
@@ -443,6 +454,7 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
 .source-link-bar { margin-top: 8px; }
 .source-links-summary { font-size: 11px; margin-top: 4px; }
 .source-trees { display: flex; flex-direction: column; gap: 8px; }
+.source-tree,
 .source-tree-box {
   border: 1px solid var(--rp-line);
   border-radius: 8px;
@@ -589,10 +601,27 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-weight: 700;
   color: #1e3a5f;
-  text-align: center;
+  text-align: center !important;
+  vertical-align: middle;
   font-size: 11px;
 }
-.key-cell, .fx-cell, .private-cell, .priv-cell, .priority-cell { text-align: center; }
+.key-cell,
+.fx-cell,
+.private-cell,
+.priv-cell,
+.priority-cell {
+  text-align: center !important;
+  vertical-align: middle;
+}
+.display-cols-table th:nth-child(2),
+.display-cols-table th:nth-child(8),
+.display-cols-table th:nth-child(9),
+.display-cols-table td.col-code-cell,
+.display-cols-table td.fx-cell,
+.display-cols-table td.priv-cell,
+.display-cols-table td.private-cell {
+  text-align: center !important;
+}
 .btn-fx {
   border: 1px solid #86efac;
   background: #ecfdf5;
@@ -605,7 +634,16 @@ body.is-col-resizing { cursor: col-resize !important; user-select: none; }
   font-size: 11px;
 }
 .btn-fx:hover { background: #bbf7d0; }
-.sel-format { min-width: 90px; }
+.sel-format {
+  min-width: 90px;
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+}
+.sel-format option {
+  direction: ltr;
+  text-align: left;
+}
 .badge-private,
 .rb-private-badge {
   display: inline-flex;

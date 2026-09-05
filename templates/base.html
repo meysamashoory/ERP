@@ -108,13 +108,41 @@
     return false;
   }
   window.ERPOpenFormDesigner = openDesigner;
-  window.ERPOpenReportApp = function (url) {
-    var w = screen.availWidth || 1200;
-    var h = screen.availHeight || 800;
-    var feat = "popup=yes,width=" + w + ",height=" + h + ",left=0,top=0,resizable=yes,scrollbars=yes";
-    var win = window.open(url, "erp-report-app", feat);
-    if (!win) window.location.href = url;
-    else try { win.focus(); } catch (e) {}
+  window.ERPOpenReportApp = function (url, opts) {
+    opts = opts || {};
+    var w = screen.availWidth || screen.width || 1200;
+    var h = screen.availHeight || screen.height || 800;
+    var feat = [
+      "popup=yes",
+      "width=" + w,
+      "height=" + h,
+      "left=0",
+      "top=0",
+      "resizable=yes",
+      "scrollbars=yes",
+      "toolbar=no",
+      "location=no",
+      "menubar=no",
+      "status=no"
+    ].join(",");
+    // Unique name so create/view/edit can stay independent without replacing each other.
+    var name = opts.name;
+    if (!name) {
+      try {
+        var path = String(url || "").split("?")[0];
+        name = "erp-report-" + path.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+      } catch (e) {
+        name = "erp-report-app";
+      }
+    }
+    var win = window.open(url, name, feat);
+    if (!win) {
+      window.location.href = url;
+      return false;
+    }
+    try { win.moveTo(0, 0); } catch (e) {}
+    try { win.resizeTo(w, h); } catch (e) {}
+    try { win.focus(); } catch (e) {}
     return false;
   };
   document.querySelectorAll("[data-designer-open]").forEach(function (a) {

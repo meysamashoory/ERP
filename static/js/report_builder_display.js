@@ -376,6 +376,17 @@
     }
     var editMetaBtn = document.getElementById("edit-meta-btn");
     if (editMetaBtn) editMetaBtn.addEventListener("click", showMetaEditor);
+    var winTitle = document.getElementById("rp-window-title");
+    if (winTitle) {
+      winTitle.style.cursor = "pointer";
+      winTitle.addEventListener("click", showMetaEditor);
+      winTitle.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          showMetaEditor();
+        }
+      });
+    }
     if (cancelBtn) cancelBtn.addEventListener("click", showBuilder);
     if (accessInput) accessInput.addEventListener("change", function () { fillSourceMenu(); });
 
@@ -673,7 +684,7 @@
           '<td><input class="input sel-width" type="text" inputmode="numeric" data-width="' + idx +
             '" value="' + (clampWidth(c.width) || "") + '"></td>' +
           '<td class="key-cell"><input type="checkbox" data-key="' + idx + '"' + keyChecked + keyDisabled + "></td>" +
-          '<td><select class="input sel-format" data-format="' + idx + '">' + formatOptionsHtml(c.number_format || "General") + "</select></td>" +
+          '<td><select class="input sel-format" dir="ltr" data-format="' + idx + '">' + formatOptionsHtml(c.number_format || "General") + "</select></td>" +
           '<td class="priority-cell"><select class="input" data-priority="' + idx + '">' + priorityOptionsHtml(c.sort_priority) + "</select></td>" +
           '<td class="fx-cell">' + fxCell + "</td>" +
           '<td class="priv-cell">' + privCell + "</td>";

@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from core.exports import export_excel, export_pdf
@@ -263,6 +264,19 @@ def report_list(request: HttpRequest) -> HttpResponse:
     )
 
 
+
+def _report_saved_popup(request: HttpRequest, *, message: str, list_url: str | None = None) -> HttpResponse:
+    """After create/edit in the standalone popup: refresh opener list and close."""
+    from django.urls import reverse
+    return render(
+        request,
+        "reports/popup_saved.html",
+        {
+            "message": message,
+            "list_url": list_url or reverse("report_list"),
+        },
+    )
+
 @login_required
 def report_create(request: HttpRequest) -> HttpResponse:
     if not can_create_report(request.user):
@@ -282,8 +296,12 @@ def report_create(request: HttpRequest) -> HttpResponse:
                 report.source_links = []
             report.conditions = _parse_conditions_post(request)
             report.save()
-            messages.success(request, "گزارش ایجاد شد. ستون‌ها را انتخاب کنید.")
-            return redirect("report_edit", pk=report.pk)
+            messages.success(request, "گزارش ذخیره شد.")
+            return _report_saved_popup(
+                request,
+                message="گزارش ذخیره شد",
+                list_url=reverse("report_list"),
+            )
         for field, errors in form.errors.items():
             for err in errors:
                 label = form.fields[field].label if field in form.fields else field
@@ -327,8 +345,12 @@ def report_edit(request: HttpRequest, pk: int) -> HttpResponse:
                 return render(request, "reports/builder_standalone.html", ctx)
             obj.conditions = conditions
             obj.save()
-            messages.success(request, "گزارش به‌روزرسانی شد.")
-            return redirect("report_detail", pk=report.pk)
+            messages.success(request, "گزارش ذخیره شد.")
+            return _report_saved_popup(
+                request,
+                message="گزارش ذخیره شد",
+                list_url=reverse("report_list"),
+            )
     else:
         form = SavedReportForm(instance=report, user=request.user)
     return render(

@@ -37,12 +37,13 @@ class ReportFlowTests(TestCase):
                 ),
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
         report = SavedReport.objects.get(number=100, owner=self.expert)
         self.assertEqual(report.title, "گزارش تست")
         self.assertEqual(report.description, "توضیح نمونه")
         self.assertEqual(len(report.columns), 4)
-        self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
+        self.assertContains(resp, "گزارش ذخیره شد")
+        self.assertContains(resp, "در حال بستن پنجره")
 
         list_resp = self.client.get(reverse("report_list"))
         self.assertContains(list_resp, "گزارش تست")
@@ -81,11 +82,12 @@ class ReportFlowTests(TestCase):
                 "columns_json": "[]",
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
         report = SavedReport.objects.get(title="گزارش دیالوگ", owner=self.expert)
         self.assertEqual(report.number, 5)
         self.assertEqual(report.columns, [])
-        self.assertIn(f"/reports/{report.pk}/edit/", resp["Location"])
+        self.assertContains(resp, "گزارش ذخیره شد")
+        self.assertContains(resp, "در حال بستن پنجره")
 
         get_create = self.client.get(reverse("report_create"))
         self.assertEqual(get_create.status_code, 200)
@@ -196,7 +198,8 @@ class ReportFlowTests(TestCase):
                 ),
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "گزارش ذخیره شد")
         report = SavedReport.objects.get(number=777, owner=self.expert)
         self.assertEqual(report.access_mode, "editable")
         self.assertEqual(report.data_source, "data_entry")
@@ -655,7 +658,9 @@ class PrintFormFlowTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, report.title)
         self.assertContains(resp, "نحوه نمایش")
-        self.assertContains(resp, "ویرایش اطلاعات")
+        self.assertContains(resp, "ثبت گزارش")
+        self.assertNotContains(resp, 'id="edit-meta-btn"')
+        self.assertContains(resp, "برای ویرایش اطلاعات گزارش کلیک کنید")
         self.assertNotContains(resp, "بالا = راست")
 
     def test_sidebar_labels(self):
@@ -945,7 +950,8 @@ class ReportColumnKeyAndWidthTests(TestCase):
                 "source_links_json": "[]",
             },
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "گزارش ذخیره شد")
         report.refresh_from_db()
         by_key = {c["key"]: c for c in report.columns}
         self.assertTrue(by_key["code"]["is_key"])
