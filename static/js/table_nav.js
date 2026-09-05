@@ -66,10 +66,10 @@
     }
     var cellRect = cell.getBoundingClientRect();
     var scRect = scroller.getBoundingClientRect();
-    var thead = scroller.querySelector("thead");
+    var stickyTh = scroller.querySelector("thead th");
     var headH = 0;
-    if (thead) {
-      var headRect = thead.getBoundingClientRect();
+    if (stickyTh) {
+      var headRect = stickyTh.getBoundingClientRect();
       headH = Math.max(0, Math.min(headRect.height, headRect.bottom - scRect.top));
     }
     var pad = 2;
