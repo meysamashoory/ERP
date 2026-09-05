@@ -59,7 +59,7 @@ class ReportFlowTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, "100- گزارش تست")
         self.assertContains(detail, "(توضیح نمونه)")
-        self.assertContains(detail, ">ویرایش<")
+        self.assertContains(detail, "ویرایش")
         self.assertContains(detail, "خروجی")
         self.assertContains(detail, "موقعیت:")
         self.assertNotContains(detail, "قابل اصلاح")
@@ -655,7 +655,7 @@ class PrintFormFlowTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, report.title)
         self.assertContains(resp, "نحوه نمایش")
-        self.assertContains(resp, ">ویرایش<")
+        self.assertContains(resp, "ویرایش اطلاعات")
         self.assertNotContains(resp, "بالا = راست")
 
     def test_sidebar_labels(self):
@@ -975,6 +975,67 @@ class ReportColumnKeyAndWidthTests(TestCase):
         self.assertIn("_drill_keys", payloads[0])
         self.assertIn("c1", payloads[0]["_drill_keys"])
         self.assertNotIn("c2", payloads[0]["_drill_keys"])
+
+
+
+class ColumnDisplayPropsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_demo")
+
+    def test_level_labels_use_ordinals(self):
+        from reports.columns import LEVEL_MODE_CHOICES
+        labels = dict(LEVEL_MODE_CHOICES)
+        self.assertEqual(labels["1"], "اول")
+        self.assertEqual(labels["9"], "نهم")
+        self.assertEqual(labels["upto_2"], "تا دوم")
+        self.assertEqual(labels["upto_8"], "تا هشتم")
+        self.assertEqual(labels["all"], "همه سطوح")
+
+    def test_hidden_column_excluded_from_display_but_sortable(self):
+        from reports.columns import normalize_columns, run_report, level_display_meta
+        from reports.formula import to_number
+
+        cols = normalize_columns([
+            {
+                "key": "code", "source": "product", "label": "کد",
+                "level_mode": "all", "is_key": True, "sort_priority": 2,
+            },
+            {
+                "key": "stock_finished", "source": "product", "label": "موجودی",
+                "level_mode": "all", "sort_priority": 1, "sort_asc": False,
+                "number_format": "#,##0", "cell_align": "center",
+            },
+            {
+                "key": "file_stock", "source": "product", "label": "فایل",
+                "level_mode": "all", "sort_priority": 9, "is_hidden": True,
+                "props_level_mode": "all",
+            },
+        ])
+        meta = level_display_meta(cols, 1)
+        self.assertEqual([m["label"] for m in meta], ["کد", "موجودی"])
+        self.assertEqual(meta[1]["cell_align"], "center")
+        headers, rows, _payloads, _deeper = run_report("product", cols, level=1)
+        self.assertEqual(headers, ["کد", "موجودی"])
+        self.assertTrue(rows)
+        self.assertEqual(len(rows[0]), 2)
+        first = to_number(str(rows[0][1]).replace(",", ""))
+        last = to_number(str(rows[-1][1]).replace(",", ""))
+        self.assertGreaterEqual(first, last)
+
+    def test_same_priority_prefers_rightmost_column(self):
+        from reports.columns import _sort_report_rows
+
+        level_cols = [
+            {"sort_priority": 1, "sort_asc": True, "label": "R"},
+            {"sort_priority": 1, "sort_asc": True, "label": "L"},
+        ]
+        rows = [["b", "a"], ["a", "b"]]
+        payloads = [{}, {}]
+        sorted_rows, _ = _sort_report_rows(level_cols, rows, payloads)
+        self.assertEqual(sorted_rows[0], ["a", "b"])
+        self.assertEqual(sorted_rows[1], ["b", "a"])
 
 
 class ReportDefaultColumnWidthTests(TestCase):

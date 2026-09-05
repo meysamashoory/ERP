@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ report.heading_label }}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=3">
   <style>
     :root { --table-row-height: {{ table_row_height_px|default:36 }}px; }
   </style>
@@ -89,6 +89,16 @@
             </tr>
           </thead>
           <tbody>
+            {% for row in row_cells %}
+            <tr class="data-row {% if deeper %}drill-row{% endif %}"
+                {% if deeper %}data-drill-index="{{ forloop.counter0 }}"{% endif %}
+                data-row-index="{{ forloop.counter0 }}"
+                data-sheet="1">
+              {% for cell in row %}
+              <td class="num align-{{ cell.cell_align|default:'right' }}" data-col="{{ forloop.counter0 }}">{{ cell.value }}</td>
+              {% endfor %}
+            </tr>
+            {% empty %}
             {% for row in rows %}
             <tr class="data-row {% if deeper %}drill-row{% endif %}"
                 {% if deeper %}data-drill-index="{{ forloop.counter0 }}"{% endif %}
@@ -98,8 +108,13 @@
             </tr>
             {% empty %}
             <tr class="data-row" data-row-index="0" data-sheet="1">
+              {% for cell in header_cells %}
+              <td class="num align-{{ cell.cell_align|default:'right' }}" data-col="{{ forloop.counter0 }}"></td>
+              {% empty %}
               {% for h in headers %}<td class="num" data-col="{{ forloop.counter0 }}"></td>{% endfor %}
+              {% endfor %}
             </tr>
+            {% endfor %}
             {% endfor %}
           </tbody>
         </table>

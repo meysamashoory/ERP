@@ -527,11 +527,26 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
     header_cells = []
     for i, h in enumerate(headers):
         meta = display_meta[i] if i < len(display_meta) else {}
+        align = meta.get("cell_align") if isinstance(meta, dict) else "right"
+        if align not in {"left", "center", "right"}:
+            align = "right"
         header_cells.append({
             "label": h,
             "width": int(meta.get("width") or 0) if isinstance(meta, dict) else 0,
             "is_key": bool(meta.get("is_key")) if isinstance(meta, dict) else False,
+            "cell_align": align,
         })
+    # Attach per-cell align so the template can style each TD.
+    aligned_rows = []
+    for row in (rows if not need_params else []):
+        aligned = []
+        for i, val in enumerate(row):
+            meta = display_meta[i] if i < len(display_meta) else {}
+            align = meta.get("cell_align") if isinstance(meta, dict) else "right"
+            if align not in {"left", "center", "right"}:
+                align = "right"
+            aligned.append({"value": val, "cell_align": align})
+        aligned_rows.append(aligned)
     is_editable_report = report.access_mode == ReportAccessMode.EDITABLE
     can_edit_entry = is_editable_report and can_edit_report(request.user, report) and bool(entry_meta)
     can_edit_meta = can_edit_report(request.user, report)
@@ -548,6 +563,7 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "headers": headers,
             "header_cells": header_cells,
             "rows": rows if not need_params else [],
+            "row_cells": aligned_rows,
             "payloads": payloads if not need_params else [],
             "deeper": deeper,
             "level": level,

@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if report %}{{ report.heading_label }}{% else %}گزارش جدید{% endif %}</title>
-  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=2">
+  <link rel="stylesheet" href="{% static 'css/report_app.css' %}?v=3">
 </head>
 <body class="report-app">
 <form method="post"
@@ -78,58 +78,68 @@
       </div>
 
       <div class="rp-builder-zones" id="builder-panel" {% if mode != 'edit' %}hidden{% endif %}>
-        <div class="rp-builder-top">
-          {# RTL: first child is visual right = sources #}
-          <div class="rp-pane rp-pane-sources">
-            <div class="rp-pane-head">
-              <strong>منبع داده اصلی</strong>
+        {# Grid: sources spans full height (right in RTL); display on top-left; conditions under display #}
+        <div class="rp-pane rp-pane-sources">
+          <div class="rp-pane-head">
+            <strong>منبع داده اصلی</strong>
+          </div>
+          <div class="rp-pane-body">
+            <div class="field">
+              <details class="source-menu" id="source-menu">
+                <summary class="source-menu-summary">افزودن منبع ▾</summary>
+                <div class="source-menu-list" id="source-menu-list"></div>
+              </details>
             </div>
-            <div class="rp-pane-body">
-              <div class="field">
-                <details class="source-menu" id="source-menu">
-                  <summary class="source-menu-summary">افزودن منبع ▾</summary>
-                  <div class="source-menu-list" id="source-menu-list"></div>
-                </details>
-              </div>
-              <div class="source-trees" id="source-trees"></div>
-              <div class="source-link-bar">
-                <button type="button" class="btn btn-sm btn-ghost" id="link-sources-btn" hidden>ربط منابع (نقطه اشتراک)</button>
-                <div class="source-links-summary muted" id="source-links-summary"></div>
-              </div>
+            <div class="source-trees" id="source-trees"></div>
+            <div class="source-link-bar">
+              <button type="button" class="btn btn-sm btn-ghost" id="link-sources-btn" hidden>ربط منابع (نقطه اشتراک)</button>
+              <div class="source-links-summary muted" id="source-links-summary"></div>
             </div>
           </div>
+        </div>
 
-          <div class="rp-pane rp-pane-display">
-            <div class="rp-pane-head selected-head">
-              <strong>نحوه نمایش</strong>
-              <div class="move-controls">
-                <button type="button" class="btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا" disabled>▲</button>
-                <button type="button" class="btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین" disabled>▼</button>
-                <button type="button" class="btn btn-sm btn-ghost" id="delete-col" title="حذف ستون انتخاب‌شده" disabled>حذف</button>
-                <button type="button" class="btn-calc" id="add-calc-col" title="افزودن ستون محاسبات">ƒx محاسبات</button>
-                <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده" disabled>کپی</button>
-              </div>
+        <div class="rp-pane rp-pane-display">
+          <div class="rp-pane-head selected-head">
+            <strong>نحوه نمایش</strong>
+            <div class="move-controls">
+              <button type="button" class="btn-move" id="move-up" title="بالا" aria-label="جابجایی به بالا" disabled>▲</button>
+              <button type="button" class="btn-move" id="move-down" title="پایین" aria-label="جابجایی به پایین" disabled>▼</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="delete-col" title="حذف ستون انتخاب‌شده" disabled>حذف</button>
+              <button type="button" class="btn-calc" id="add-calc-col" title="افزودن ستون محاسبات">ƒx محاسبات</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="copy-col" title="کپی ردیف انتخاب‌شده" disabled>کپی</button>
             </div>
-            <div class="rp-pane-body">
-              <div class="display-table-wrap">
-                <table class="table table-compact display-cols-table" id="display-cols-table">
-                  <thead>
-                    <tr>
-                      <th>شرح منبع</th>
-                      <th style="width:64px">کد ستون</th>
-                      <th style="width:110px">سطح</th>
-                      <th style="width:64px">عرض</th>
-                      <th style="width:48px">کلید</th>
-                      <th style="width:110px">نوع نمایش</th>
-                      <th style="width:64px">محاسبات</th>
-                      <th style="width:44px">خصوصی</th>
-                    </tr>
-                  </thead>
-                  <tbody id="selected-cols"></tbody>
-                </table>
-              </div>
-              <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
+          </div>
+          <div class="rp-pane-body">
+            <div class="display-table-wrap">
+              <table class="table table-compact display-cols-table" id="display-cols-table">
+                <colgroup>
+                  <col class="col-desc">
+                  <col class="col-code">
+                  <col class="col-level">
+                  <col class="col-width">
+                  <col class="col-key">
+                  <col class="col-format">
+                  <col class="col-priority">
+                  <col class="col-calc">
+                  <col class="col-private">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>شرح منبع</th>
+                    <th>کد ستون</th>
+                    <th>سطح</th>
+                    <th>عرض</th>
+                    <th>کلید</th>
+                    <th>نوع نمایش</th>
+                    <th>اولویت</th>
+                    <th>محاسبات</th>
+                    <th>خصوصی</th>
+                  </tr>
+                </thead>
+                <tbody id="selected-cols"></tbody>
+              </table>
             </div>
+            <div class="col-path muted" id="col-path">ردیفی انتخاب نشده است.</div>
           </div>
         </div>
 
@@ -139,8 +149,8 @@
             <div class="cond-tabs" role="tablist">
               <button type="button" class="cond-tab is-active" id="cond-tab-public" role="tab" aria-selected="true" data-cond-scope="public">عمومی</button>
               <button type="button" class="cond-tab" id="cond-tab-private" role="tab" aria-selected="false" data-cond-scope="private">خصوصی</button>
+              <button type="button" class="cond-tab" id="cond-tab-props" role="tab" aria-selected="false" data-cond-scope="props">ویژگی‌ها</button>
             </div>
-            <button type="button" class="btn btn-sm btn-ghost" id="add-condition-btn">+ افزودن شرط</button>
           </div>
           <div id="conditions-list" class="conditions-list" data-active-scope="public">
             <p class="muted" id="conditions-empty">هنوز شرطی تعریف نشده است.</p>
@@ -158,6 +168,38 @@
               </thead>
               <tbody id="conditions-tbody"></tbody>
             </table>
+          </div>
+          <div id="column-props-panel" class="column-props-panel" hidden>
+            <p class="muted" id="column-props-empty">برای تنظیم ویژگی‌ها ابتدا یک ردیف از «نحوه نمایش» را انتخاب کنید.</p>
+            <div id="column-props-form" class="column-props-form" hidden>
+              <label class="chk props-check">
+                <input type="checkbox" id="prop-sort-asc"> مرتب‌سازی صعودی
+                <span class="props-hint">(بدون تیک = نزولی)</span>
+              </label>
+              <label class="chk props-check">
+                <input type="checkbox" id="prop-hidden"> عدم نمایش
+                <span class="props-hint">(ستون در گزارش دیده نمی‌شود ولی در محاسبه می‌ماند)</span>
+              </label>
+              <div class="field props-field">
+                <label for="prop-align">نوع نمایش در سلول</label>
+                <select id="prop-align" class="input">
+                  <option value="right">right</option>
+                  <option value="center">center</option>
+                  <option value="left">left</option>
+                </select>
+              </div>
+              <div class="field props-field">
+                <label for="prop-level">اعمال تنظیمات در سطح</label>
+                <select id="prop-level" class="input"></select>
+              </div>
+            </div>
+          </div>
+          <div class="conditions-toolbar">
+            <button type="button" class="btn btn-sm" id="add-condition-btn">+ افزودن شرط</button>
+            <button type="button" class="btn-move" id="cond-copy-btn" title="کپی شرط" aria-label="کپی شرط" disabled>⧉</button>
+            <button type="button" class="btn-move" id="cond-delete-btn" title="حذف شرط" aria-label="حذف شرط" disabled>✕</button>
+            <button type="button" class="btn-move" id="cond-up-btn" title="بالا" aria-label="جابجایی شرط به بالا" disabled>▲</button>
+            <button type="button" class="btn-move" id="cond-down-btn" title="پایین" aria-label="جابجایی شرط به پایین" disabled>▼</button>
           </div>
         </div>
       </div>
@@ -276,7 +318,7 @@
 {{ param_capable_keys|json_script:"param-capable-keys" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=8"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=9"></script>
 <script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {

@@ -47,13 +47,14 @@
     return String(n).replace(/\d/g, function (d) { return PERSIAN_DIGITS[parseInt(d, 10)]; });
   }
 
+  var ORDINAL_FA = ["", "اول", "دوم", "سوم", "چهارم", "پنجم", "ششم", "هفتم", "هشتم", "نهم"];
   var LEVEL_OPTIONS = (function () {
     var opts = [];
     for (var i = 1; i <= 9; i++) {
-      opts.push({ value: String(i), label: "سطح " + toPersianDigits(i) });
+      opts.push({ value: String(i), label: ORDINAL_FA[i] });
     }
     for (var u = 2; u <= 8; u++) {
-      opts.push({ value: "upto_" + u, label: "تا سطح " + toPersianDigits(u) });
+      opts.push({ value: "upto_" + u, label: "تا " + ORDINAL_FA[u] });
     }
     opts.push({ value: "all", label: "همه سطوح" });
     return opts;
@@ -177,7 +178,8 @@
         return {
           key: item, source: "fitting", level: 1, level_mode: "1", label: item, origLabel: item,
           uid: newUid(), width: defaultWidthFor("fitting", item), is_key: false,
-          kind: "field", col_code: "", number_format: "General", formula: ""
+          kind: "field", col_code: "", number_format: "General", formula: "",
+          sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
         };
       }
       item.kind = item.kind === "calc" ? "calc" : "field";
@@ -187,6 +189,12 @@
       item.level_mode = normalizeLevelMode(item.level_mode, item.level);
       item.number_format = item.number_format || "General";
       item.formula = item.formula || "";
+      item.sort_priority = Math.max(1, Math.min(9, parseInt(item.sort_priority || 1, 10) || 1));
+      item.sort_asc = item.sort_asc !== false && item.sort_asc !== 0 && item.sort_asc !== "0";
+      item.is_hidden = !!item.is_hidden;
+      item.cell_align = (item.cell_align === "left" || item.cell_align === "center" || item.cell_align === "right") ? item.cell_align : "right";
+      item.props_level_mode = normalizeLevelMode(item.props_level_mode || "all", 1);
+
       item.col_code = item.col_code || "";
       if (item.kind === "calc") {
         item.source = "_calc";
@@ -276,7 +284,12 @@
           kind: c.kind || "field",
           col_code: c.col_code,
           number_format: c.number_format || "General",
-          formula: c.kind === "calc" ? (c.formula || "") : ""
+          formula: c.kind === "calc" ? (c.formula || "") : "",
+          sort_priority: Math.max(1, Math.min(9, parseInt(c.sort_priority || 1, 10) || 1)),
+          sort_asc: c.sort_asc !== false && c.sort_asc !== 0 && c.sort_asc !== "0",
+          is_hidden: !!c.is_hidden,
+          cell_align: (c.cell_align === "left" || c.cell_align === "center" || c.cell_align === "right") ? c.cell_align : "right",
+          props_level_mode: c.props_level_mode || "all"
         };
       }));
       if (linksHidden) linksHidden.value = JSON.stringify(sourceLinks);
@@ -450,7 +463,8 @@
               selected.push({
                 key: key, source: sid, level: 1, level_mode: "1", label: lab, origLabel: lab,
                 uid: newUid(), width: defaultWidthFor(sid, key), is_key: false,
-                kind: "field", col_code: "", number_format: "General", formula: ""
+                kind: "field", col_code: "", number_format: "General", formula: "",
+                sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
               });
               assignColCodes();
             } else {
@@ -533,7 +547,12 @@
           kind: src.kind || "field",
           col_code: nextCopyCode(src.col_code),
           number_format: src.number_format || "General",
-          formula: src.kind === "calc" ? (src.formula || "") : ""
+          formula: src.kind === "calc" ? (src.formula || "") : "",
+          sort_priority: Math.max(1, Math.min(9, parseInt(src.sort_priority || 1, 10) || 1)),
+          sort_asc: src.sort_asc !== false,
+          is_hidden: !!src.is_hidden,
+          cell_align: src.cell_align || "right",
+          props_level_mode: src.props_level_mode || "all"
         };
         selected.splice(activeIdx + 1, 0, copy);
         activeIdx = activeIdx + 1;
@@ -557,7 +576,8 @@
           kind: "calc",
           col_code: "",
           number_format: "#,##0.##",
-          formula: ""
+          formula: "",
+          sort_priority: 1, sort_asc: true, is_hidden: false, cell_align: "right", props_level_mode: "all"
         });
         assignColCodes();
         activeIdx = selected.length - 1;
@@ -588,10 +608,12 @@
     function formatOptionsHtml(current) {
       var opts = "";
       var seen = {};
-      formatPresets.forEach(function (p) {
-        seen[p.value] = true;
-        opts += '<option value="' + p.value.replace(/"/g, "&quot;") + '"' +
-          (current === p.value ? " selected" : "") + ">" + p.label + "</option>";
+      (formatPresets || []).forEach(function (p) {
+        var val = p.value || p;
+        var lab = p.label || p.value || p;
+        seen[val] = true;
+        opts += '<option value="' + String(val).replace(/"/g, "&quot;") + '"' +
+          (current === val ? " selected" : "") + ">" + lab + "</option>";
       });
       if (current && !seen[current]) {
         opts += '<option value="' + String(current).replace(/"/g, "&quot;") + '" selected>' +
@@ -607,20 +629,31 @@
       }).join("");
     }
 
+    function priorityOptionsHtml(current) {
+      var cur = Math.max(1, Math.min(9, parseInt(current || 1, 10) || 1));
+      var html = "";
+      for (var i = 1; i <= 9; i++) {
+        html += '<option value="' + i + '"' + (i === cur ? " selected" : "") + ">" + toPersianDigits(i) + "</option>";
+      }
+      return html;
+    }
+
     function renderSelected() {
       if (!list) return;
       list.innerHTML = "";
       if (!selected.length) {
-        list.innerHTML = '<tr><td colspan="8" class="muted empty">ستونی انتخاب نشده است.</td></tr>';
+        list.innerHTML = '<tr><td colspan="9" class="muted empty">ستونی انتخاب نشده است.</td></tr>';
         activeIdx = -1;
         updatePath();
         updateMoveControls();
+        renderColumnProps();
         return;
       }
       selected.forEach(function (c, idx) {
         var tr = document.createElement("tr");
         tr.className = "display-col-row" + (idx === activeIdx ? " is-active" : "") +
-          (c.kind === "calc" ? " is-calc" : "");
+          (c.kind === "calc" ? " is-calc" : "") +
+          (c.is_hidden ? " is-hidden-col" : "");
         tr.dataset.idx = String(idx);
         var keyable = c.kind !== "calc" && canBeKey(c.source || "", c.key || "");
         var keyChecked = c.is_key && keyable ? " checked" : "";
@@ -637,18 +670,18 @@
             String(c.label || "").replace(/"/g, "&quot;") + '"></td>' +
           '<td class="col-code-cell" dir="ltr">' + String(c.col_code || "").toUpperCase() + "</td>" +
           '<td><select class="input" data-level="' + idx + '">' + levelOptionsHtml(c.level_mode) + "</select></td>" +
-          '<td><input class="input sel-width" type="number" min="40" max="800" step="1" data-width="' + idx +
+          '<td><input class="input sel-width" type="text" inputmode="numeric" data-width="' + idx +
             '" value="' + (clampWidth(c.width) || "") + '"></td>' +
           '<td class="key-cell"><input type="checkbox" data-key="' + idx + '"' + keyChecked + keyDisabled + "></td>" +
-          '<td><input class="input sel-format" list="fmt-presets-' + idx + '" data-format="' + idx +
-            '" value="' + String(c.number_format || "General").replace(/"/g, "&quot;") + '">' +
-            '<datalist id="fmt-presets-' + idx + '">' + formatOptionsHtml(c.number_format) + "</datalist></td>" +
+          '<td><select class="input sel-format" data-format="' + idx + '">' + formatOptionsHtml(c.number_format || "General") + "</select></td>" +
+          '<td class="priority-cell"><select class="input" data-priority="' + idx + '">' + priorityOptionsHtml(c.sort_priority) + "</select></td>" +
           '<td class="fx-cell">' + fxCell + "</td>" +
           '<td class="priv-cell">' + privCell + "</td>";
         list.appendChild(tr);
       });
       updatePath();
       updateMoveControls();
+      renderColumnProps();
     }
 
     if (list) {
@@ -665,6 +698,7 @@
           activeIdx = idx;
           renderSelected();
           if (condScope === "private") renderConditions();
+          else if (condScope === "props") renderColumnProps();
           // Re-focus the same control if user clicked an input/select
           if (e.target && e.target.closest && e.target.closest("input, select")) {
             var focusSel = null;
@@ -672,6 +706,7 @@
             else if (e.target.getAttribute("data-level") != null) focusSel = '[data-level="' + idx + '"]';
             else if (e.target.getAttribute("data-width") != null) focusSel = '[data-width="' + idx + '"]';
             else if (e.target.getAttribute("data-format") != null) focusSel = '[data-format="' + idx + '"]';
+            else if (e.target.getAttribute("data-priority") != null) focusSel = '[data-priority="' + idx + '"]';
             else if (e.target.getAttribute("data-key") != null) focusSel = '[data-key="' + idx + '"]';
             if (focusSel) {
               var el = list.querySelector(focusSel);
@@ -691,6 +726,19 @@
         var sel = e.target.closest("[data-level]");
         if (sel) {
           selected[parseInt(sel.getAttribute("data-level"), 10)].level_mode = sel.value;
+          syncHidden();
+          return;
+        }
+        var fmt = e.target.closest("[data-format]");
+        if (fmt) {
+          selected[parseInt(fmt.getAttribute("data-format"), 10)].number_format = fmt.value || "General";
+          syncHidden();
+          return;
+        }
+        var pri = e.target.closest("[data-priority]");
+        if (pri) {
+          selected[parseInt(pri.getAttribute("data-priority"), 10)].sort_priority =
+            Math.max(1, Math.min(9, parseInt(pri.value || "1", 10) || 1));
           syncHidden();
           return;
         }
@@ -721,11 +769,6 @@
           selected[parseInt(wInp.getAttribute("data-width"), 10)].width = clampWidth(wInp.value);
           syncHidden();
           return;
-        }
-        var fInp = e.target.closest("[data-format]");
-        if (fInp) {
-          selected[parseInt(fInp.getAttribute("data-format"), 10)].number_format = fInp.value || "General";
-          syncHidden();
         }
       });
     }
@@ -1244,17 +1287,88 @@
           "</td>";
         if (tbody) {
           var tr = document.createElement("tr");
-          tr.className = "condition-row";
+          tr.className = "condition-row" + (idx === activeCondIdx ? " is-active" : "");
+          tr.dataset.condIdx = String(idx);
           tr.innerHTML = html;
           tbody.appendChild(tr);
         } else {
           var row = document.createElement("div");
-          row.className = "condition-row";
+          row.className = "condition-row" + (idx === activeCondIdx ? " is-active" : "");
+          row.dataset.condIdx = String(idx);
           row.innerHTML = html;
           box.appendChild(row);
         }
       });
       syncConditionsHidden();
+      updateCondToolbar();
+    }
+
+    var activeCondIdx = -1;
+    var propsLevelSelect = document.getElementById("prop-level");
+    if (propsLevelSelect && !propsLevelSelect.options.length) {
+      propsLevelSelect.innerHTML = levelOptionsHtml("all");
+    }
+
+    function showConditionsChrome(scope) {
+      var listBox = document.getElementById("conditions-list");
+      var propsBox = document.getElementById("column-props-panel");
+      var toolbar = document.querySelector(".conditions-toolbar");
+      var isProps = scope === "props";
+      if (listBox) listBox.hidden = isProps;
+      if (propsBox) propsBox.hidden = !isProps;
+      if (toolbar) toolbar.hidden = isProps;
+    }
+
+    function renderColumnProps() {
+      var empty = document.getElementById("column-props-empty");
+      var form = document.getElementById("column-props-form");
+      var col = activeIdx >= 0 ? selected[activeIdx] : null;
+      if (!col) {
+        if (empty) empty.hidden = false;
+        if (form) form.hidden = true;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      if (form) form.hidden = false;
+      var asc = document.getElementById("prop-sort-asc");
+      var hid = document.getElementById("prop-hidden");
+      var align = document.getElementById("prop-align");
+      var lvl = document.getElementById("prop-level");
+      if (asc) asc.checked = col.sort_asc !== false;
+      if (hid) hid.checked = !!col.is_hidden;
+      if (align) align.value = col.cell_align || "right";
+      if (lvl) {
+        if (!lvl.options.length) lvl.innerHTML = levelOptionsHtml("all");
+        lvl.value = col.props_level_mode || "all";
+      }
+    }
+
+    function bindProp(id, apply) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", function () {
+        if (activeIdx < 0 || !selected[activeIdx]) return;
+        apply(selected[activeIdx], el);
+        renderSelected();
+        syncHidden();
+      });
+    }
+    bindProp("prop-sort-asc", function (col, el) { col.sort_asc = !!el.checked; });
+    bindProp("prop-hidden", function (col, el) { col.is_hidden = !!el.checked; });
+    bindProp("prop-align", function (col, el) { col.cell_align = el.value || "right"; });
+    bindProp("prop-level", function (col, el) { col.props_level_mode = el.value || "all"; });
+
+    function updateCondToolbar() {
+      var list = currentCondList() || [];
+      var has = activeCondIdx >= 0 && activeCondIdx < list.length;
+      [["cond-copy-btn", has], ["cond-delete-btn", has],
+       ["cond-up-btn", has && activeCondIdx > 0],
+       ["cond-down-btn", has && activeCondIdx < list.length - 1]].forEach(function (pair) {
+        var b = document.getElementById(pair[0]);
+        if (b) b.disabled = !pair[1];
+      });
+      var addBtn = document.getElementById("add-condition-btn");
+      if (addBtn) addBtn.disabled = condScope === "props";
     }
 
     document.querySelectorAll(".cond-tab").forEach(function (tab) {
@@ -1266,16 +1380,63 @@
         condScope = tab.getAttribute("data-cond-scope") || "public";
         var listEl = document.getElementById("conditions-list");
         if (listEl) listEl.setAttribute("data-active-scope", condScope);
-        renderConditions();
+        showConditionsChrome(condScope);
+        activeCondIdx = -1;
+        if (condScope === "props") renderColumnProps();
+        else renderConditions();
+        updateCondToolbar();
       });
     });
+    showConditionsChrome(condScope);
 
     var addCondBtn = document.getElementById("add-condition-btn");
     if (addCondBtn) {
       addCondBtn.addEventListener("click", function () {
+        if (condScope === "props") return;
         openConditionDialog(-1);
       });
     }
+
+    var condCopyBtn = document.getElementById("cond-copy-btn");
+    if (condCopyBtn) {
+      condCopyBtn.addEventListener("click", function () {
+        var list = currentCondList();
+        if (!list || activeCondIdx < 0 || activeCondIdx >= list.length) return;
+        var clone = JSON.parse(JSON.stringify(list[activeCondIdx]));
+        list.splice(activeCondIdx + 1, 0, clone);
+        setCurrentCondList(list);
+        activeCondIdx = activeCondIdx + 1;
+        renderConditions();
+      });
+    }
+    var condDelBtn = document.getElementById("cond-delete-btn");
+    if (condDelBtn) {
+      condDelBtn.addEventListener("click", function () {
+        var list = currentCondList();
+        if (!list || activeCondIdx < 0 || activeCondIdx >= list.length) return;
+        list.splice(activeCondIdx, 1);
+        if (activeCondIdx >= list.length) activeCondIdx = list.length - 1;
+        setCurrentCondList(list);
+        renderConditions();
+        renderSelected();
+      });
+    }
+    function moveCond(dir) {
+      var list = currentCondList();
+      if (!list || activeCondIdx < 0) return;
+      var j = activeCondIdx + dir;
+      if (j < 0 || j >= list.length) return;
+      var tmp = list[activeCondIdx];
+      list[activeCondIdx] = list[j];
+      list[j] = tmp;
+      activeCondIdx = j;
+      setCurrentCondList(list);
+      renderConditions();
+    }
+    var condUpBtn = document.getElementById("cond-up-btn");
+    if (condUpBtn) condUpBtn.addEventListener("click", function () { moveCond(-1); });
+    var condDownBtn = document.getElementById("cond-down-btn");
+    if (condDownBtn) condDownBtn.addEventListener("click", function () { moveCond(1); });
     var condSaveBtn = document.getElementById("condition-save-btn");
     if (condSaveBtn) condSaveBtn.addEventListener("click", saveConditionDialog);
     var condCancelBtn = document.getElementById("condition-cancel-btn");
@@ -1308,17 +1469,27 @@
       condBox.addEventListener("click", function (e) {
         var edit = e.target.closest("[data-cond-edit]");
         if (edit) {
-          openConditionDialog(parseInt(edit.getAttribute("data-cond-edit"), 10));
+          activeCondIdx = parseInt(edit.getAttribute("data-cond-edit"), 10);
+          openConditionDialog(activeCondIdx);
           return;
         }
         var rm = e.target.closest("[data-cond-rm]");
-        if (!rm) return;
-        var list = currentCondList();
-        if (!list) return;
-        list.splice(parseInt(rm.getAttribute("data-cond-rm"), 10), 1);
-        setCurrentCondList(list);
-        renderConditions();
-        renderSelected();
+        if (rm) {
+          var list = currentCondList();
+          if (!list) return;
+          var ri = parseInt(rm.getAttribute("data-cond-rm"), 10);
+          list.splice(ri, 1);
+          if (activeCondIdx >= list.length) activeCondIdx = list.length - 1;
+          setCurrentCondList(list);
+          renderConditions();
+          renderSelected();
+          return;
+        }
+        var row = e.target.closest(".condition-row");
+        if (row && row.dataset.condIdx != null) {
+          activeCondIdx = parseInt(row.dataset.condIdx, 10);
+          renderConditions();
+        }
       });
     }
 
