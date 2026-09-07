@@ -135,7 +135,7 @@ def build_system_groups() -> list[SystemGroup]:
                     title="تعریف پارامترهای گزارش",
                     admin_changelist="admin:reports_reportparameterdef_changelist",
                     admin_add="admin:reports_reportparameterdef_add",
-                    description="پارامترهای قابل استفاده در شرط‌های گزارش (تاریخ، کد، عدد) — مثلاً امروز، ابتدای ماه، کد کالای انتخابی",
+                    description="پارامترهای شرط گزارش: تاریخ روز، سال، کد کالا، کد یکتا، شماره قالب و شماره حواله",
                     count_fn=_count(ReportParameterDef),
                 ),
             ],
