@@ -102,13 +102,33 @@ def css_for_layouts(layouts: dict[str, dict[str, Any]]) -> str:
         cells = (
             f'[data-table-section="{key}"] .table th,'
             f'[data-table-section="{key}"] .table td,'
+            f'[data-table-section="{key}"] .table thead th,'
+            f'[data-table-section="{key}"] .table tbody td,'
             f'[data-table-section="{key}"].table th,'
             f'[data-table-section="{key}"].table td,'
             f'[data-table-section="{key}"] .pcx-table th,'
             f'[data-table-section="{key}"] .pcx-table td'
         )
         if not cfg.get("col_border", True):
-            parts.append(f"{cells}{{border-left-color:transparent;}}")
+            parts.append(
+                f"{cells}{{"
+                "border-left-color:transparent !important;"
+                "border-right-color:transparent !important;"
+                "border-inline-start-color:transparent !important;"
+                "border-inline-end-color:transparent !important;"
+                "}"
+            )
         if not cfg.get("row_border", True):
-            parts.append(f"{cells}{{border-bottom-color:transparent;}}")
+            parts.append(
+                f"{cells}{{"
+                "border-top-color:transparent !important;"
+                "border-bottom-color:transparent !important;"
+                "}"
+            )
+            parts.append(
+                f'[data-table-section="{key}"] .table-scroll thead th,'
+                f'[data-table-section="{key}"] .table-scroll-wide thead th{{'
+                "box-shadow:none !important;"
+                "}"
+            )
     return "".join(parts)

@@ -54,5 +54,21 @@ class TableLayoutHelpersTests(SimpleTestCase):
             }
         )
         self.assertIn('[data-table-section="planning"]{--table-row-height:8px;}', css)
-        self.assertIn("border-left-color:transparent", css)
+        self.assertIn("border-left-color:transparent !important", css)
+        self.assertIn("border-right-color:transparent !important", css)
+        self.assertIn(".table thead th", css)
         self.assertNotIn("border-bottom-color:transparent", css)
+
+    def test_css_hides_row_borders_including_header_shadow(self):
+        css = css_for_layouts(
+            {
+                "reports": {
+                    "row_height_px": 36,
+                    "col_border": True,
+                    "row_border": False,
+                    "width_locked": False,
+                }
+            }
+        )
+        self.assertIn("border-bottom-color:transparent !important", css)
+        self.assertIn("box-shadow:none !important", css)
