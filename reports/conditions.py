@@ -20,29 +20,6 @@ LOGIC_OPTIONS = [("", "—"), ("and", "AND"), ("or", "OR")]
 PAREN_OPTIONS = [("", "—"), ("(", "("), (")", ")")]
 
 # Column keys that may use parameter mode (and value+param presets).
-PARAM_KEYS = {
-    "date",
-    "document_date",
-    "file_document_date",
-    "plan_date",
-    "plan_start",
-    "actual_start",
-    "actual_end",
-    "code",
-    "product_code",
-    "stock_finished",
-    "stock_unassembled",
-    "produced",
-    "planned_qty",
-    "actual_qty",
-    "reorder_level",
-    "depot_ceiling",
-    "per_carton",
-    "per_bag",
-    "unit_weight_grams",
-    "file_stock",
-}
-
 DATE_KEYS = {
     "date",
     "document_date",
@@ -51,9 +28,158 @@ DATE_KEYS = {
     "plan_start",
     "actual_start",
     "actual_end",
+    "planning_date",
+    "start_date",
 }
-CODE_KEYS = {"code", "product_code"}
-NUMBER_KEYS = PARAM_KEYS - DATE_KEYS - CODE_KEYS
+PRODUCT_CODE_KEYS = {"code", "product_code"}
+UNIQUE_CODE_KEYS = {"unique_code"}
+MOLD_NUMBER_KEYS = {"mold_number"}
+VOUCHER_NUMBER_KEYS = {"voucher_number", "voucher_no", "voucher"}
+CODE_KEYS = set(PRODUCT_CODE_KEYS)
+PARAM_KEYS = (
+    DATE_KEYS
+    | PRODUCT_CODE_KEYS
+    | UNIQUE_CODE_KEYS
+    | MOLD_NUMBER_KEYS
+    | VOUCHER_NUMBER_KEYS
+)
+NUMBER_KEYS: set[str] = set()
+
+
+def keys_for_parameter_kind(kind: str) -> list[str]:
+    kind = str(kind or "")
+    if kind in (
+        ReportParameterDef.KIND_DAY_DATE,
+        ReportParameterDef.KIND_YEAR,
+        "date",
+    ):
+        return sorted(DATE_KEYS)
+    if kind in (ReportParameterDef.KIND_PRODUCT_CODE, "code"):
+        return sorted(PRODUCT_CODE_KEYS)
+    if kind == ReportParameterDef.KIND_UNIQUE_CODE:
+        return sorted(UNIQUE_CODE_KEYS)
+    if kind == ReportParameterDef.KIND_MOLD_NUMBER:
+        return sorted(MOLD_NUMBER_KEYS)
+    if kind == ReportParameterDef.KIND_VOUCHER_NUMBER:
+        return sorted(VOUCHER_NUMBER_KEYS)
+    return []
+
+
+def _normalize_kind(kind: str) -> str:
+    raw = str(kind or "")
+    if raw in {"date", ReportParameterDef.KIND_DAY_DATE}:
+        return ReportParameterDef.KIND_DAY_DATE
+    if raw in {"code", ReportParameterDef.KIND_PRODUCT_CODE}:
+        return ReportParameterDef.KIND_PRODUCT_CODE
+    if raw == "number":
+        return ""
+    return raw
+
+
+def infer_field_param_kind(field_key: str, label: str = "", source: str = "") -> str:
+    """Map a report column to a parameter kind, or empty if not parameter-capable."""
+    key = str(field_key or "").strip()
+    if not key:
+        return ""
+    key_l = key.lower()
+    label_l = str(label or "")
+    source_l = str(source or "").lower()
+
+    if key in DATE_KEYS or "date" in key_l or "تاریخ" in label_l:
+        return ReportParameterDef.KIND_DAY_DATE
+    if key in UNIQUE_CODE_KEYS or "کد یکتا" in label_l:
+        return ReportParameterDef.KIND_UNIQUE_CODE
+    if key in MOLD_NUMBER_KEYS or "شماره قالب" in label_l:
+        return ReportParameterDef.KIND_MOLD_NUMBER
+    if (
+        key in VOUCHER_NUMBER_KEYS
+        or "حواله" in label_l
+        or key_l in {"voucher_number", "voucher_no", "voucher"}
+        or ("voucher" in source_l and ("شماره" in label_l or "number" in key_l))
+    ):
+        return ReportParameterDef.KIND_VOUCHER_NUMBER
+    if key in PRODUCT_CODE_KEYS or label_l.strip() in {"کد کالا", "کد"} or key_l == "product_code":
+        return ReportParameterDef.KIND_PRODUCT_CODE
+    return ""
+
+
+def field_param_kinds(field_key: str, label: str = "", source: str = "") -> set[str]:
+    base = infer_field_param_kind(field_key, label=label, source=source)
+    if base == ReportParameterDef.KIND_DAY_DATE:
+        return {ReportParameterDef.KIND_DAY_DATE, ReportParameterDef.KIND_YEAR}
+    if base:
+        return {base}
+    return set()
+
+
+def _column_label_index() -> dict[tuple[str, str], str]:
+    """(source, key) -> label from the live report source catalog."""
+    out: dict[tuple[str, str], str] = {}
+    try:
+        from reports.columns import get_column_groups
+
+        for group in get_column_groups():
+            source = str(group.get("id") or "")
+            for item in group.get("columns") or []:
+                if isinstance(item, (list, tuple)) and item:
+                    key = str(item[0])
+                    label = str(item[1]) if len(item) > 1 else key
+                    out[(source, key)] = label
+    except Exception:
+        return out
+    return out
+
+
+def source_choices() -> list[tuple[str, str]]:
+    try:
+        from reports.columns import get_column_groups
+
+        return [
+            (str(g.get("id") or ""), str(g.get("label") or g.get("id") or ""))
+            for g in get_column_groups()
+            if g.get("id")
+        ]
+    except Exception:
+        return []
+
+
+def param_to_dict(p: ReportParameterDef) -> dict:
+    return {
+        "code": p.code,
+        "label": p.label,
+        "kind": _normalize_kind(p.kind),
+        "source_key": str(p.source_key or ""),
+        "sample_value": p.sample_value or "",
+    }
+
+
+def list_active_parameters() -> list[dict]:
+    qs = ReportParameterDef.objects.filter(is_active=True).order_by("order", "code")
+    return [param_to_dict(p) for p in qs]
+
+
+def parameter_matches_field(
+    param: dict | ReportParameterDef,
+    field_key: str,
+    *,
+    source: str = "",
+    label: str = "",
+) -> bool:
+    if isinstance(param, ReportParameterDef):
+        param = param_to_dict(param)
+    kind = _normalize_kind(param.get("kind"))
+    if not kind:
+        return False
+    source_key = str(param.get("source_key") or "").strip()
+    if source_key and source and source_key != source:
+        return False
+    kinds = field_param_kinds(field_key, label=label, source=source)
+    if kind in kinds:
+        return True
+    applies = param.get("applies_to_keys") if isinstance(param, dict) else None
+    if isinstance(applies, list) and field_key in applies:
+        return True
+    return False
 
 
 def normalize_conditions(raw) -> dict:
@@ -71,40 +197,48 @@ def normalize_conditions(raw) -> dict:
     }
 
 
-def field_supports_parameter(field_key: str) -> bool:
-    return str(field_key or "") in PARAM_KEYS
+def field_supports_parameter(field_key: str, source: str = "", label: str = "") -> bool:
+    if label or source:
+        return bool(field_param_kinds(field_key, label=label, source=source))
+    labels = _column_label_index()
+    if source:
+        label = labels.get((source, str(field_key or "")), "")
+        return bool(field_param_kinds(field_key, label=label, source=source))
+    if field_param_kinds(field_key, label="", source=""):
+        return True
+    for (src, key), lbl in labels.items():
+        if key == str(field_key or "") and field_param_kinds(key, label=lbl, source=src):
+            return True
+    return False
 
 
 def field_kind(field_key: str) -> str:
-    key = str(field_key or "")
-    if key in DATE_KEYS:
-        return ReportParameterDef.KIND_DATE
-    if key in CODE_KEYS:
-        return ReportParameterDef.KIND_CODE
-    if key in NUMBER_KEYS:
-        return ReportParameterDef.KIND_NUMBER
+    kinds = field_param_kinds(field_key)
+    if ReportParameterDef.KIND_DAY_DATE in kinds:
+        return ReportParameterDef.KIND_DAY_DATE
+    if kinds:
+        return next(iter(kinds))
     return ""
 
 
-def list_parameters_for_field(field_key: str) -> list[dict]:
-    kind = field_kind(field_key)
-    if not kind:
+def list_parameters_for_field(field_key: str, source: str = "", label: str = "") -> list[dict]:
+    kinds = field_param_kinds(field_key, label=label, source=source)
+    if not kinds:
         return []
     key = str(field_key or "")
-    qs = ReportParameterDef.objects.filter(is_active=True).order_by("order", "code")
     out = []
-    for p in qs:
-        applies = p.applies_to_keys if isinstance(p.applies_to_keys, list) else []
-        if applies and key not in applies and kind not in applies:
-            continue
-        if not applies and p.kind != kind:
+    for p in ReportParameterDef.objects.filter(is_active=True).order_by("order", "code"):
+        payload = param_to_dict(p)
+        payload["applies_to_keys"] = p.applies_to_keys if isinstance(p.applies_to_keys, list) else []
+        if not parameter_matches_field(payload, key, source=source, label=label):
             continue
         out.append(
             {
-                "code": p.code,
-                "label": p.label,
-                "kind": p.kind,
-                "sample_value": p.sample_value or "",
+                "code": payload["code"],
+                "label": payload["label"],
+                "kind": payload["kind"],
+                "source_key": payload["source_key"],
+                "sample_value": payload["sample_value"],
             }
         )
     return out
@@ -144,7 +278,7 @@ def field_value_choices(source: str, field_key: str) -> list[dict] | None:
             ]
     except Exception:
         return None
-    if field_kind(key) in (ReportParameterDef.KIND_NUMBER, ""):
+    if field_kind(key) == "":
         return None
     # Categorical-ish text fields without a catalog: free text
     return None
@@ -206,7 +340,7 @@ def validate_condition_row(row: dict, *, is_first: bool) -> str | None:
     if op not in {o[0] for o in OPS}:
         return "عملگر مقایسه نامعتبر است."
     if mode == "parameter":
-        if not field_supports_parameter(field):
+        if not field_supports_parameter(field, source=source):
             return "این ستون از پارامتر پشتیبانی نمی‌کند."
         if not str(row.get("param_code") or "").strip():
             return "پارامتر را انتخاب کنید."
@@ -248,33 +382,61 @@ def validate_conditions_blob(raw) -> list[str]:
     return errors
 
 
-def _cmp(left: Any, op: str, right: Any) -> bool:
-    if op == "contains":
-        return str(right) in str(left)
-    # numeric compare when possible
-    try:
-        ln = float(str(left).replace(",", ""))
-        rn = float(str(right).replace(",", ""))
-        left_v, right_v = ln, rn
-        numeric = True
-    except (TypeError, ValueError):
-        left_v, right_v = str(left), str(right)
-        numeric = False
+def compact_jalali_day(value: Any) -> int | None:
+    """Normalize a jalali date to YYYYMMDD int (1405/07/16 and 14050716 are equal)."""
+    if value is None:
+        return None
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        try:
+            y, m, d = int(value.year), int(value.month), int(value.day)
+            if 1200 <= y <= 1599 and 1 <= m <= 12 and 1 <= d <= 31:
+                return y * 10000 + m * 100 + d
+        except (TypeError, ValueError):
+            pass
+    text = str(value).strip().replace("٫", "/")
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) == 8:
+        try:
+            y, m, d = int(digits[:4]), int(digits[4:6]), int(digits[6:8])
+        except ValueError:
+            return None
+        if 1200 <= y <= 1599 and 1 <= m <= 12 and 1 <= d <= 31:
+            return y * 10000 + m * 100 + d
+        return None
+    parts = [p for p in text.replace("-", "/").split("/") if p]
+    if len(parts) == 3:
+        try:
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        except ValueError:
+            return None
+        if 1200 <= y <= 1599 and 1 <= m <= 12 and 1 <= d <= 31:
+            return y * 10000 + m * 100 + d
+    return None
+
+
+def jalali_year_value(value: Any) -> int | None:
+    compact = compact_jalali_day(value)
+    if compact is not None:
+        return compact // 10000
+    text = str(value or "").strip()
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 4:
+        try:
+            year = int(digits[:4])
+        except ValueError:
+            return None
+        if 1200 <= year <= 1599:
+            return year
+    return None
+
+
+def _compare_ordered(left_v: Any, op: str, right_v: Any) -> bool:
     if op == "=":
-        return left_v == right_v if numeric else str(left) == str(right)
+        return left_v == right_v
     if op == "<>":
-        return left_v != right_v if numeric else str(left) != str(right)
-    if not numeric:
-        # fallback string ordering
-        if op == ">":
-            return str(left) > str(right)
-        if op == ">=":
-            return str(left) >= str(right)
-        if op == "<":
-            return str(left) < str(right)
-        if op == "<=":
-            return str(left) <= str(right)
-        return False
+        return left_v != right_v
     if op == ">":
         return left_v > right_v
     if op == ">=":
@@ -284,6 +446,36 @@ def _cmp(left: Any, op: str, right: Any) -> bool:
     if op == "<=":
         return left_v <= right_v
     return False
+
+
+def _cmp(left: Any, op: str, right: Any, *, kind: str = "") -> bool:
+    if op == "contains":
+        return str(right) in str(left)
+    kind = _normalize_kind(kind)
+    if kind == ReportParameterDef.KIND_YEAR:
+        ly, ry = jalali_year_value(left), jalali_year_value(right)
+        if ly is not None and ry is not None:
+            return _compare_ordered(ly, op, ry)
+    if kind == ReportParameterDef.KIND_DAY_DATE or compact_jalali_day(left) is not None:
+        ld, rd = compact_jalali_day(left), compact_jalali_day(right)
+        if ld is not None and rd is not None:
+            return _compare_ordered(ld, op, rd)
+        if kind == ReportParameterDef.KIND_DAY_DATE:
+            ly, ry = jalali_year_value(left), jalali_year_value(right)
+            if ly is not None and ry is not None and compact_jalali_day(right) is None:
+                return _compare_ordered(ly, op, ry)
+    # numeric compare when possible
+    try:
+        ln = float(str(left).replace(",", ""))
+        rn = float(str(right).replace(",", ""))
+        left_v, right_v = ln, rn
+        numeric = True
+    except (TypeError, ValueError):
+        left_v, right_v = str(left), str(right)
+        numeric = False
+    if not numeric:
+        return _compare_ordered(str(left), op, str(right))
+    return _compare_ordered(left_v, op, right_v)
 
 
 def resolve_condition_value(row: dict, param_values: dict | None) -> Any:
@@ -318,6 +510,16 @@ def row_matches_conditions(row: dict, conditions: list[dict], param_values: dict
         a = values.pop()
         values.append((a and b) if op == "and" else (a or b))
 
+    codes = [
+        str(cond.get("param_code") or "").strip()
+        for cond in conditions
+        if str(cond.get("param_code") or "").strip()
+    ]
+    kind_by_code = {
+        p.code: _normalize_kind(p.kind)
+        for p in ReportParameterDef.objects.filter(code__in=codes)
+    } if codes else {}
+
     for i, cond in enumerate(conditions):
         logic = str(cond.get("logic") or "").lower()
         if i > 0 and logic in ("and", "or"):
@@ -337,7 +539,9 @@ def row_matches_conditions(row: dict, conditions: list[dict], param_values: dict
         if left == "" and src:
             left = row.get(f"{src}:{field}", row.get(field, ""))
         right = resolve_condition_value(cond, param_values)
-        values.append(_cmp(left, str(cond.get("op") or "="), right))
+        param_code = str(cond.get("param_code") or "").strip()
+        cmp_kind = kind_by_code.get(param_code) or infer_field_param_kind(field, source=src)
+        values.append(_cmp(left, str(cond.get("op") or "="), right, kind=cmp_kind))
 
         for _ in range(paren_close_weight(paren_close_of(cond))):
             while ops and ops[-1] != "(":
@@ -377,7 +581,8 @@ def collect_runtime_parameters(conditions_blob) -> list[dict]:
             {
                 "code": code,
                 "label": p.label if p else code,
-                "kind": p.kind if p else field_kind(str(row.get("field") or "")),
+                "kind": _normalize_kind(p.kind if p else field_kind(str(row.get("field") or ""))),
+                "source_key": str(p.source_key or "") if p else "",
                 "sample_value": (p.sample_value if p else "") or "",
                 "field": str(row.get("field") or ""),
             }
@@ -399,7 +604,59 @@ def flatten_active_conditions(conditions_blob, column_uids: list[str] | None = N
 
 
 def build_parameters_catalog() -> dict[str, list[dict]]:
-    return {key: list_parameters_for_field(key) for key in sorted(PARAM_KEYS)}
+    """Field-key → parameters. Each entry includes source_key for client filtering."""
+    labels = _column_label_index()
+    keys: set[str] = set(PARAM_KEYS)
+    for _src, key in labels:
+        keys.add(key)
+    catalog: dict[str, list[dict]] = {}
+    defs = list(ReportParameterDef.objects.filter(is_active=True).order_by("order", "code"))
+    payloads = []
+    for p in defs:
+        item = param_to_dict(p)
+        item["applies_to_keys"] = p.applies_to_keys if isinstance(p.applies_to_keys, list) else []
+        payloads.append(item)
+    for key in sorted(keys):
+        matched: list[dict] = []
+        seen: set[str] = set()
+        related_labels = [(src, lbl) for (src, k), lbl in labels.items() if k == key]
+        if not related_labels:
+            related_labels = [("", "")]
+        for src, lbl in related_labels:
+            for payload in payloads:
+                if not parameter_matches_field(payload, key, source=src, label=lbl):
+                    continue
+                token = f"{payload['code']}::{payload.get('source_key') or ''}"
+                if token in seen:
+                    continue
+                seen.add(token)
+                matched.append(
+                    {
+                        "code": payload["code"],
+                        "label": payload["label"],
+                        "kind": payload["kind"],
+                        "source_key": payload["source_key"],
+                        "sample_value": payload["sample_value"],
+                    }
+                )
+        if matched:
+            catalog[key] = matched
+    return catalog
+
+
+def build_field_param_kind_map() -> dict[str, str]:
+    """Maps `source:key` and bare `key` to the primary parameter kind."""
+    out: dict[str, str] = {}
+    labels = _column_label_index()
+    for (source, key), label in labels.items():
+        kind = infer_field_param_kind(key, label=label, source=source)
+        if not kind:
+            continue
+        out[f"{source}:{key}"] = kind
+        out.setdefault(key, kind)
+    for key in PARAM_KEYS:
+        out.setdefault(key, infer_field_param_kind(key))
+    return {k: v for k, v in out.items() if v}
 
 
 def build_field_choices_catalog() -> dict[str, list[dict]]:
@@ -426,20 +683,19 @@ def ops_for_frontend() -> list[dict]:
 
 def seed_default_parameters() -> int:
     defaults = [
-        ("date_today", "امروز", ReportParameterDef.KIND_DATE, ["date", "document_date", "file_document_date", "plan_date"], ""),
-        ("date_week_start", "ابتدای هفته", ReportParameterDef.KIND_DATE, ["date", "document_date", "plan_date"], ""),
-        ("date_month_start", "ابتدای ماه", ReportParameterDef.KIND_DATE, ["date", "document_date", "plan_date"], ""),
-        ("code_selected", "کد کالای انتخابی", ReportParameterDef.KIND_CODE, ["code", "product_code"], ""),
-        ("qty_threshold", "آستانه تعداد", ReportParameterDef.KIND_NUMBER, ["stock_finished", "produced", "planned_qty", "actual_qty"], "0"),
+        ("date_today", "امروز", ReportParameterDef.KIND_DAY_DATE, "", "14050101"),
+        ("year_current", "سال جاری", ReportParameterDef.KIND_YEAR, "", "1405"),
+        ("code_selected", "کد کالای انتخابی", ReportParameterDef.KIND_PRODUCT_CODE, "", ""),
     ]
     created = 0
-    for i, (code, label, kind, keys, sample) in enumerate(defaults):
+    for i, (code, label, kind, source_key, sample) in enumerate(defaults):
         obj, was = ReportParameterDef.objects.get_or_create(
             code=code,
             defaults={
                 "label": label,
                 "kind": kind,
-                "applies_to_keys": keys,
+                "source_key": source_key,
+                "applies_to_keys": keys_for_parameter_kind(kind),
                 "sample_value": sample,
                 "order": i,
                 "is_active": True,
@@ -447,4 +703,16 @@ def seed_default_parameters() -> int:
         )
         if was:
             created += 1
+            continue
+        changed = False
+        if obj.kind in {"date", "code"}:
+            obj.kind = kind
+            obj.applies_to_keys = keys_for_parameter_kind(kind)
+            changed = True
+        if not (obj.sample_value or "").strip() and sample:
+            obj.sample_value = sample
+            changed = True
+        if changed:
+            obj.save()
+    ReportParameterDef.objects.filter(kind="number").update(is_active=False)
     return created

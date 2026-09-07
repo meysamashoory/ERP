@@ -334,9 +334,10 @@
 {{ parameters_catalog|json_script:"parameters-catalog" }}
 {{ field_choices|json_script:"field-choices" }}
 {{ param_capable_keys|json_script:"param-capable-keys" }}
+{{ field_param_kinds|json_script:"field-param-kinds" }}
 {% if report_conditions_data %}{{ report_conditions_data|json_script:"conditions-initial" }}{% else %}<script id="conditions-initial" type="application/json">{"public":[],"private":{}}</script>{% endif %}
 
-<script src="{% static 'js/report_builder_display.js' %}?v=13"></script>
+<script src="{% static 'js/report_builder_display.js' %}?v=14"></script>
 <script src="{% static 'js/form_enter_nav.js' %}?v=2"></script>
 <script>
 (function () {

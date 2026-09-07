@@ -134,8 +134,8 @@
       <div class="field">
         <label for="param_{{ p.code }}">{{ p.label }}</label>
         <input class="input" id="param_{{ p.code }}" name="param_{{ p.code }}" type="text"
-               value="{{ p.value|default:'' }}"
-               placeholder="{{ p.sample_value|default:'مثلاً 14051102' }}" autocomplete="off" required>
+               value="{{ p.value|default:p.sample_value }}"
+               placeholder="{% if p.kind == 'day_date' %}مثلاً 14050716{% elif p.kind == 'year' %}مثلاً 1405{% else %}مقدار پیش‌فرض{% endif %}" autocomplete="off" required>
       </div>
       {% empty %}
       <p class="muted">پارامتری تعریف نشده است.</p>

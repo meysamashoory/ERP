@@ -53,9 +53,10 @@ from .forms import (
     SendOrCopyPrintFormForm,
     SendOrCopyReportForm,
 )
-from .models import PrintForm, ReportAccessMode, SavedReport
+from .models import PrintForm, ReportAccessMode, ReportParameterDef, SavedReport
 from .conditions import (
     build_field_choices_catalog,
+    build_field_param_kind_map,
     build_parameters_catalog,
     collect_runtime_parameters,
     flatten_active_conditions,
@@ -103,7 +104,8 @@ def _builder_context(request: HttpRequest, form, report=None, mode="edit", meta_
         "condition_ops": ops_for_frontend(),
         "parameters_catalog": build_parameters_catalog(),
         "field_choices": build_field_choices_catalog(),
-        "param_capable_keys": sorted(PARAM_KEYS),
+        "param_capable_keys": sorted(set(PARAM_KEYS) | set(build_field_param_kind_map())),
+        "field_param_kinds": build_field_param_kind_map(),
         "report_conditions_data": normalize_conditions(report.conditions if report else {}),
         "mode": mode,
         "page_title": report.heading_label if report else "گزارش جدید",
@@ -514,6 +516,10 @@ def report_detail(request: HttpRequest, pk: int) -> HttpResponse:
         else:
             need_params = False
             request.session[f"report_params_{report.pk}"] = param_values
+            for code, value in param_values.items():
+                ReportParameterDef.objects.filter(code=code, is_active=True).update(
+                    sample_value=value
+                )
     elif f"report_params_{report.pk}" in request.session:
         param_values = dict(request.session.get(f"report_params_{report.pk}") or {})
         for p in runtime_params:

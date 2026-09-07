@@ -212,25 +212,47 @@ class PrintForm(models.Model):
 class ReportParameterDef(models.Model):
     """Named parameters usable in report conditions (system-data definitions)."""
 
-    KIND_DATE = "date"
-    KIND_CODE = "code"
+    KIND_DAY_DATE = "day_date"
+    KIND_YEAR = "year"
+    KIND_PRODUCT_CODE = "product_code"
+    KIND_UNIQUE_CODE = "unique_code"
+    KIND_MOLD_NUMBER = "mold_number"
+    KIND_VOUCHER_NUMBER = "voucher_number"
+    # Legacy aliases kept so older rows/tests still import the names.
+    KIND_DATE = KIND_DAY_DATE
+    KIND_CODE = KIND_PRODUCT_CODE
     KIND_NUMBER = "number"
     KIND_CHOICES = [
-        (KIND_DATE, "تاریخ"),
-        (KIND_CODE, "کد"),
-        (KIND_NUMBER, "عدد"),
+        (KIND_DAY_DATE, "تاریخ روز"),
+        (KIND_YEAR, "سال"),
+        (KIND_PRODUCT_CODE, "کد کالا"),
+        (KIND_UNIQUE_CODE, "کد یکتا"),
+        (KIND_MOLD_NUMBER, "شماره قالب"),
+        (KIND_VOUCHER_NUMBER, "شماره حواله"),
     ]
 
     code = models.SlugField("کد پارامتر", max_length=60, unique=True)
     label = models.CharField("عنوان", max_length=120)
-    kind = models.CharField("نوع", max_length=20, choices=KIND_CHOICES, default=KIND_DATE)
-    # Optional fixed sample/default shown in builder dropdowns
-    sample_value = models.CharField("نمونه مقدار", max_length=120, blank=True, default="")
+    kind = models.CharField("نوع", max_length=20, choices=KIND_CHOICES, default=KIND_DAY_DATE)
+    source_key = models.CharField(
+        "فیلد منابع",
+        max_length=80,
+        blank=True,
+        default="",
+        help_text="خالی = همه منابع. در غیر این صورت پارامتر فقط در منبع انتخاب‌شده معنا دارد.",
+    )
+    sample_value = models.CharField(
+        "مقدار پیش‌فرض",
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="مقدار اولیه هنگام ساخت پارامتر؛ پس از اعمال در گزارش نیز به‌روز می‌شود.",
+    )
     applies_to_keys = models.JSONField(
         "کلیدهای ستون مرتبط",
         default=list,
         blank=True,
-        help_text='مثال: ["date", "document_date", "code"]',
+        help_text="به‌صورت خودکار از نوع پارامتر پر می‌شود.",
     )
     is_active = models.BooleanField("فعال", default=True)
     order = models.PositiveSmallIntegerField("ترتیب", default=0)
@@ -242,3 +264,10 @@ class ReportParameterDef(models.Model):
 
     def __str__(self) -> str:
         return f"{self.label} ({self.code})"
+
+    def save(self, *args, **kwargs):
+        from reports.conditions import keys_for_parameter_kind
+
+        if not isinstance(self.applies_to_keys, list) or not self.applies_to_keys:
+            self.applies_to_keys = keys_for_parameter_kind(self.kind)
+        super().save(*args, **kwargs)

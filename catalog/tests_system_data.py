@@ -147,6 +147,7 @@ class TableLayoutSettingsTests(TestCase):
         get = self.client.get(url)
         self.assertEqual(get.status_code, 200)
         self.assertContains(get, "ارتفاع ردیف جداول")
+        self.assertContains(get, "layout-card")
         self.assertContains(get, "قفل عرض ستون جداول")
         self.assertContains(get, "برنامه‌ریزی هفتگی")
         self.assertContains(get, "برنامه‌ریزی توسط سیستم")

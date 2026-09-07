@@ -86,8 +86,28 @@
     var parametersCatalog = readJson("parameters-catalog", {});
     var fieldChoicesCatalog = readJson("field-choices", {});
     var paramCapableKeys = readJson("param-capable-keys", []);
+    var fieldParamKinds = readJson("field-param-kinds", {});
     var paramKeySet = {};
     (paramCapableKeys || []).forEach(function (k) { paramKeySet[k] = true; });
+
+    function fieldParamKind(fieldKey, sourceKey) {
+      sourceKey = sourceKey || "";
+      return fieldParamKinds[sourceKey + ":" + fieldKey] || fieldParamKinds[fieldKey] || "";
+    }
+
+    function paramsForField(fieldKey, sourceKey) {
+      var params = parametersCatalog[fieldKey] || [];
+      sourceKey = sourceKey || "";
+      var kind = fieldParamKind(fieldKey, sourceKey);
+      return params.filter(function (p) {
+        if (p.source_key && sourceKey && p.source_key !== sourceKey) return false;
+        if (!kind) return true;
+        if (kind === "day_date") {
+          return p.kind === "day_date" || p.kind === "year" || p.kind === "date";
+        }
+        return p.kind === kind || (!p.kind);
+      });
+    }
 
     function normalizeConditionsBlob(raw) {
       var out = { public: [], private: {} };
@@ -1032,7 +1052,9 @@
       return hit ? hit.label : v;
     }
 
-    function fieldSupportsParam(fieldKey) {
+    function fieldSupportsParam(fieldKey, sourceKey) {
+      if (fieldParamKind(fieldKey, sourceKey || "")) return true;
+      if (paramsForField(fieldKey, sourceKey || "").length) return true;
       return !!paramKeySet[fieldKey];
     }
 
@@ -1073,9 +1095,11 @@
     function refreshCondValueModeOptions() {
       var modeSel = document.getElementById("cond-value-mode");
       var fieldSel = document.getElementById("cond-field");
+      var sourceSel = document.getElementById("cond-source");
       if (!modeSel) return;
       var fieldKey = fieldSel ? fieldSel.value : "";
-      var allow = fieldSupportsParam(fieldKey);
+      var sourceKey = sourceSel ? sourceSel.value : "";
+      var allow = fieldSupportsParam(fieldKey, sourceKey);
       var cur = modeSel.value || "value";
       modeSel.innerHTML = '<option value="value">value</option>' +
         (allow ? '<option value="parameter">parameter</option>' : "");
@@ -1086,14 +1110,16 @@
     function refreshCondValueWidgets() {
       var modeSel = document.getElementById("cond-value-mode");
       var fieldSel = document.getElementById("cond-field");
+      var sourceSel = document.getElementById("cond-source");
       var valueEl = document.getElementById("cond-value");
       var paramEl = document.getElementById("cond-param");
       var offsetEl = document.getElementById("cond-value-offset");
       var mode = modeSel ? modeSel.value : "value";
       var fieldKey = fieldSel ? fieldSel.value : "";
+      var sourceKey = sourceSel ? sourceSel.value : "";
       var choices = fieldChoicesCatalog[fieldKey] || null;
-      var params = parametersCatalog[fieldKey] || [];
-      var allowParam = fieldSupportsParam(fieldKey);
+      var params = paramsForField(fieldKey, sourceKey);
+      var allowParam = fieldSupportsParam(fieldKey, sourceKey);
 
       if (paramEl) {
         if (mode === "parameter") {
@@ -1218,7 +1244,7 @@
         if (!isFirst && !draft.logic) return "برای شرط‌های بعدی AND یا OR را مشخص کنید.";
       }
       if (draft.value_mode === "parameter") {
-        if (!fieldSupportsParam(draft.field)) return "این فیلد از پارامتر پشتیبانی نمی‌کند.";
+        if (!fieldSupportsParam(draft.field, draft.source)) return "این فیلد از پارامتر پشتیبانی نمی‌کند.";
         if (!draft.param_code) return "پارامتر را انتخاب کنید.";
       } else {
         if (draft.param_code) {

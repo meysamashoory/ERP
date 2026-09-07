@@ -22,14 +22,14 @@
     </nav>
 
     <div class="table-layout-fields">
-      <label class="field">
-        <span>ارتفاع ردیف جداول</span>
+      <label class="layout-card">
+        <span class="layout-card-title">ارتفاع ردیف جداول</span>
         <input class="input" type="number" name="row_height_px" id="id_row_height_px"
                min="5" max="120" step="1" value="{{ row_height_px }}"
                {% if not can_edit %}disabled{% endif %}>
       </label>
-      <fieldset class="field layout-choice-field">
-        <legend>مرز ستون</legend>
+      <fieldset class="layout-card">
+        <legend class="layout-card-title">مرز ستون</legend>
         <label class="layout-choice">
           <input type="radio" name="col_border" value="show" {% if col_border %}checked{% endif %}
                  {% if not can_edit %}disabled{% endif %}>
@@ -41,8 +41,8 @@
           <span>مخفی کردن مرز ستون</span>
         </label>
       </fieldset>
-      <fieldset class="field layout-choice-field">
-        <legend>مرز ردیف</legend>
+      <fieldset class="layout-card">
+        <legend class="layout-card-title">مرز ردیف</legend>
         <label class="layout-choice">
           <input type="radio" name="row_border" value="show" {% if row_border %}checked{% endif %}
                  {% if not can_edit %}disabled{% endif %}>
@@ -54,10 +54,12 @@
           <span>مخفی کردن مرز ردیف</span>
         </label>
       </fieldset>
-      <label class="field field-check layout-lock-field">
-        <input type="checkbox" name="width_locked" value="1" {% if width_locked %}checked{% endif %}
-               {% if not can_edit %}disabled{% endif %}>
-        <span>قفل عرض ستون جداول</span>
+      <label class="layout-card layout-card-check">
+        <span class="layout-card-title layout-card-check-title">
+          <input type="checkbox" name="width_locked" value="1" {% if width_locked %}checked{% endif %}
+                 {% if not can_edit %}disabled{% endif %}>
+          قفل عرض ستون جداول
+        </span>
       </label>
     </div>
 
